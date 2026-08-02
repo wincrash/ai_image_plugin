@@ -214,15 +214,18 @@ fallback chain, and a "Test provider" admin screen.
 5. `ProviderRegistry` with primary → fallback, recording which provider actually served.
 6. "Test provider" admin screen — per §8.5 this is how the provider decision actually gets made.
 
-**Requires a container rebuild before Phase 2 can read the Replicate key:**
+**The testbed is rebuilt and ready** — no setup needed before Phase 2. Confirmed inside the
+container: `AICAKE_REPLICATE_KEY` (40 chars), `AICAKE_GEMINI_KEY` (53), `AICAKE_FAL_KEY` (69),
+`AICAKE_FORCE_GD` true, `AICAKE_STORAGE_DIR` set. `AICAKE_OPENAI_KEY` and `AICAKE_LLM_KEY` are
+defined but empty. wp-cli 2.12.0 is baked into the image. All 23 smoke assertions pass.
 
-```bash
-cd /home/ruslan/wordpress-test && docker compose up -d --build
-```
-
-That picks up `AICAKE_REPLICATE_KEY` and `AICAKE_FORCE_GD` from the compose file, plus wp-cli
-and the mysql client now baked into the Dockerfile. Without it, `AICAKE_REPLICATE_KEY` is
-undefined inside the container and the smoke test skips the real-key redaction assertion.
+> **Do not add `default-mysql-client` to the Dockerfile.** It was tried and reverted. Debian now
+> ships the MariaDB **11.8** client, which requires TLS, against the pinned MariaDB **10.11**
+> server, which has none — so every `wp db` command dies with `ERROR 2026 … SSL is required, but
+> the server does not support it`, which reads like a plugin bug. `--skip-ssl` fixes a direct
+> `mysql` call and a `[client]` entry in `/etc/mysql/conf.d` fixes that too, but neither reaches
+> wp-cli: its pre-flight "get current SQL modes" query hardcodes `--no-defaults`. Use `$wpdb`
+> through `wp eval` for schema work instead.
 
 Housekeeping, not blocking:
 

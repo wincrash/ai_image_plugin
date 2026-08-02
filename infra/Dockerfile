@@ -33,10 +33,21 @@ RUN set -eux; \
     chmod +x /usr/local/bin/wp; \
     wp --allow-root --version
 
-# The mysql client, so `wp db query` works. Without it wp-cli fails with
-# "Failed to get current SQL modes" and every schema check has to be rewritten
-# as a $wpdb call.
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends default-mysql-client; \
-    rm -rf /var/lib/apt/lists/*
+# DO NOT add default-mysql-client here. It was tried and reverted.
+#
+# Debian now ships the MariaDB 11.8 client, which requires TLS by default,
+# while the server is pinned to MariaDB 10.11 with no TLS configured. Every
+# `wp db` command then dies with:
+#
+#   ERROR 2026 (HY000): TLS/SSL error: SSL is required, but the server does
+#   not support it
+#
+# which reads like a plugin bug rather than a missing flag. `--skip-ssl` fixes
+# a direct mysql invocation and a [client] entry in /etc/mysql/conf.d fixes it
+# too, but neither reaches wp-cli: its pre-flight "get current SQL modes" query
+# hardcodes --no-defaults and ignores passthrough flags.
+#
+# Without the client, `wp db query` simply says the binary is missing, which is
+# honest. Use $wpdb for schema work instead:
+#
+#   wp --allow-root eval 'global $wpdb; print_r( $wpdb->get_results( "DESCRIBE {$wpdb->prefix}aicake_designs" ) );'
