@@ -545,11 +545,26 @@ price, it is an unthrottled endpoint being hammered — §11.
 
 ## 9. Imaging engine
 
-### 9.1 GD is the target. Imagick is an optional enhancement.
+### 9.1 GD is the target. Imagick is not available.
 
-**The client cannot install extensions on the production host.** Imagick may or may not already
-be there — most WordPress hosts ship it, so this is worth checking rather than assuming — but
-we cannot depend on it.
+**Confirmed on the live host, 2026-08-02** (wp-admin → Site Health → Media Handling):
+
+```
+Active editor        WP_Image_Editor_GD
+ImageMagick version  none
+Imagick version      none
+GD version           bundled (2.1.0 compatible)
+GD formats           GIF, JPEG, PNG, WebP, BMP
+Ghostscript          not detected
+```
+
+The host is a managed platform, not a Linux machine — the client can install PHP libraries and
+WordPress plugins, but no system packages. So this is settled, not a risk to monitor: **there is
+no Imagick in production and there will not be.**
+
+Two useful details in that output: **WebP is supported**, so watermarked previews can be WebP as
+planned; and Ghostscript is absent, which would have mattered only for PDF — already dropped
+(D-009).
 
 This inverts the usual framing. GD is not a degraded fallback we tolerate; **GD is the
 platform**, and every feature must be complete and good-looking on it. Imagick, where present,
@@ -598,7 +613,46 @@ Result is visually indistinguishable from Imagick's mask at a fraction of the ef
 sheet, "no ink" and "white" are the same output, and some printer drivers mishandle alpha in
 PNGs. Keep alpha only for the on-screen preview, where the round shape needs to read as round.
 
-### 9.1.2 Develop against GD, not against Imagick
+### 9.1.2 The one remaining unknown: FreeType
+
+Site Health does not report it, and **the entire text layer depends on it.**
+`imagettftext()` needs GD compiled with FreeType. Without it there is no TrueType rendering at
+all — GD's built-in bitmap fonts are tiny, ugly and unusable on a cake topper.
+
+Bundled GD is compiled with FreeType on essentially every managed WordPress host, so this is
+very likely fine. But "very likely" is not good enough for the feature the product is built on,
+so `tools/host-check.php` verifies it directly — and goes further by rendering
+`ĄČĘĖĮŠŲŪŽ ąčęėįšųūž` and counting ink, which proves diacritics actually come out rather than
+trusting a capability flag.
+
+If FreeType turned out to be missing, that — and only that — would justify reconsidering the
+architecture. Everything else already works.
+
+### 9.1.3 Do we need an external render server? No.
+
+Worth answering explicitly, because it is the natural next thought when a host turns out to be
+this restricted.
+
+Everything in the pipeline is covered by **GD + pure PHP + the AI APIs we are already calling**:
+
+| Concern | Answer |
+|---|---|
+| Masks, bleed, text, imposition, watermark, PNG | GD, all of it |
+| DPI metadata | Hand-written `pHYs` chunk, pure PHP |
+| Upscaling | Already an external API (Real-ESRGAN via fal) — by design, since before payment |
+| Colour management | Calibrated LUT in pure PHP (§9.5) |
+| Background jobs | Action Scheduler, already shipped with WooCommerce |
+
+The two things Imagick would have added are Lanczos resampling and ICC soft-proofing. Lanczos is
+displaced by the paid upscaler, which is an external service we were always going to use.
+ICC is displaced by the LUT.
+
+So the "external small server" option is *already satisfied* by the provider APIs — without
+running, paying for, securing, monitoring or backing up a second machine, and without adding a
+single point of failure between the storefront and a customer's order. Keep it in reserve; do
+not build it.
+
+### 9.1.4 Develop against GD, not against Imagick
 
 The testbed has Imagick installed. Production probably will not. If we develop against Imagick
 we will discover the difference at the worst possible moment.

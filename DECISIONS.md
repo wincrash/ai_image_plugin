@@ -196,4 +196,37 @@ and retires the bundle dance.
 
 ---
 
-<!-- Next: D-015 -->
+### D-015 · No Imagick on production — confirmed, and no external render server needed
+**2026-08-02** · confirms D-013
+
+Live-host Site Health reports `WP_Image_Editor_GD`, ImageMagick `none`, Imagick `none`, GD
+`bundled (2.1.0 compatible)`, formats `GIF, JPEG, PNG, WebP, BMP`, Ghostscript not detected.
+
+The host is a **managed platform, not a Linux machine**: the client can add PHP libraries and
+WordPress plugins, but no system packages. D-013 is therefore settled fact rather than caution.
+
+**Also decided: we do not build an external render service.** The client raised it as a fallback.
+It is not needed — GD plus pure PHP plus the AI APIs we already call cover the whole pipeline.
+The only two Imagick features that mattered are displaced: Lanczos by the paid Real-ESRGAN
+upscaler (an external service we were always using), and ICC soft-proofing by a calibrated LUT.
+
+**Rejected:** running a small external server with an image API. It would add recurring cost,
+ops burden, a second attack surface, and a single point of failure between the storefront and a
+paying customer — to replace two features we no longer need.
+
+**One unknown remains:** GD's **FreeType** support, which Site Health does not report and which
+the entire text layer depends on. `tools/host-check.php` verifies it, and renders
+`ĄČĘĖĮŠŲŪŽ ąčęėįšųūž` to prove diacritics actually come out. If FreeType were missing — unlikely
+on a managed WordPress host — that alone would justify revisiting the architecture.
+
+---
+
+### D-016 · Windows pushes to GitHub directly
+**2026-08-02** · supersedes the bootstrap in D-014
+
+The Windows SSH key is registered with GitHub; `git push origin main` works from `C:\AI_IMAGE`.
+The bundle-through-the-server route from D-014 is retired and should not be used again.
+
+---
+
+<!-- Next: D-017 -->

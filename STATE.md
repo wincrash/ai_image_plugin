@@ -56,14 +56,31 @@ on that server.
 | DB | `wp_user` / `wp_password` / `wordpress` |
 | Other plugins | WooPayments, PayPal, MailPoet, Unisend, Jetpack, Pinterest, Google Listings & Ads, WooCommerce POS |
 
-### Production
+### Production — capabilities confirmed 2026-08-02
 
-`valgomosdekoracijos.lt` — ~265 products, plain WordPress, no extra services, **no ability to
-install PHP extensions.**
+`valgomosdekoracijos.lt` — ~265 products. A **managed platform, not a Linux machine**: PHP
+libraries and WordPress plugins can be added, system packages cannot.
 
-> **Imagick is present on the testbed but must not be depended on.** GD is the target engine
-> and `AICAKE_FORCE_GD` defaults on, so development happens on the production path. See
-> `PLAN.md` §9.1 and D-013.
+From wp-admin → Site Health → Media Handling:
+
+| | |
+|---|---|
+| Active image editor | `WP_Image_Editor_GD` |
+| Imagick / ImageMagick | **none** |
+| GD | bundled (2.1.0 compatible) |
+| GD formats | GIF, JPEG, PNG, **WebP**, BMP |
+| Ghostscript | not detected (irrelevant — PNG only) |
+| Max upload | 64 MB |
+
+> **The testbed has Imagick; production does not.** GD is the target engine and
+> `AICAKE_FORCE_GD` defaults on, so development happens on the production path.
+> See `PLAN.md` §9.1 and D-013/D-015.
+
+**No external render server is needed** — GD + pure PHP + the AI APIs cover everything
+(`PLAN.md` §9.1.3, D-015).
+
+**Unverified and critical: GD FreeType support.** Site Health does not report it and the whole
+text layer depends on it. Run `tools/host-check.php` on the live host to confirm.
 
 Note: the separate **theme** project also lives on this share (`Z:\...\themes\`) with its own
 `CLAUDE.md`. This project does not touch it.
@@ -74,21 +91,9 @@ Note: the separate **theme** project also lives on this share (`Z:\...\themes\`)
 |---|---|
 | Remote | `github.com/wincrash/ai_image_plugin` (private) |
 | Branch | `main`, tracking `origin/main` |
+| Push from Windows | **Works.** SSH key registered, authenticates as `wincrash`. |
 
-**Pushing from Windows does not work yet.** This machine's SSH key is not registered with
-GitHub and there is no `gh` or token here. The initial push was bootstrapped through the server
-(which has `gh` authenticated as `wincrash`) using a git bundle — see D-014.
-
-**To fix permanently**, add this machine's public key to the GitHub account:
-
-```
-C:\Users\rpace\.ssh\id_rsa.pub        (comment: rpace@ruslan-pc)
-```
-
-→ github.com → Settings → SSH and GPG keys → New SSH key. After that, `git push` works
-directly and the bundle workaround can be forgotten.
-
-Until then, pushes go: Windows → `git bundle` → `Z:\` → server → GitHub.
+The git-bundle-through-the-server bootstrap (D-014) is retired — just `git push origin main`.
 
 ## Repository layout
 
@@ -117,10 +122,10 @@ C:\AI_IMAGE\
 
 ## Open items, not blocking
 
-- **Add the Windows SSH key to GitHub** (above) — retires the bundle workaround.
-- **Does the live host have Imagick?** Most WordPress hosts ship it. If so it is a free quality
-  upgrade, but nothing may depend on it. Check: wp-admin → Tools → Site Health → Info → Media
-  Handling.
+- **Run `tools/host-check.php` on the live host.** Confirms GD FreeType (critical — the text
+  layer needs it), whether a 4096×4096 canvas can be allocated, whether a directory outside the
+  webroot is writable, whether loopback requests work, and whether fal/Google are reachable
+  outbound. Change the token at the top, upload, open with `?token=…`, read, **delete**.
 - Cupcake diameter assumed 4.5 cm → 24 per A4. Confirm against what is actually sold; 5 cm
   yields 20 and the SKU name must match.
 - Printer make/model unknown → usable print area defaults to 200 × 287 mm.
