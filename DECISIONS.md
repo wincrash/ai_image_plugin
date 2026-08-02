@@ -423,4 +423,58 @@ operate on images we already have, and there are three stored masters on the tes
 
 ---
 
-<!-- Next: D-023 -->
+### D-023 · Imaging works on GD, and three things the plan had slightly wrong
+**2026-08-02** · corrects `PLAN.md` §3, §9.2, §19
+
+The whole imaging path is built and verified on real output: circle mask, bleed, upscale
+decision, straight and arc text with full Lithuanian diacritics, watermark, 24-up imposition, and
+PNG `pHYs` so the file actually declares 300 DPI. §9.1's claim that everything the product needs
+is achievable on GD holds.
+
+**FreeType is present on the testbed**, and all four bundled fonts pass a cmap-level check for
+`ĄČĘĖĮŠŲŪŽ ąčęėįšųūž`. Production is still unverified — but the Site Health panel now reports it,
+which was always the plan for finding out (§9.1.2).
+
+Three corrections:
+
+**1. §3's pixel table disagrees with §3's own formula.** The formula is stated as
+`ceil( mm × dpi / 25.4 )`, but two cells were rounded instead: A4 width is 2552 not 2551, and the
+20 cm round is 2434 not 2433. `ceil` is both what §3 says and the safe direction — a pixel short
+is a white sliver at the cut, a pixel over is invisible. The code follows the formula and the
+tests encode the corrected figures. The difference is 0.085 mm.
+
+**2. §9.2's memory estimate is optimistic.** It predicts the fulfilment path "needs 256 MB and
+will be uncomfortable at 128 MB". Measured peak for a 15 cm round plus a 24-up A4 sheet in one
+pass: **339 MB**. The mitigations §9.2 lists are already applied — the per-circle image is
+downscaled once and reused 24 times rather than compositing 24 full-size copies. Production has
+not been checked for its limit, and this needs confirming before go-live; the Site Health panel
+already warns below 256 MB and that threshold should probably become 384 MB.
+
+**3. §19's `ImageEngine` interface is not built.** It specifies GD and Imagick implementations
+behind an interface, but that predates D-013/D-015 settling that production has GD only and no
+way to add system packages. There is no second implementation coming, and an interface with one
+implementor hides code without abstracting anything. `GdEngine` is concrete; extracting an
+interface later is mechanical if a real second engine ever appears.
+
+**Two bugs that only looking at the output would have caught**, both now fixed:
+
+- **Text at the bottom of a round topper ran off the edge.** The safe inset is a rectangle
+  measurement; a circle at 80% of its height is far narrower than at the centre. Straight text now
+  fits against the circle's *chord* at the height the block actually occupies, converging over
+  three passes. It also cannot be placed at the extreme edge, where the chord is zero — the outer
+  edge of a text block is capped at 0.82 of the radius, where the chord is still 57% of the
+  diameter.
+- **Arc text had no fit rule at all.** A long string does not overflow a box, it keeps going round
+  the circle and eventually collides with itself. It now shrinks until the run occupies at most
+  200°.
+
+**Fonts: four bundled, all verified — but they are placeholders for the decorative set.**
+DejaVu Sans and Serif, regular and bold, chosen because their licence is permissive and their
+Lithuanian coverage is complete. They are competent, not festive. §9.4 asks for a curated set of
+6–8, and *which* display fonts suit a cake is Ruslan's judgement rather than an engineering
+question — the machinery to verify any candidate is in place, and a font that fails coverage is
+listed with its missing characters rather than silently dropped.
+
+---
+
+<!-- Next: D-024 -->

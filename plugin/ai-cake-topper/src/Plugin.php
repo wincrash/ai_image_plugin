@@ -12,6 +12,10 @@ namespace AiCake;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
+use AiCake\Imaging\FontCatalogue;
+use AiCake\Imaging\GdEngine;
+use AiCake\Imaging\TextRenderer;
+use AiCake\Imaging\Watermarker;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
 use AiCake\Providers\Image\GeminiImageProvider;
@@ -80,6 +84,14 @@ class Plugin {
 
 	private RestController $rest;
 
+	private GdEngine $images;
+
+	private FontCatalogue $fonts;
+
+	private TextRenderer $text;
+
+	private Watermarker $watermarker;
+
 	/**
 	 * Build the object graph. No hooks are registered here.
 	 */
@@ -98,6 +110,11 @@ class Plugin {
 		$this->storage    = new PrivateStorage( $this->settings, $this->logger );
 		$this->prompts    = new PromptBuilder( $this->settings );
 		$this->dispatcher = new Dispatcher( $this->logger );
+
+		$this->images      = new GdEngine( $this->logger );
+		$this->fonts       = new FontCatalogue( $this->logger );
+		$this->text        = new TextRenderer( $this->fonts, $this->logger );
+		$this->watermarker = new Watermarker( $this->fonts, $this->logger );
 
 		$this->runner = new Runner(
 			$this->jobs,
@@ -328,5 +345,33 @@ class Plugin {
 	 */
 	public function prompts(): PromptBuilder {
 		return $this->prompts;
+	}
+
+	/**
+	 * Pixel manipulation.
+	 */
+	public function images(): GdEngine {
+		return $this->images;
+	}
+
+	/**
+	 * Bundled fonts and their coverage.
+	 */
+	public function fonts(): FontCatalogue {
+		return $this->fonts;
+	}
+
+	/**
+	 * The text layer.
+	 */
+	public function text(): TextRenderer {
+		return $this->text;
+	}
+
+	/**
+	 * Preview watermarking.
+	 */
+	public function watermarker(): Watermarker {
+		return $this->watermarker;
 	}
 }

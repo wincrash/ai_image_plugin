@@ -19,8 +19,44 @@ depends on the choice.
 | 1 · Foundation | **Done and verified on the testbed.** |
 | 2 · Providers | **Done and verified against the live APIs.** |
 | 3 · Job system | **Done and verified live, both dispatch paths.** |
-| 4 · Imaging | **Next** — and it needs no image provider, so the funding gap does not block it |
-| 5–9 | Not started |
+| 4 · Imaging | **Done and verified on real print output.** |
+| 5 · Moderation | **Next** — blocklist + LT stemming; the LLM half already works (D-019) |
+| 6–9 | Not started |
+
+### Phase 4 — what exists and was verified on real output
+
+| File | What it does |
+|---|---|
+| `Support/Mm.php` | The §3 print maths. Pure, unit-tested |
+| `Imaging/SheetLayout.php` | Imposition — 24-up derived, not typed. Pure, unit-tested |
+| `Imaging/GdEngine.php` | Mask, cover/crop, flatten, PNG + WebP, `pHYs` DPI injection |
+| `Imaging/TtfCmap.php` | TrueType cmap reader |
+| `Imaging/FontCatalogue.php` | Bundled fonts + Lithuanian coverage gate |
+| `Imaging/TextRenderer.php` | Straight, outlined, auto-fit, wrapped, and arc text |
+| `Imaging/Watermarker.php` | Diagonal tiled watermark |
+| `Domain/TextSpec.php` | Resolution-independent text layer |
+| `fonts/` | DejaVu Sans + Serif, regular and bold, with licence |
+| `tests/` | **83 assertions, 0 failures** — Mm, SheetLayout, font coverage |
+
+Produced and inspected, not just asserted:
+
+- **15 cm round print file** — 1024 px master → 2× upscale → cover to 1843 px → circle mask →
+  arc text `ĄČĘĖĮŠŲŪŽ ąčęėįšųūž` → straight text wrapped to two lines → flattened on white →
+  PNG declaring **300 DPI**, measuring 156.0 × 156.0 mm.
+- **24-up cupcake sheet** — 4 × 6 at 2363 × 3390 px = 200.1 × 287.0 mm, evenly gutterred.
+- **800 px preview** — shaped, texted, watermarked, 31 KB WebP.
+
+**GD FreeType is present on the testbed** and every bundled font passes a cmap-level check for
+all nine Lithuanian letters in both cases.
+
+> **Peak memory was 339 MB**, above the 256 MB `PLAN.md` §9.2 predicts, with its mitigations
+> already applied (D-023). Production's limit is unverified and needs checking before go-live.
+
+Run the tests with:
+
+```bash
+docker compose exec wordpress php wp-content/plugins/ai-cake-topper/tests/run.php
+```
 
 ### Phase 3 — what exists and was verified live
 
@@ -289,21 +325,24 @@ mid-session — `flux-dev` produced three designs and then began answering `402`
 recommendation: primary candidate in `PLAN.md` §8, covers Suite A *and* Suite B, whole Phase 0
 budget still under $5.
 
-**This does not block Phase 4 — imaging** (`PLAN.md` §21, §9), which is the largest phase and
-needs no provider at all. It operates on images we already have, and there are stored masters on
-the testbed to work with.
+**Phase 5 — moderation** (`PLAN.md` §21, §10) is next and needs no provider either. Half of it is
+already proven: D-019 showed the LLM catches Lithuanian declensions, paraphrases and real people.
+What is missing is the cheap layer that runs first.
 
-1. `Imaging/ImageEngine.php` interface + `GdEngine.php`. GD only — `AICAKE_FORCE_GD` is on and
-   production has no Imagick (D-013/D-015).
-2. Shape mask (§9.1.1 — circle masking in GD without being slow), bleed, safe zone.
-3. `Support/Mm.php` — the §3 print maths. Pure functions, no WordPress, **unit-tested**.
-4. `Imaging/TextRenderer.php` + `FontCatalogue.php` — and this is where the open **FreeType**
-   question finally has to be answered on the live host. The Site Health panel already reports it.
-5. `Imaging/SheetLayout.php` — imposition, cols × rows (§3.5). Also pure and unit-tested.
-6. `Watermarker.php`, DPI metadata.
+1. `Moderation/Blocklist.php` — diacritic folding and substring matching, run **before** spending
+   anything on an LLM call.
+2. `Moderation/LtNormaliser.php` — the Lithuanian stemming. §19 names this as one of the three
+   classes most likely to be subtly wrong, so it gets unit tests against real declensions, and
+   `tests/` already exists to put them in.
+3. Three-verdict handling and rejection logging — every rejection stored with its prompt and the
+   layer that caught it, because that is the data that grows the blocklist.
 
-§19 wants real PHPUnit tests for `Mm`, `SheetLayout` and `LtNormaliser` — the logic most likely
-to be subtly wrong. Phase 4 creates the first two, so `tests/` starts here.
+Also worth doing soon, neither blocking:
+
+- **Pick the decorative fonts** (D-023). Four are bundled and verified, but they are workmanlike,
+  not festive. The coverage machinery will vet any candidate and report exactly which characters
+  a font is missing.
+- **Confirm production's `memory_limit`** before go-live. Measured peak is 339 MB.
 
 **The testbed is rebuilt and ready.** Confirmed inside the
 container: `AICAKE_REPLICATE_KEY` (40 chars), `AICAKE_GEMINI_KEY` (53), `AICAKE_FAL_KEY` (69),
