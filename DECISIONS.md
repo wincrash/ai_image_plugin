@@ -299,4 +299,59 @@ is how the comparison actually gets made.
 
 ---
 
-<!-- Next: D-019 -->
+### D-019 · The LLM handles Lithuanian inflection — the moderation design holds
+**2026-08-02** · validates `PLAN.md` §10 Layer 2
+
+The open risk in the moderation design was never the blocklist; it was whether a cheap model
+could judge **Lithuanian**, where a franchise name declines through seven cases and the
+characters have translated names. Tested `gemini-3.1-flash-lite` against the §3.2 set:
+
+| Prompt | Wanted | Got | Why it is hard |
+|---|---|---|---|
+| `linksmas dinozauras su gimtadienio tortu` | allow | **allow** | False-positive check — blocking this would be worse than useless |
+| `gėlių vainikas su rožėmis` | allow | **allow** | Second false-positive check |
+| `Elsos suknelė` | block | **block** `copyright_character:frozen` | Genitive; a substring match on "Elsa" misses it |
+| `Žmogaus voro tinklas` | block | **block** `franchise:spiderman` | Genitive *of the Lithuanian name* — two failure modes at once |
+| `mėlynas ežiukas, kuris greitai bėga` | block | **block** `franchise:sonic` | Sonic described, never named — no blocklist can catch this |
+| `prezidento Gitano Nausėdos karikatūra` | block | **block** `real_person:named` | Real public figure |
+
+Six of six, ~790 ms each, **$0.000639 for all six**. Translations were clean
+("Spider-Man web", "caricature of President Gitanas Nausėda").
+
+**Decided: keep the §10 design as written.** Blocklist first for the cheap obvious cases, LLM for
+everything else, three verdicts. No fallback classifier is needed for Lithuanian specifically,
+which was the open question.
+
+**Also decided: JSON validity is enforced, not measured.** `PLAN.md` §4 planned to measure how
+often the model returns malformed JSON, because the plugin fails closed and a 2% malformed rate
+rejects 2% of legitimate orders. Gemini's `responseSchema` makes the API enforce the shape
+instead, which removes the failure mode rather than quantifying it. That measurement is dropped
+from Phase 0 as no longer meaningful.
+
+**Style suffix must be phrased positively.** Confirmed twice. The negative form
+("no cake or background needed") produced exactly a cake, photorealistic and dark. The positive
+form — flat vector illustration, thick clean outlines, isolated on a plain solid white
+background — produced precisely the product. The working suffix now lives in
+`TestProviderPage::apply_style_suffix()` and is a setting, not a constant.
+
+Two things to tune later, neither blocking: the model adds a **soft drop shadow**, which would
+print as a grey smudge on a cut-out topper, and the subject is not reliably centred.
+
+---
+
+### D-020 · Replicate's free set is not even stable — reinforcing D-017
+**2026-08-02** · strengthens D-017
+
+While testing the fallback chain, `black-forest-labs/flux-schnell` returned
+`404 No adapter found for model` where hours earlier the same call returned
+`402 Insufficient credit`. The response changed with no action on our side.
+
+This is a second, independent reason free Replicate access can never be a production dependency:
+not only is the free set arbitrary, it is not stable within a single day. The provider registry's
+fallback chain is what makes this survivable, and it was exercised end to end — Replicate 404 →
+fal 403 (no balance) → Gemini 429 (free-tier image quota is zero) — walking the whole chain and
+returning the last failure rather than dying on the first.
+
+---
+
+<!-- Next: D-021 -->

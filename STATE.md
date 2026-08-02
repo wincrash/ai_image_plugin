@@ -17,8 +17,48 @@ depends on the choice.
 |---|---|
 | 0 · API evaluation | **Deferred** to a calibration step after the plugin runs end to end (D-018). |
 | 1 · Foundation | **Done and verified on the testbed.** |
-| 2 · Providers | **Next** |
-| 3–9 | Not started |
+| 2 · Providers | **Done and verified against the live APIs.** |
+| 3 · Job system | **Next** |
+| 4–9 | Not started |
+
+### Phase 2 — what exists and was verified live
+
+26 PHP files parse clean; the whole chain was exercised against the real Replicate and Gemini
+APIs, not mocks.
+
+| File | What it does |
+|---|---|
+| `Support/HttpClient.php`, `Http.php`, `HttpResponse.php` | Transport seam + `wp_remote_*` implementation: timeouts, bounded retries, `Retry-After`, size cap, redaction |
+| `Providers/{Image,Upscale,Text}Provider.php` | The §8.5 interfaces |
+| `Domain/GenerationRequest.php`, `GenerationResult.php`, `PromptAnalysis.php` | Value objects |
+| `Providers/Image/ReplicateProvider.php` | `flux-dev`; sync **and** polling forms, so Phase 3 needs no retrofit |
+| `Providers/Image/FalFluxProvider.php`, `GeminiImageProvider.php` | Written to interface, billing-gated |
+| `Providers/Text/GeminiTextProvider.php` | Translate + moderate, structured output, injection-fenced |
+| `Providers/Upscale/GdUpscaler.php` | Bicubic, free, the production fallback |
+| `Providers/ProviderRegistry.php` | Primary → fallback, records who served |
+| `Domain/DesignRepository.php` | Persistence, so the budget guard has something to sum |
+| `Admin/TestProviderPage.php` | The screen §8.5 says makes the provider decision |
+
+**Verified live:**
+
+- **Moderation 6/6 on the hard Lithuanian cases** (D-019) — genitive franchise names, a
+  Lithuanian-translated character name in the genitive, a franchise described but never named,
+  a real public figure, and both false-positive checks. ~790 ms, $0.000639 for all six.
+- **Generation** through the registry: 1024×1024 PNG, 4.8 s, via Replicate `flux-dev`.
+- **Upscale**: GD bicubic 1024² → 2048², free.
+- **Fallback chain**: forced onto a blocked model it walked Replicate → fal → Gemini and
+  returned the last failure instead of dying on the first.
+- **Admin screen** renders without fatals.
+
+The style suffix is now positive-phrased and produces the actual product — flat vector, clean
+outlines, white background, single subject. See D-019 for the two tuning items (drop shadow,
+centring), neither blocking.
+
+> **Cost recording is deliberately conservative.** `ReplicateProvider::estimate_cost()` records
+> the **list price** even while these calls are free, because the API gives no way to tell
+> whether a prediction was billed. Over-recording is the safe direction for a spend guard and
+> the figure becomes exactly right the moment credit is added. It does mean the Phase 8 cost
+> dashboard will read high until then.
 
 ### Phase 1 — what exists and was verified running
 
@@ -203,18 +243,23 @@ C:\AI_IMAGE\
 
 ## Next actions
 
-**Phase 2 — providers** (`PLAN.md` §21). The three interfaces from §8.5, a registry with a
-fallback chain, and a "Test provider" admin screen.
+**Phase 3 — job system** (`PLAN.md` §21, §6). This is the phase that makes generation
+customer-safe: today the only caller is an admin screen that blocks for five seconds, which is
+fine for one shop owner and unacceptable for a storefront on 4–8 PHP workers.
 
-1. `Support/Http.php` — `wp_remote_*` wrapper with timeouts, retries and key redaction.
-2. `Providers/{ImageProvider,UpscaleProvider,TextProvider}.php` — the §8.5 interfaces.
-3. `Providers/Image/ReplicateProvider.php` against `black-forest-labs/flux-dev`, which is the
-   one image model we can call for free today.
-4. `Providers/Text/GeminiTextProvider.php` — translate + moderate in one call, free tier.
-5. `ProviderRegistry` with primary → fallback, recording which provider actually served.
-6. "Test provider" admin screen — per §8.5 this is how the provider decision actually gets made.
+1. Jobs table is already created; add `Domain/Job.php` + `JobRepository.php` with the **atomic
+   claim** — `UPDATE … SET status='claimed' WHERE id=? AND status='queued'`, checking
+   `affected_rows`. A duplicate run costs real money (§6.3).
+2. `Queue/Dispatcher.php` — loopback spawn → poll fallback → Action Scheduler sweeper (§6.2).
+3. `Queue/Runner.php` — claims and executes one job, calling the Phase 2 registry.
+4. Concurrency cap, default 3 (§6.4).
+5. REST endpoints: uncached session/nonce (§7), generate, job status.
+6. **Test with loopback deliberately broken** — §21 is explicit about this.
 
-**The testbed is rebuilt and ready** — no setup needed before Phase 2. Confirmed inside the
+`ReplicateProvider::start()` and `poll()` already exist for exactly this, so the async path
+needs no adapter changes.
+
+**The testbed is rebuilt and ready.** Confirmed inside the
 container: `AICAKE_REPLICATE_KEY` (40 chars), `AICAKE_GEMINI_KEY` (53), `AICAKE_FAL_KEY` (69),
 `AICAKE_FORCE_GD` true, `AICAKE_STORAGE_DIR` set. `AICAKE_OPENAI_KEY` and `AICAKE_LLM_KEY` are
 defined but empty. wp-cli 2.12.0 is baked into the image. All 23 smoke assertions pass.

@@ -9,6 +9,15 @@ declare( strict_types=1 );
 
 namespace AiCake;
 
+use AiCake\Admin\TestProviderPage;
+use AiCake\Domain\DesignRepository;
+use AiCake\Providers\Image\FalFluxProvider;
+use AiCake\Providers\Image\GeminiImageProvider;
+use AiCake\Providers\Image\ReplicateProvider;
+use AiCake\Providers\ProviderRegistry;
+use AiCake\Providers\Text\GeminiTextProvider;
+use AiCake\Providers\Upscale\GdUpscaler;
+use AiCake\Support\Http;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
@@ -40,6 +49,12 @@ class Plugin {
 
 	private BudgetGuard $budget_guard;
 
+	private Http $http;
+
+	private DesignRepository $designs;
+
+	private ProviderRegistry $providers;
+
 	/**
 	 * Build the object graph. No hooks are registered here.
 	 */
@@ -50,6 +65,30 @@ class Plugin {
 		$this->identity     = new IdentityResolver( $this->settings );
 		$this->rate_limiter = new RateLimiter( $this->settings, $this->identity );
 		$this->budget_guard = new BudgetGuard( $this->settings, $this->logger );
+		$this->http         = new Http( $this->logger );
+		$this->designs      = new DesignRepository();
+		$this->providers    = $this->build_providers();
+	}
+
+	/**
+	 * Assemble the provider chain.
+	 *
+	 * Order matters and is a setting, not a constant: Replicate leads because
+	 * it is the only image provider that currently runs without credit, and
+	 * that will stop being true the moment an account is funded (D-017).
+	 */
+	private function build_providers(): ProviderRegistry {
+		$registry = new ProviderRegistry( $this->settings, $this->logger );
+
+		$registry->add_image_provider( new ReplicateProvider( $this->http, $this->settings, $this->logger ) );
+		$registry->add_image_provider( new FalFluxProvider( $this->http, $this->settings ) );
+		$registry->add_image_provider( new GeminiImageProvider( $this->http, $this->settings ) );
+
+		$registry->add_text_provider( new GeminiTextProvider( $this->http, $this->settings, $this->logger ) );
+
+		$registry->add_upscaler( new GdUpscaler( $this->logger ) );
+
+		return $registry;
 	}
 
 	/**
@@ -71,6 +110,16 @@ class Plugin {
 		add_action( 'admin_notices', array( $this, 'capability_notice' ) );
 
 		$this->capabilities->register();
+
+		if ( is_admin() ) {
+			( new TestProviderPage(
+				$this->providers,
+				$this->designs,
+				$this->budget_guard,
+				$this->settings,
+				$this->logger
+			) )->register();
+		}
 	}
 
 	/**
@@ -144,5 +193,26 @@ class Plugin {
 	 */
 	public function budget_guard(): BudgetGuard {
 		return $this->budget_guard;
+	}
+
+	/**
+	 * Outbound HTTP.
+	 */
+	public function http(): Http {
+		return $this->http;
+	}
+
+	/**
+	 * Design persistence.
+	 */
+	public function designs(): DesignRepository {
+		return $this->designs;
+	}
+
+	/**
+	 * The provider chain.
+	 */
+	public function providers(): ProviderRegistry {
+		return $this->providers;
 	}
 }
