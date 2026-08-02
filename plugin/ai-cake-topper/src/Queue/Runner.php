@@ -13,7 +13,10 @@ use AiCake\Domain\DesignRepository;
 use AiCake\Domain\GenerationRequest;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
+use AiCake\Domain\PrintSpec;
+use AiCake\Domain\TextSpec;
 use AiCake\Moderation\Moderator;
+use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Storage\PrivateStorage;
@@ -53,6 +56,8 @@ class Runner {
 
 	private PromptBuilder $prompts;
 
+	private PreviewPipeline $previews;
+
 	private PrivateStorage $storage;
 
 	private BudgetGuard $budget;
@@ -81,6 +86,7 @@ class Runner {
 		ProviderRegistry $providers,
 		Moderator $moderator,
 		PromptBuilder $prompts,
+		PreviewPipeline $previews,
 		PrivateStorage $storage,
 		BudgetGuard $budget,
 		Dispatcher $dispatcher,
@@ -92,6 +98,7 @@ class Runner {
 		$this->providers  = $providers;
 		$this->moderator  = $moderator;
 		$this->prompts    = $prompts;
+		$this->previews   = $previews;
 		$this->storage    = $storage;
 		$this->budget     = $budget;
 		$this->dispatcher = $dispatcher;
@@ -302,6 +309,18 @@ class Runner {
 			return;
 		}
 
+		/*
+		 * Shape, text and watermark, at the product's real aspect ratio. This
+		 * is the only image a customer ever sees — the master is never served
+		 * under any URL (§9.3).
+		 */
+		$preview = $this->previews->build(
+			$path,
+			(string) $design['public_id'],
+			PrintSpec::for_product( (int) $design['product_id'], (int) $design['variation_id'] ),
+			$this->text_spec( $design )
+		);
+
 		$this->designs->update(
 			$job->design_id,
 			array(
@@ -310,12 +329,11 @@ class Runner {
 				'seed'        => $result->seed,
 				'file_master' => $path,
 				/*
-				 * Phase 3 has no shaping, watermark or downscale — those are
-				 * Phase 4. Pointing the preview at the master keeps the polling
-				 * contract honest in the meantime; the WatermarkStage replaces
-				 * this, and no customer-facing route serves file_preview yet.
+				 * Falling back to the master would serve an unwatermarked,
+				 * full-size image, so a preview that failed to render is a
+				 * failed job rather than a degraded one — see below.
 				 */
-				'file_preview' => $path,
+				'file_preview' => $preview,
 				'cost_usd'     => (float) $design['cost_usd'] + $analysis->cost_usd + $result->cost_usd,
 				/*
 				 * `review` is not a design status. The preview is produced
@@ -326,6 +344,19 @@ class Runner {
 				'status'       => DesignRepository::STATUS_DONE,
 			)
 		);
+
+		if ( '' === $preview ) {
+			/*
+			 * The image exists and is paid for, but there is nothing safe to
+			 * show. Serving the master instead would hand out a clean,
+			 * unwatermarked, print-resolution file, so this fails rather than
+			 * degrades. A retry is worthwhile: the usual cause is a transient
+			 * memory or disk problem.
+			 */
+			$this->retry_or_fail( $job, 'preview_failed', 'The preview could not be rendered.' );
+
+			return;
+		}
 
 		$this->jobs->mark_done( $job->id );
 
@@ -338,6 +369,23 @@ class Runner {
 				'review'   => $analysis->needs_review(),
 			)
 		);
+	}
+
+	/**
+	 * The text layer stored against a design, if any.
+	 *
+	 * @param array<string, mixed> $design Design row.
+	 */
+	private function text_spec( array $design ): ?TextSpec {
+		$payload = json_decode( (string) ( $design['text_payload'] ?? '' ), true );
+
+		if ( ! is_array( $payload ) ) {
+			return null;
+		}
+
+		$spec = TextSpec::from_array( $payload );
+
+		return $spec->is_empty() ? null : $spec;
 	}
 
 	/**

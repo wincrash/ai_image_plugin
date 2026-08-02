@@ -21,8 +21,44 @@ depends on the choice.
 | 3 · Job system | **Done and verified live, both dispatch paths.** |
 | 4 · Imaging | **Done and verified on real print output.** |
 | 5 · Moderation | **Done — all three automatable layers verified.** |
-| 6 · Storefront | **Next** — and the first phase that needs a funded image provider |
+| 6 · Storefront | **Built and rendering; one known bug — see below.** |
 | 7–9 | Not started |
+
+### Phase 6 — where it actually stands
+
+| File | What it does |
+|---|---|
+| `Domain/PrintSpec.php` | `_aicake_*` meta → geometry, variation → product → default (§4.2) |
+| `WooCommerce/ProductFields.php` | "AI Topper" tab, live summary computed server-side |
+| `WooCommerce/CartIntegration.php` | Add-to-cart validation, ownership, cart display, order hand-off |
+| `Frontend/Generator.php` | Enqueue + render, theme-overridable template |
+| `Pipeline/PreviewPipeline.php` | master → shape → text → watermark → WebP |
+| `templates/generator.php`, `assets/` | The UI, Lithuanian, mobile-first |
+
+**Verified working:** five real products created and rendering; geometry correct per SKU read
+straight off product meta (4.5 cm → 603 px, no upscale, 24/sheet; 15 cm → 1843 px, 2×; A4 →
+2552×3579, 4×, generated 2:3); a configured count that disagrees with the geometry raises ⚠ in
+the summary; the generator renders inside the live Blocksy theme with chips, counter, terms
+notice and remaining-count; **no nonce in the markup**; the design field posts inside the
+add-to-cart form; add-to-cart refuses a missing, unknown or someone-else's design and leaves
+ordinary products alone.
+
+Also fixed while looking at the rendered page: `[hidden]` lost to the theme on specificity so the
+spinner showed permanently, and the button label ran into the remaining-count. Assets now version
+by `filemtime()` when `WP_DEBUG` is on, because `AICAKE_VERSION` never changes during development
+and every CSS edit appeared not to work.
+
+> ### Known bug, blocking sign-off — D-025
+>
+> **Generation 403s for logged-in users.** `/session` sends no nonce, so WordPress leaves the
+> request unauthenticated and mints the nonce for user 0; `/generate` then sends it alongside the
+> login cookie and WordPress rejects the mismatch with `rest_cookie_invalid_nonce`.
+>
+> Anonymous visitors are unaffected. The fix is in D-025: print the nonce for logged-in users
+> only, keep the uncached endpoint for anonymous ones, and have the JS prefer the printed one.
+>
+> Every earlier test ran logged out, which is why nothing caught it until the page was loaded as
+> a real user.
 
 ### Phase 5 — what exists and was verified
 
@@ -349,19 +385,18 @@ mid-session — `flux-dev` produced three designs and then began answering `402`
 recommendation: primary candidate in `PLAN.md` §8, covers Suite A *and* Suite B, whole Phase 0
 budget still under $5.
 
-**Phase 6 — storefront** (`PLAN.md` §21, §15) is next, and it is the first phase where the
-funding gap actually bites: product and variation fields, the generator UI, polling JS, session
-history, cart integration, add-to-cart validation and ownership checks. The whole point is a
-customer generating a real image, and no provider will do that unfunded (D-022).
+**1. Fix the logged-in nonce bug (D-025).** Small, well-diagnosed, and it blocks signing off
+Phase 6. Print the nonce for logged-in users, keep `/session` for anonymous ones, JS prefers the
+printed one. Then re-test **both** logged in and logged out — the whole reason this survived is
+that every previous test ran logged out.
 
-Everything behind it is ready — REST contract, job system, moderation, imaging — so the work
-itself is frontend, and it can be built and tested against the failure paths without spending.
-But signing it off needs a working generation.
+**2. Finish verifying Phase 6 end to end.** The polling path, session history strip and preview
+have not been seen working, because generation itself needs a funded provider (D-022). The
+failure path is verified; the success path is not.
 
-1. `WooCommerce/ProductFields.php`, `VariationFields.php` — print spec on the variation (§4.2).
-2. `assets/js/generator.js` — prompt UI, the §6.5 polling contract, session history.
-3. `templates/` — overridable frontend partials, Lithuanian throughout.
-4. `WooCommerce/CartIntegration.php` — add-to-cart validation and design ownership (§16).
+**3. Then Phase 7 — orders and fulfilment** (§21, §13): custom statuses registered HPOS-correct,
+Action Scheduler fulfilment jobs, idempotency, print file storage, gated download, admin order
+screen. `FulfilPipeline` is the post-payment counterpart to the preview pipeline that now exists.
 
 Worth doing soon, none blocking:
 

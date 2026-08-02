@@ -12,6 +12,7 @@ namespace AiCake\Rest;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
+use AiCake\Domain\TextSpec;
 use AiCake\Moderation\Moderator;
 use AiCake\Queue\Dispatcher;
 use AiCake\Throttle\BudgetGuard;
@@ -140,6 +141,7 @@ class GenerateEndpoint {
 			'aspect'       => in_array( $aspect, array( '1:1', '2:3', '3:2', '4:5' ), true ) ? $aspect : '1:1',
 			'product_id'   => (int) $request->get_param( 'product_id' ) ?: null,
 			'variation_id' => (int) $request->get_param( 'variation_id' ) ?: null,
+			'text_payload' => $this->text_payload( $request ),
 		);
 
 		/*
@@ -216,5 +218,37 @@ class GenerateEndpoint {
 		$response->header( 'Cache-Control', 'no-store' );
 
 		return $response;
+	}
+
+	/**
+	 * The text layer, if the customer asked for one.
+	 *
+	 * Stored as JSON on the design rather than applied here — the preview
+	 * pipeline renders it, and the print path renders it again at print
+	 * resolution from this same spec. Text is never scaled up from a preview
+	 * (PLAN.md §9.4).
+	 *
+	 * @param WP_REST_Request $request The request.
+	 * @return string|null JSON, or null when there is no text.
+	 */
+	private function text_payload( WP_REST_Request $request ): ?string {
+		$raw = $request->get_param( 'text' );
+
+		if ( ! is_array( $raw ) || '' === trim( (string) ( $raw['text'] ?? '' ) ) ) {
+			return null;
+		}
+
+		$spec = TextSpec::from_array(
+			array(
+				'text'      => sanitize_text_field( (string) $raw['text'] ),
+				'font'      => sanitize_key( (string) ( $raw['font'] ?? '' ) ),
+				'colour'    => (string) ( $raw['colour'] ?? '#ffffff' ),
+				'placement' => sanitize_key( (string) ( $raw['placement'] ?? TextSpec::PLACE_BOTTOM ) ),
+			)
+		);
+
+		$encoded = wp_json_encode( $spec->to_array() );
+
+		return false === $encoded ? null : $encoded;
 	}
 }

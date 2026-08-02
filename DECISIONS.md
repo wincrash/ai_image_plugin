@@ -525,4 +525,40 @@ turn one bad minute into a bad day, because the plugin fails closed.
 
 ---
 
-<!-- Next: D-025 -->
+### D-025 · §7's uncached-nonce trick has a second half nobody wrote down
+**2026-08-02** · corrects `PLAN.md` §7 · **fix not yet applied**
+
+§7 is right that a nonce must never be printed into cached HTML — a stale one 403s every
+logged-out generation. The plugin does that, and it works for anonymous visitors.
+
+**It breaks for logged-in customers**, which was found by driving the real page in a browser:
+
+```
+GET  /aicake/v1/session   → 200, logged_in: FALSE   (as an authenticated admin)
+POST /aicake/v1/generate  → 403 rest_cookie_invalid_nonce
+```
+
+The cause is a chicken-and-egg in WordPress's REST cookie authentication.
+`rest_cookie_check_errors()` only authenticates a cookie-carrying REST request when a **valid
+nonce is already present**. `/session` deliberately sends none, so WordPress treats the caller as
+user 0 and `wp_create_nonce( 'wp_rest' )` mints a nonce **for user 0**. The next request sends
+that nonce *together with* the login cookie, WordPress now validates it against the real user id,
+and the two do not match.
+
+So the endpoint that exists to hand out a working nonce hands out one that is only valid for
+visitors who are not logged in — and logged-in customers are precisely the ones who signed up to
+get a larger free allowance (§11.3).
+
+**The fix, for whoever picks this up:** print the nonce into the page *for logged-in users only*,
+and keep the uncached endpoint for anonymous ones. Every page cache worth the name already
+bypasses itself when `wordpress_logged_in_*` is set, so there is no stale-nonce risk for them —
+which means §7's reasoning was always specifically about anonymous traffic, it just never said so.
+The JS should prefer a printed nonce when present and fall back to `/session` otherwise.
+
+Worth stating plainly: this is a bug the unit tests, the REST tests and the earlier end-to-end
+curl run all missed, because every one of them ran logged out. It took loading the page as a real
+logged-in user to see it.
+
+---
+
+<!-- Next: D-026 -->

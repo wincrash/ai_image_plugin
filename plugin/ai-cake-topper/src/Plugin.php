@@ -13,6 +13,7 @@ use AiCake\Admin\BlocklistPage;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
+use AiCake\Frontend\Generator;
 use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\GdEngine;
 use AiCake\Imaging\TextRenderer;
@@ -20,6 +21,7 @@ use AiCake\Imaging\Watermarker;
 use AiCake\Moderation\Blocklist;
 use AiCake\Moderation\Moderator;
 use AiCake\Moderation\Sanitiser;
+use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
 use AiCake\Providers\Image\GeminiImageProvider;
@@ -40,6 +42,8 @@ use AiCake\Support\Http;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
+use AiCake\WooCommerce\CartIntegration;
+use AiCake\WooCommerce\ProductFields;
 use AiCake\Throttle\IdentityResolver;
 use AiCake\Throttle\RateLimiter;
 
@@ -98,6 +102,8 @@ class Plugin {
 
 	private Moderator $moderator;
 
+	private PreviewPipeline $previews;
+
 	/**
 	 * Build the object graph. No hooks are registered here.
 	 */
@@ -129,12 +135,22 @@ class Plugin {
 			$this->logger
 		);
 
+		$this->previews = new PreviewPipeline(
+			$this->images,
+			$this->text,
+			$this->watermarker,
+			$this->storage,
+			$this->settings,
+			$this->logger
+		);
+
 		$this->runner = new Runner(
 			$this->jobs,
 			$this->designs,
 			$this->providers,
 			$this->moderator,
 			$this->prompts,
+			$this->previews,
 			$this->storage,
 			$this->budget_guard,
 			$this->dispatcher,
@@ -211,6 +227,18 @@ class Plugin {
 		$this->scheduler->register();
 
 		add_filter( 'cron_schedules', array( $this->scheduler, 'add_cron_interval' ) ); // phpcs:ignore WordPress.WP.CronInterval.ChangeDetected
+
+		/*
+		 * WooCommerce integration is registered unconditionally rather than
+		 * behind is_admin(): the cart runs on the frontend, the product screen
+		 * in the admin, and add-to-cart validation has to be present for both
+		 * an AJAX add and a full page post.
+		 */
+		if ( class_exists( 'WooCommerce' ) ) {
+			( new ProductFields() )->register();
+			( new CartIntegration( $this->designs, $this->identity ) )->register();
+			( new Generator( $this->settings, $this->fonts ) )->register();
+		}
 
 		if ( is_admin() ) {
 			( new TestProviderPage(
@@ -397,5 +425,12 @@ class Plugin {
 	 */
 	public function moderator(): Moderator {
 		return $this->moderator;
+	}
+
+	/**
+	 * Master to customer-facing preview.
+	 */
+	public function previews(): PreviewPipeline {
+		return $this->previews;
 	}
 }
