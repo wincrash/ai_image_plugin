@@ -19,9 +19,16 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Renders the generator and gives it what it needs (PLAN.md §15).
  *
- * Deliberately does **not** print a nonce into the markup. The page will be
- * cached in production and a stale nonce 403s every logged-out generation —
- * the JS fetches one from the uncached session endpoint instead (§7).
+ * The nonce is printed **only for logged-in users** (D-025). §7's rule — never
+ * put a nonce in the markup, because a page cache serves a stale one and every
+ * generation 403s — is about anonymous traffic, which is the traffic that gets
+ * cached. Logged-in requests bypass every page cache worth the name, because
+ * the `wordpress_logged_in_*` cookie is a standard cache-bypass condition.
+ *
+ * For logged-in users the endpoint cannot do the job at all: `/session` sends
+ * no nonce, so WordPress authenticates nobody and mints a nonce for user 0,
+ * which then fails against their login cookie. Printing it is the only way
+ * they get a valid one.
  */
 class Generator {
 
@@ -85,6 +92,12 @@ class Generator {
 			array(
 				'root'      => esc_url_raw( rest_url( RestController::NAMESPACE . '/' ) ),
 				'productId' => (int) get_the_ID(),
+				/*
+				 * Empty for anonymous visitors — they get theirs from the
+				 * uncached session endpoint, because this markup is cached.
+				 * See the class comment and D-025.
+				 */
+				'nonce'     => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 				'i18n'      => array(
 					'remaining'  => __( 'Liko nemokamų bandymų: %d', 'ai-cake-topper' ),
 					'noneLeft'   => __( 'Nemokami bandymai išnaudoti', 'ai-cake-topper' ),
@@ -92,6 +105,10 @@ class Generator {
 					'failed'     => __( 'Nepavyko sukurti piešinio. Bandykite dar kartą.', 'ai-cake-topper' ),
 					'timeout'    => __( 'Užtruko ilgiau nei įprastai. Bandykite dar kartą.', 'ai-cake-topper' ),
 					'expired'    => __( 'Sesija pasibaigė. Bandykite dar kartą.', 'ai-cake-topper' ),
+					// A printed nonce cannot be refreshed without a page load,
+					// so a logged-in customer gets asked to reload instead of
+					// being told to retry something that cannot work.
+					'reload'     => __( 'Sesija pasibaigė. Atnaujinkite puslapį.', 'ai-cake-topper' ),
 					'queued'     => __( 'Eilėje: %d', 'ai-cake-topper' ),
 					'reselect'   => __( 'Pasirinkti šį piešinį', 'ai-cake-topper' ),
 					/*

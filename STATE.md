@@ -1,7 +1,7 @@
 # Project state
 
 **Updated:** 2026-08-02
-**Phase:** 1 — foundation. Phase 0 deferred to a later calibration step (D-018).
+**Phase:** 6 — storefront. Phase 0 deferred to a later calibration step (D-018).
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -9,9 +9,10 @@
 
 ## Where we are
 
-Planning is done and the testbed is ready. No plugin code exists yet. The next concrete step is
-Phase 0: evaluate the image APIs on real Lithuanian prompts before building anything that
-depends on the choice.
+Phases 1–6 are built. Everything up to the storefront is verified on the testbed, most of it
+against live APIs. The one thing not yet seen working is a **successful** generation end to end,
+because the image provider is out of credit (D-022) — the failure path is verified, the success
+path is not.
 
 | Phase | Status |
 |---|---|
@@ -21,7 +22,7 @@ depends on the choice.
 | 3 · Job system | **Done and verified live, both dispatch paths.** |
 | 4 · Imaging | **Done and verified on real print output.** |
 | 5 · Moderation | **Done — all three automatable layers verified.** |
-| 6 · Storefront | **Built and rendering; one known bug — see below.** |
+| 6 · Storefront | **Built, rendering, and verified logged in *and* out.** Awaiting a funded provider for the success path. |
 | 7–9 | Not started |
 
 ### Phase 6 — where it actually stands
@@ -48,17 +49,20 @@ spinner showed permanently, and the button label ran into the remaining-count. A
 by `filemtime()` when `WP_DEBUG` is on, because `AICAKE_VERSION` never changes during development
 and every CSS edit appeared not to work.
 
-> ### Known bug, blocking sign-off — D-025
->
-> **Generation 403s for logged-in users.** `/session` sends no nonce, so WordPress leaves the
-> request unauthenticated and mints the nonce for user 0; `/generate` then sends it alongside the
-> login cookie and WordPress rejects the mismatch with `rest_cookie_invalid_nonce`.
->
-> Anonymous visitors are unaffected. The fix is in D-025: print the nonce for logged-in users
-> only, keep the uncached endpoint for anonymous ones, and have the JS prefer the printed one.
->
-> Every earlier test ran logged out, which is why nothing caught it until the page was loaded as
-> a real user.
+### The logged-in nonce bug is fixed — D-026
+
+The nonce is printed for logged-in users only, `/session` still serves anonymous ones, and the JS
+prefers a printed nonce whenever there is one. Verified over real HTTP as a `customer`-role user:
+`generate` returns **202** with the printed nonce and still **403**s with the user 0 nonce the old
+path handed out; the anonymous path is unchanged and the cacheable HTML carries `"nonce":""`.
+
+The bigger find: `/session` now authenticates, so **logged-in customers get allowance 20 instead
+of the anonymous 5**. They had been quietly served the anonymous allowance — the exact thing
+§11.3 offers as the reason to create an account, silently not working.
+
+There is now a `testuser` / password `TestPass123` **customer** account on the testbed. The reason
+this bug survived two phases is that every test ran as an admin or logged out; an admin-only
+testbed tests one audience twice.
 
 ### Phase 5 — what exists and was verified
 
@@ -303,6 +307,7 @@ on that server.
 | PHP memory | **512M** (was 128M) |
 | Imagick | **Present** — but see below, we do not build against it |
 | GD | Present |
+| Accounts | `ruslan` (administrator) · `testuser` / `TestPass123` (**customer** — test the storefront as one, D-026) |
 | Mailpit | `http://100.127.55.45:8025` |
 | DB | `wp_user` / `wp_password` / `wordpress` |
 | Other plugins | WooPayments, PayPal, MailPoet, Unisend, Jetpack, Pinterest, Google Listings & Ads, WooCommerce POS |
@@ -385,16 +390,12 @@ mid-session — `flux-dev` produced three designs and then began answering `402`
 recommendation: primary candidate in `PLAN.md` §8, covers Suite A *and* Suite B, whole Phase 0
 budget still under $5.
 
-**1. Fix the logged-in nonce bug (D-025).** Small, well-diagnosed, and it blocks signing off
-Phase 6. Print the nonce for logged-in users, keep `/session` for anonymous ones, JS prefers the
-printed one. Then re-test **both** logged in and logged out — the whole reason this survived is
-that every previous test ran logged out.
-
-**2. Finish verifying Phase 6 end to end.** The polling path, session history strip and preview
+**1. Finish verifying Phase 6 end to end.** The polling path, session history strip and preview
 have not been seen working, because generation itself needs a funded provider (D-022). The
-failure path is verified; the success path is not.
+failure path is verified through to `failed / quota`; the success path is not. This is the one
+remaining thing between here and signing off Phase 6, and money is the only blocker.
 
-**3. Then Phase 7 — orders and fulfilment** (§21, §13): custom statuses registered HPOS-correct,
+**2. Then Phase 7 — orders and fulfilment** (§21, §13): custom statuses registered HPOS-correct,
 Action Scheduler fulfilment jobs, idempotency, print file storage, gated download, admin order
 screen. `FulfilPipeline` is the post-payment counterpart to the preview pipeline that now exists.
 
@@ -427,8 +428,10 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- No unit tests yet. `tests/` is specified in §19 for `Mm`, `SheetLayout` and `LtNormaliser`;
-  none of those classes exist yet, so there is nothing to test that is not WordPress-bound.
+- The REST layer has no automated test that runs **logged in**. That gap is what let D-025 live
+  through two phases, and nothing stops it recurring — `tests/run.php` is pure-PHP and cannot
+  hold a cookie. The practical answer is a curl script against the testbed using the `testuser`
+  account, not a new test framework.
 
 ## Open items, not blocking
 

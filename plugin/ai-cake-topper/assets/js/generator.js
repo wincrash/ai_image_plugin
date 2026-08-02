@@ -1,10 +1,15 @@
 /**
  * The generator.
  *
- * Implements the polling contract from PLAN.md §6.5, and fetches its nonce
- * from the uncached session endpoint rather than reading it out of the page —
- * see §7, which is the single most likely way to ship something that works in
- * testing and 403s for most real customers.
+ * Implements the polling contract from PLAN.md §6.5.
+ *
+ * Two sources for the nonce, and which one applies is decided server-side
+ * (D-025). Anonymous visitors get one from the uncached session endpoint,
+ * because their page is cached and a printed nonce would be stale — §7, the
+ * single most likely way to ship something that works in testing and 403s for
+ * most real customers. Logged-in users get one printed into the page, because
+ * their page is never cached and the endpoint, which sends no nonce itself,
+ * can only mint them one belonging to user 0.
  */
 ( function () {
 	'use strict';
@@ -88,13 +93,25 @@
 		messageTimer = null;
 	}
 
+	/**
+	 * The printed nonce wins whenever there is one. It is the only nonce that
+	 * matches a logged-in user's cookie, and it is present from the first
+	 * request — including the session call itself, which is what lets that
+	 * call authenticate and report the right allowance for a logged-in
+	 * customer instead of the anonymous one (§11.3).
+	 */
+	function nonce() {
+		return config.nonce || ( session && session.nonce ) || '';
+	}
+
 	function request( path, options ) {
 		options = options || {};
 
 		var headers = { 'Content-Type': 'application/json' };
+		var token = nonce();
 
-		if ( session && session.nonce ) {
-			headers['X-WP-Nonce'] = session.nonce;
+		if ( token ) {
+			headers['X-WP-Nonce'] = token;
 		}
 
 		return window.fetch( config.root + path, {
@@ -113,16 +130,28 @@
 
 	/* -------------------------------------------------------------- session */
 
-	/**
-	 * The nonce is never printed into the page, because page caches serve
-	 * stale ones and every logged-out generation would 403 (§7).
-	 */
 	function loadSession() {
 		return request( 'session' ).then( function ( result ) {
-			if ( result.ok ) {
-				session = result.data;
-				updateRemaining();
+			// A printed nonce that no longer verifies, while the login cookie
+			// still does. Nothing here can mint a replacement — only a page
+			// load can — so stop pretending a retry would help.
+			if ( 403 === result.status && config.nonce ) {
+				setError( config.i18n.reload );
+				return session;
 			}
+
+			if ( ! result.ok ) {
+				return session;
+			}
+
+			// Logged out in another tab. The printed nonce is now the wrong
+			// one and the endpoint's anonymous nonce is the right one.
+			if ( config.nonce && false === result.data.logged_in ) {
+				config.nonce = '';
+			}
+
+			session = result.data;
+			updateRemaining();
 
 			return session;
 		} );
@@ -192,10 +221,12 @@
 
 				// 403 means the nonce went stale while the page sat open.
 				// Fetch a fresh one and let the customer try again rather
-				// than making them reload.
+				// than making them reload — unless the dead nonce is the
+				// printed one, which reloading is the only cure for.
 				if ( 403 === result.status ) {
-					loadSession();
-					setError( config.i18n.expired );
+					loadSession().then( function () {
+						setError( config.nonce ? config.i18n.reload : config.i18n.expired );
+					} );
 					return;
 				}
 

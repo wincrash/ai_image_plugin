@@ -423,6 +423,29 @@ That endpoint sends `Cache-Control: no-store` and is excluded from page cache by
 sets the `session_key` cookie, which conveniently means the throttle identity is established
 before the first generation.
 
+### 7.1 …and the half that only applies to anonymous visitors (D-025)
+
+Everything above is about **anonymous** traffic — which is the only traffic a page cache serves.
+Logged-in requests bypass every page cache worth the name, because `wordpress_logged_in_*` is a
+standard bypass condition, so there is no stale-nonce risk for them.
+
+There is, however, a chicken-and-egg that makes the endpoint unable to serve them at all. Core's
+`rest_cookie_check_errors()` authenticates a cookie-carrying REST request **only when a valid
+nonce is already present**. `/session` deliberately sends none, so WordPress treats the caller as
+user 0 and mints a nonce for user 0 — which then fails against the real login cookie on the next
+request with `rest_cookie_invalid_nonce`.
+
+So the rule is per-audience:
+
+| Visitor | Nonce comes from | Because |
+|---|---|---|
+| Anonymous | `GET /session` | their page is cached; a printed nonce would be stale |
+| Logged in | printed into the page | their page is never cached, and the endpoint can only mint them a user 0 nonce |
+
+The JS prefers a printed nonce whenever one is present, including on the `/session` call itself —
+which is what makes that call authenticate, and therefore what makes `remaining_generations`
+report the logged-in allowance (§11.3) instead of the anonymous one.
+
 ---
 
 ## 8. Providers — verified 2026-08-02
@@ -1406,7 +1429,7 @@ material as variation**, D-005).
 | Upscaling | Always 4× post-payment | Only when the SKU needs it | Cupcake sheets need 603 px; native 1024 already exceeds it |
 | Text on toppers | Not addressed | Server-side text layer, curated LT-safe fonts | Diacritics; also removes text rendering from model selection |
 | Async | Open question | Decided: always async, 3-tier dispatch | 4–8 worker pool on shared hosting |
-| Nonce | "verify a nonce" | Fetched from an uncached endpoint | Page cache serves stale nonces → 403 for all anonymous visitors |
+| Nonce | "verify a nonce" | Uncached endpoint for anonymous, printed for logged-in (§7.1) | Page cache serves stale nonces → 403 for anonymous; the endpoint can only mint a user 0 nonce → 403 for logged-in |
 | Order storage | `register_post_status` | HPOS-correct registration + meta API | HPOS is the current default |
 | Blocklist | Substring match | Diacritic folding + LT stem matching | `Elsos`, `Žmogaus voro` — Lithuanian inflects |
 | Budget | Not addressed | Hard daily/monthly spend cap | Highest-value safety feature per line of code |

@@ -34,6 +34,16 @@ defined( 'ABSPATH' ) || exit;
  *
  * It also sets the session cookie, which conveniently means the throttle
  * identity exists before the first generation rather than being created by it.
+ *
+ * **That reasoning covers anonymous visitors only** (D-025). This endpoint
+ * cannot serve a logged-in user unless the caller sends a nonce: core's
+ * `rest_cookie_check_errors()` authenticates a cookie-carrying REST request
+ * only when a valid nonce is already present, so a bare call here is user 0
+ * and `wp_create_nonce()` below mints a user 0 nonce — which then fails
+ * against their login cookie on the next request. Logged-in users therefore
+ * get theirs printed into the page, and send it here too, which is what makes
+ * `logged_in` and the allowance below report on the real user rather than on
+ * an anonymous stand-in.
  */
 class SessionEndpoint {
 

@@ -526,7 +526,7 @@ turn one bad minute into a bad day, because the plugin fails closed.
 ---
 
 ### D-025 · §7's uncached-nonce trick has a second half nobody wrote down
-**2026-08-02** · corrects `PLAN.md` §7 · **fix not yet applied**
+**2026-08-02** · corrects `PLAN.md` §7 · **fixed — see D-026**
 
 §7 is right that a nonce must never be printed into cached HTML — a stale one 403s every
 logged-out generation. The plugin does that, and it works for anonymous visitors.
@@ -561,4 +561,51 @@ logged-in user to see it.
 
 ---
 
-<!-- Next: D-026 -->
+### D-026 · The nonce rule is per-audience, and the bug was costing logged-in customers their allowance
+**2026-08-02** · applies D-025 · adds `PLAN.md` §7.1
+
+D-025's fix is in. The nonce is printed into the page **for logged-in users only**
+(`Frontend/Generator.php`), the uncached `/session` endpoint still serves anonymous visitors, and
+the JS prefers a printed nonce whenever there is one — including on the `/session` call itself.
+
+That last detail turned out to matter more than the 403 did. Measured on the testbed as a real
+`customer`-role user:
+
+```
+GET /session  without a nonce  → logged_in: false, allowance: 5    ← the bug
+GET /session  with the printed → logged_in: true,  allowance: 20   ← the fix
+```
+
+**Logged-in customers were being served the anonymous allowance.** §11.3 offers a larger free
+allowance as the reason to create an account, and the account was buying them nothing — not
+because the allowance logic was wrong, but because the request that reads it never authenticated.
+Nobody would have reported this as a bug; it looks exactly like the feature working.
+
+Verified over real HTTP, logged in and logged out:
+
+| | |
+|---|---|
+| `generate` + login cookie + user 0 nonce | **403** `rest_cookie_invalid_nonce` — D-025 reproduced |
+| `generate` + login cookie + printed nonce | **202** `{job_id, design_id, poll_after_ms}` |
+| anonymous `session` → `generate` | **202** — §7 path intact |
+| anonymous `generate`, no nonce | **403** — still refused |
+| anonymous product page HTML | `"nonce":""` — nothing leaked into cacheable markup |
+| job polled to terminal state as its logged-in owner | `failed / quota` — the D-022 outage, reached cleanly |
+| same job polled by a stranger | **404**, not 403 — no id enumeration |
+
+Two JS branches exist because they are genuinely reachable and each has exactly one cure:
+
+- `/session` **403s** while a printed nonce is in hand → the nonce outlived its window and the
+  login cookie is still good. Nothing in the page can mint a replacement, so the customer is
+  asked to reload rather than told to retry something that cannot work.
+- `/session` returns **200 with `logged_in: false`** → they logged out in another tab, and the
+  endpoint's anonymous nonce is now the correct one. Drop the printed one and carry on.
+
+**The lesson is the test method, not the code.** Unit tests, REST tests and an end-to-end curl run
+all passed against this bug for two phases. What found it was loading the page as a real
+logged-in user. A testbed with an admin account and no customer account quietly tests one
+audience twice — there is now a `testuser` / `customer` account for the other one.
+
+---
+
+<!-- Next: D-027 -->
