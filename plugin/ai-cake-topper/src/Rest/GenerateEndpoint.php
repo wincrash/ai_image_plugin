@@ -12,6 +12,7 @@ namespace AiCake\Rest;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
+use AiCake\Moderation\Moderator;
 use AiCake\Queue\Dispatcher;
 use AiCake\Throttle\BudgetGuard;
 use AiCake\Throttle\IdentityResolver;
@@ -54,6 +55,8 @@ class GenerateEndpoint {
 
 	private IdentityResolver $identity;
 
+	private Moderator $moderator;
+
 	/**
 	 * @param DesignRepository $designs    Designs.
 	 * @param JobRepository    $jobs       Queue.
@@ -61,6 +64,7 @@ class GenerateEndpoint {
 	 * @param RateLimiter      $limiter    Per-identity limits.
 	 * @param BudgetGuard      $budget     Spend ceiling.
 	 * @param IdentityResolver $identity   Identity.
+	 * @param Moderator        $moderator  Moderation layers 0 and 1.
 	 */
 	public function __construct(
 		DesignRepository $designs,
@@ -68,7 +72,8 @@ class GenerateEndpoint {
 		Dispatcher $dispatcher,
 		RateLimiter $limiter,
 		BudgetGuard $budget,
-		IdentityResolver $identity
+		IdentityResolver $identity,
+		Moderator $moderator
 	) {
 		$this->designs    = $designs;
 		$this->jobs       = $jobs;
@@ -76,6 +81,7 @@ class GenerateEndpoint {
 		$this->limiter    = $limiter;
 		$this->budget     = $budget;
 		$this->identity   = $identity;
+		$this->moderator  = $moderator;
 	}
 
 	/**
@@ -85,13 +91,15 @@ class GenerateEndpoint {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle( WP_REST_Request $request ) {
-		$prompt = trim( (string) $request->get_param( 'prompt' ) );
 		$aspect = (string) $request->get_param( 'aspect' );
+
+		// Layer 0: strip control characters, collapse whitespace, cap length.
+		$prompt = $this->moderator->clean( (string) $request->get_param( 'prompt' ) );
 
 		if ( '' === $prompt ) {
 			return new WP_Error(
 				'aicake_empty_prompt',
-				__( 'Parašykite, ką norite pavaizduoti.', 'ai-cake-topper' ),
+				$this->moderator->nonsense_message(),
 				array( 'status' => 400 )
 			);
 		}
@@ -124,17 +132,52 @@ class GenerateEndpoint {
 			$session_key = $this->identity->issue_session_key();
 		}
 
+		$common = array(
+			'session_key'  => $session_key,
+			'ip_hash'      => $this->identity->ip_hash(),
+			'user_id'      => $this->identity->user_id() ?: null,
+			'prompt_raw'   => $prompt,
+			'aspect'       => in_array( $aspect, array( '1:1', '2:3', '3:2', '4:5' ), true ) ? $aspect : '1:1',
+			'product_id'   => (int) $request->get_param( 'product_id' ) ?: null,
+			'variation_id' => (int) $request->get_param( 'variation_id' ) ?: null,
+		);
+
+		/*
+		 * Layers 0 and 1, before anything is queued. Free and instant, so the
+		 * customer finds out now rather than after fifteen seconds of watching
+		 * a progress bar (§10).
+		 *
+		 * The rejection is still written to the designs table. §10 requires
+		 * every rejection to be logged with its prompt and the layer that
+		 * caught it, because that is the data the blocklist grows from — and
+		 * a refusal that leaves no trace is a refusal nobody can review.
+		 */
+		$verdict = $this->moderator->pre_check( $prompt );
+
+		if ( ! $verdict->allowed_through() ) {
+			$this->designs->create(
+				array_merge(
+					$common,
+					array(
+						'status'        => DesignRepository::STATUS_REJECTED,
+						'moderation'    => $verdict->to_json(),
+						'error_code'    => 'moderation_' . $verdict->layer,
+						'error_message' => $verdict->reason,
+					)
+				)
+			);
+
+			return new WP_Error(
+				'aicake_rejected',
+				'sanity' === $verdict->layer
+					? $this->moderator->nonsense_message()
+					: $this->moderator->rejection_message(),
+				array( 'status' => 422 )
+			);
+		}
+
 		$design_id = $this->designs->create(
-			array(
-				'session_key'  => $session_key,
-				'ip_hash'      => $this->identity->ip_hash(),
-				'user_id'      => $this->identity->user_id() ?: null,
-				'prompt_raw'   => $prompt,
-				'aspect'       => in_array( $aspect, array( '1:1', '2:3', '3:2', '4:5' ), true ) ? $aspect : '1:1',
-				'product_id'   => (int) $request->get_param( 'product_id' ) ?: null,
-				'variation_id' => (int) $request->get_param( 'variation_id' ) ?: null,
-				'status'       => DesignRepository::STATUS_QUEUED,
-			)
+			array_merge( $common, array( 'status' => DesignRepository::STATUS_QUEUED ) )
 		);
 
 		if ( 0 === $design_id ) {

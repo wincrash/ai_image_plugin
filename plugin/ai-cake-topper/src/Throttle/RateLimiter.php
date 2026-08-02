@@ -72,7 +72,12 @@ class RateLimiter {
 		// clearing cookies resets the allowance and the whole thing is theatre.
 		$ip_ceiling = (int) $this->settings->get( 'ip_daily_ceiling', 30 );
 
-		if ( $ip_ceiling > 0 && $this->count_for( 'ip_hash', $this->identity->ip_hash(), $this->day_start_gmt() ) >= $ip_ceiling ) {
+		/*
+		 * Rejected prompts DO count here. Nothing was spent on them, but
+		 * without this someone could probe the blocklist indefinitely looking
+		 * for a phrasing that slips through.
+		 */
+		if ( $ip_ceiling > 0 && $this->count_for( 'ip_hash', $this->identity->ip_hash(), $this->day_start_gmt(), array( 'failed' ) ) >= $ip_ceiling ) {
 			return new WP_Error(
 				'aicake_ip_limit',
 				__( 'Pasiektas dienos piešinių limitas. Bandykite dar kartą rytoj.', 'ai-cake-topper' ),
@@ -113,10 +118,21 @@ class RateLimiter {
 	 * - logged in: their account, over a rolling day.
 	 */
 	public function used(): int {
+		/*
+		 * Neither failures nor rejections consume the allowance. A provider
+		 * outage is not the customer's fault, and a prompt refused by the
+		 * blocklist cost nothing and produced nothing — taking one of five
+		 * free generations for it would be indefensible when the customer's
+		 * next attempt is usually a legitimate rewording.
+		 *
+		 * The per-IP ceiling above is what stops that being abused.
+		 */
+		$free = array( 'failed', 'rejected' );
+
 		$user_id = $this->identity->user_id();
 
 		if ( 0 !== $user_id ) {
-			return $this->count_for( 'user_id', (string) $user_id, $this->day_start_gmt() );
+			return $this->count_for( 'user_id', (string) $user_id, $this->day_start_gmt(), $free );
 		}
 
 		$session = $this->identity->session_key();
@@ -125,7 +141,7 @@ class RateLimiter {
 			return 0;
 		}
 
-		return $this->count_for( 'session_key', $session, null );
+		return $this->count_for( 'session_key', $session, null, $free );
 	}
 
 	/**
@@ -138,14 +154,12 @@ class RateLimiter {
 	/**
 	 * Count rows for one identifier.
 	 *
-	 * Failed generations are excluded: a provider outage should not burn a
-	 * customer's free allowance.
-	 *
-	 * @param string      $column One of ip_hash, session_key, user_id.
-	 * @param string      $value  Value to match.
-	 * @param string|null $since  GMT datetime lower bound, or null for all time.
+	 * @param string      $column  One of ip_hash, session_key, user_id.
+	 * @param string      $value   Value to match.
+	 * @param string|null $since   GMT datetime lower bound, or null for all time.
+	 * @param string[]    $exclude Statuses that do not count.
 	 */
-	private function count_for( string $column, string $value, ?string $since ): int {
+	private function count_for( string $column, string $value, ?string $since, array $exclude = array() ): int {
 		global $wpdb;
 
 		$allowed = array( 'ip_hash', 'session_key', 'user_id' );
@@ -154,28 +168,24 @@ class RateLimiter {
 			return 0;
 		}
 
-		$table = Installer::table( 'designs' );
+		$table  = Installer::table( 'designs' );
+		$params = array( $value );
 
 		// $column is whitelisted above; $table is built from $wpdb->prefix.
-		if ( null === $since ) {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$sql = $wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"SELECT COUNT(*) FROM {$table} WHERE {$column} = %s AND status <> 'failed'",
-				$value
-			);
-		} else {
-			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-			$sql = $wpdb->prepare(
-				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
-				"SELECT COUNT(*) FROM {$table} WHERE {$column} = %s AND created_at >= %s AND status <> 'failed'",
-				$value,
-				$since
-			);
+		$sql = "SELECT COUNT(*) FROM {$table} WHERE {$column} = %s";
+
+		if ( null !== $since ) {
+			$sql     .= ' AND created_at >= %s';
+			$params[] = $since;
 		}
 
-		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared
-		return (int) $wpdb->get_var( $sql );
+		if ( array() !== $exclude ) {
+			$sql     .= ' AND status NOT IN (' . implode( ', ', array_fill( 0, count( $exclude ), '%s' ) ) . ')';
+			$params   = array_merge( $params, array_values( $exclude ) );
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		return (int) $wpdb->get_var( $wpdb->prepare( $sql, $params ) );
 	}
 
 	/**

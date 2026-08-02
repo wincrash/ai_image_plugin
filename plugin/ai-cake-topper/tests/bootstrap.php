@@ -19,6 +19,7 @@ defined( 'ABSPATH' ) || define( 'ABSPATH', __DIR__ );
 require_once __DIR__ . '/../src/Support/Mm.php';
 require_once __DIR__ . '/../src/Imaging/SheetLayout.php';
 require_once __DIR__ . '/../src/Imaging/TtfCmap.php';
+require_once __DIR__ . '/../src/Moderation/LtNormaliser.php';
 
 /**
  * Where the bundled fonts live.

@@ -13,6 +13,7 @@ use AiCake\Domain\DesignRepository;
 use AiCake\Domain\GenerationRequest;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
+use AiCake\Moderation\Moderator;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Storage\PrivateStorage;
@@ -48,6 +49,8 @@ class Runner {
 
 	private ProviderRegistry $providers;
 
+	private Moderator $moderator;
+
 	private PromptBuilder $prompts;
 
 	private PrivateStorage $storage;
@@ -64,6 +67,7 @@ class Runner {
 	 * @param JobRepository    $jobs       Queue.
 	 * @param DesignRepository $designs    Designs.
 	 * @param ProviderRegistry $providers  Providers.
+	 * @param Moderator        $moderator  Moderation layers.
 	 * @param PromptBuilder    $prompts    Style suffix.
 	 * @param PrivateStorage   $storage    Files.
 	 * @param BudgetGuard      $budget     Spend ceiling.
@@ -75,6 +79,7 @@ class Runner {
 		JobRepository $jobs,
 		DesignRepository $designs,
 		ProviderRegistry $providers,
+		Moderator $moderator,
 		PromptBuilder $prompts,
 		PrivateStorage $storage,
 		BudgetGuard $budget,
@@ -85,6 +90,7 @@ class Runner {
 		$this->jobs       = $jobs;
 		$this->designs    = $designs;
 		$this->providers  = $providers;
+		$this->moderator  = $moderator;
 		$this->prompts    = $prompts;
 		$this->storage    = $storage;
 		$this->budget     = $budget;
@@ -201,11 +207,13 @@ class Runner {
 
 		$prompt_lt = (string) $design['prompt_raw'];
 
-		// Moderation runs here rather than in the REST handler so that
-		// POST /generate stays a database write plus a loopback ping. An
-		// 800 ms LLM call in the request path would occupy a customer-facing
-		// worker for no good reason (PLAN.md §6.1).
-		$analysis = $this->providers->analyse( $prompt_lt );
+		/*
+		 * Layer 2 only. Layers 0 and 1 already ran synchronously in the REST
+		 * handler, where they are free and give the customer an instant
+		 * answer — this is the layer that costs money and 800 ms, so it runs
+		 * here where nothing is waiting on it (PLAN.md §6.1, §10).
+		 */
+		$analysis = $this->moderator->analyse( $prompt_lt );
 
 		$this->designs->update(
 			$job->design_id,

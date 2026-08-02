@@ -477,4 +477,52 @@ listed with its missing characters rather than silently dropped.
 
 ---
 
-<!-- Next: D-024 -->
+### D-024 · The blocklist now catches for free what D-019 paid an LLM to catch
+**2026-08-02** · completes `PLAN.md` §10
+
+All three automatable moderation layers are built and verified. The interesting result is that
+Layer 1 now handles, at zero cost and zero latency, every case D-019 measured the LLM catching
+for $0.0001 and 790 ms each:
+
+| Prompt | Layer 1 | Why it is hard |
+|---|---|---|
+| `Elsos suknelė` | **block** | Genitive; a substring match on "Elsa" misses it |
+| `Žmogaus voro tinklas` | **block** | Genitive of the *Lithuanian* name for Spider-Man |
+| `noriu torto su Šunyčiais patruliais` | **block** | Instrumental plural, inside a sentence |
+| `ZMOGUS VORAS` | **block** | Diacritics stripped, upper case |
+| `linksmas dinozauras su tortu` | allow | False-positive check |
+| `princesė rožinėje suknelėje` | allow | A generic princess is not a franchise |
+
+The LLM is not redundant — it still catches what no word list can, and did so again during
+verification: `mėlynas ežiukas, kuris greitai bėga` came back `block / franchise:sonic` with no
+proper noun anywhere in the prompt. The layers are doing exactly what §10 intends, cheapest first.
+
+**Layers 0 and 1 run synchronously in `POST /generate`; Layer 2 runs in the job.** That split is
+forced by cost, not preference: the free layers give the customer an answer immediately, while an
+800 ms LLM call in the request path would hold a customer-facing worker for no benefit (§6.1).
+
+**Decided: `MIN_STEM` is 3, not 4.** Four is the safer-looking number, but `Elsa` folds to `elsa`
+and stripping `-a` leaves `els` — a four-character floor would refuse that strip and miss the
+single most likely blocked prompt in the shop. The cost of three is bluntness, contained by
+matching whole tokens only: `els` matches a word that stems to exactly `els`, never a substring.
+
+**Decided: some real franchise names are deliberately absent from the starter list.** `Ratai`
+(Cars) means "wheels", `Lokys` (Masha and the Bear) means "bear", `Kiaulytė` (Peppa Pig) means
+"piglet". Including them would refuse ordinary cake decorations. §10 is explicit that an
+over-eager filter is worse than useless, so the multi-word forms are listed instead — those are
+safe because matching requires the whole phrase contiguously and in order.
+
+**Decided: a rejection is logged but does not consume the free allowance.** §10 requires every
+rejection stored with its prompt and layer, since that is the data the blocklist grows from — so a
+blocked prompt still writes a design row, with no job queued and nothing spent. Taking one of five
+free generations for it would be indefensible when the customer's next attempt is usually a
+legitimate rewording. The per-IP daily ceiling *does* count rejections, so the blocklist cannot be
+probed indefinitely.
+
+**Verdict caching does what §10 asks for.** Measured: 943 ms and $0.000106 on the first call,
+0 ms and $0 on the second. Only successful analyses are cached — caching a transport failure would
+turn one bad minute into a bad day, because the plugin fails closed.
+
+---
+
+<!-- Next: D-025 -->

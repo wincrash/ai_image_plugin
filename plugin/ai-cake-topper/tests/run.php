@@ -84,8 +84,9 @@ class TestCase {
 require_once __DIR__ . '/MmTest.php';
 require_once __DIR__ . '/SheetLayoutTest.php';
 require_once __DIR__ . '/FontCoverageTest.php';
+require_once __DIR__ . '/LtNormaliserTest.php';
 
-$suites = array( new MmTest(), new SheetLayoutTest(), new FontCoverageTest() );
+$suites = array( new MmTest(), new SheetLayoutTest(), new FontCoverageTest(), new LtNormaliserTest() );
 
 foreach ( $suites as $suite ) {
 	$name = get_class( $suite );

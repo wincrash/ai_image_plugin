@@ -20,8 +20,32 @@ depends on the choice.
 | 2 · Providers | **Done and verified against the live APIs.** |
 | 3 · Job system | **Done and verified live, both dispatch paths.** |
 | 4 · Imaging | **Done and verified on real print output.** |
-| 5 · Moderation | **Next** — blocklist + LT stemming; the LLM half already works (D-019) |
-| 6–9 | Not started |
+| 5 · Moderation | **Done — all three automatable layers verified.** |
+| 6 · Storefront | **Next** — and the first phase that needs a funded image provider |
+| 7–9 | Not started |
+
+### Phase 5 — what exists and was verified
+
+| File | What it does |
+|---|---|
+| `Moderation/LtNormaliser.php` | Diacritic folding + Lithuanian stemming. Pure, unit-tested |
+| `Moderation/Blocklist.php` | Word-boundary stem matching, ~90 starter terms in both languages |
+| `Moderation/Sanitiser.php` | Layer 0 — length, control characters, gibberish |
+| `Moderation/Verdict.php` | Layer 0/1 result, same JSON shape as the LLM's |
+| `Moderation/Moderator.php` | Layer ordering, verdict caching, customer-facing wording |
+| `Admin/BlocklistPage.php` | Edit terms and try a prompt against the free layers |
+
+**39 stack assertions and 140 unit assertions, all passing.** The headline result is D-024: the
+blocklist now catches for free, in zero milliseconds, every declension case D-019 measured the
+LLM catching for $0.0001 and 790 ms — including `Elsos suknelė`, `Žmogaus voro tinklas`, and
+`noriu torto su Šunyčiais patruliais`. Six false-positive checks pass.
+
+The LLM still earns its place: `mėlynas ežiukas, kuris greitai bėga` → `block / franchise:sonic`,
+with no proper noun in the prompt at all.
+
+Also verified: rejections are logged with prompt and layer, **no job is queued and nothing is
+spent**, the customer message never names the matched term, and a refused prompt does not consume
+the free allowance (though it does count toward the per-IP daily ceiling).
 
 ### Phase 4 — what exists and was verified on real output
 
@@ -325,24 +349,28 @@ mid-session — `flux-dev` produced three designs and then began answering `402`
 recommendation: primary candidate in `PLAN.md` §8, covers Suite A *and* Suite B, whole Phase 0
 budget still under $5.
 
-**Phase 5 — moderation** (`PLAN.md` §21, §10) is next and needs no provider either. Half of it is
-already proven: D-019 showed the LLM catches Lithuanian declensions, paraphrases and real people.
-What is missing is the cheap layer that runs first.
+**Phase 6 — storefront** (`PLAN.md` §21, §15) is next, and it is the first phase where the
+funding gap actually bites: product and variation fields, the generator UI, polling JS, session
+history, cart integration, add-to-cart validation and ownership checks. The whole point is a
+customer generating a real image, and no provider will do that unfunded (D-022).
 
-1. `Moderation/Blocklist.php` — diacritic folding and substring matching, run **before** spending
-   anything on an LLM call.
-2. `Moderation/LtNormaliser.php` — the Lithuanian stemming. §19 names this as one of the three
-   classes most likely to be subtly wrong, so it gets unit tests against real declensions, and
-   `tests/` already exists to put them in.
-3. Three-verdict handling and rejection logging — every rejection stored with its prompt and the
-   layer that caught it, because that is the data that grows the blocklist.
+Everything behind it is ready — REST contract, job system, moderation, imaging — so the work
+itself is frontend, and it can be built and tested against the failure paths without spending.
+But signing it off needs a working generation.
 
-Also worth doing soon, neither blocking:
+1. `WooCommerce/ProductFields.php`, `VariationFields.php` — print spec on the variation (§4.2).
+2. `assets/js/generator.js` — prompt UI, the §6.5 polling contract, session history.
+3. `templates/` — overridable frontend partials, Lithuanian throughout.
+4. `WooCommerce/CartIntegration.php` — add-to-cart validation and design ownership (§16).
 
-- **Pick the decorative fonts** (D-023). Four are bundled and verified, but they are workmanlike,
-  not festive. The coverage machinery will vet any candidate and report exactly which characters
-  a font is missing.
-- **Confirm production's `memory_limit`** before go-live. Measured peak is 339 MB.
+Worth doing soon, none blocking:
+
+- **Fund a provider** (D-022). fal.ai remains the recommendation; under $5 covers Phase 0.
+- **Pick the decorative fonts** (D-023). Four are bundled and verified but workmanlike; the
+  coverage machinery will vet any candidate and name the exact characters a font is missing.
+- **Confirm production's `memory_limit`** before go-live. Measured peak is 339 MB (D-023).
+- **Grow the blocklist from real rejections** once traffic exists — that is what the rejection
+  log is for, and the admin screen now edits the list without a deploy.
 
 **The testbed is rebuilt and ready.** Confirmed inside the
 container: `AICAKE_REPLICATE_KEY` (40 chars), `AICAKE_GEMINI_KEY` (53), `AICAKE_FAL_KEY` (69),

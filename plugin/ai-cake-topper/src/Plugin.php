@@ -9,6 +9,7 @@ declare( strict_types=1 );
 
 namespace AiCake;
 
+use AiCake\Admin\BlocklistPage;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
@@ -16,6 +17,9 @@ use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\GdEngine;
 use AiCake\Imaging\TextRenderer;
 use AiCake\Imaging\Watermarker;
+use AiCake\Moderation\Blocklist;
+use AiCake\Moderation\Moderator;
+use AiCake\Moderation\Sanitiser;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
 use AiCake\Providers\Image\GeminiImageProvider;
@@ -92,6 +96,8 @@ class Plugin {
 
 	private Watermarker $watermarker;
 
+	private Moderator $moderator;
+
 	/**
 	 * Build the object graph. No hooks are registered here.
 	 */
@@ -116,10 +122,18 @@ class Plugin {
 		$this->text        = new TextRenderer( $this->fonts, $this->logger );
 		$this->watermarker = new Watermarker( $this->fonts, $this->logger );
 
+		$this->moderator = new Moderator(
+			new Sanitiser(),
+			new Blocklist(),
+			$this->providers,
+			$this->logger
+		);
+
 		$this->runner = new Runner(
 			$this->jobs,
 			$this->designs,
 			$this->providers,
+			$this->moderator,
 			$this->prompts,
 			$this->storage,
 			$this->budget_guard,
@@ -144,7 +158,8 @@ class Plugin {
 				$this->dispatcher,
 				$this->rate_limiter,
 				$this->budget_guard,
-				$this->identity
+				$this->identity,
+				$this->moderator
 			),
 			new JobStatusEndpoint( $this->jobs, $this->designs, $this->runner, $this->dispatcher, $this->identity ),
 			new FileEndpoint( $this->designs, $this->identity, $this->settings )
@@ -208,6 +223,8 @@ class Plugin {
 				$this->settings,
 				$this->logger
 			) )->register();
+
+			( new BlocklistPage( $this->moderator ) )->register();
 		}
 	}
 
@@ -373,5 +390,12 @@ class Plugin {
 	 */
 	public function watermarker(): Watermarker {
 		return $this->watermarker;
+	}
+
+	/**
+	 * The moderation layers.
+	 */
+	public function moderator(): Moderator {
+		return $this->moderator;
 	}
 }
