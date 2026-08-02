@@ -5,16 +5,17 @@
  * Standalone — needs no WordPress. Upload it anywhere web-accessible, open it
  * with the token in the URL, read the result, then DELETE IT.
  *
- *     https://valgomosdekoracijos.lt/host-check.php?token=CHANGE-THIS-TOKEN
+ *     https://valgomosdekoracijos.lt/host-check.php?token=sJE1SqqPpbsqAjX7HKOjhl-0
  *
  * It only reads capabilities and writes one temp file to test writability.
  * It changes nothing else.
  *
- * The token exists so a passer-by cannot read your server configuration.
- * Change it below before uploading.
+ * The token is just a password on the URL, so a passer-by or a crawler cannot
+ * read your server configuration. It is already filled in below — no need to
+ * change it. Delete the file when you are done and it stops mattering.
  */
 
-const CHECK_TOKEN = 'CHANGE-THIS-TOKEN';
+const CHECK_TOKEN = 'sJE1SqqPpbsqAjX7HKOjhl-0';
 
 if ( ! isset( $_GET['token'] ) || ! hash_equals( CHECK_TOKEN, (string) $_GET['token'] ) ) {
 	http_response_code( 404 );
