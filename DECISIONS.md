@@ -229,4 +229,74 @@ The bundle-through-the-server route from D-014 is retired and should not be used
 
 ---
 
-<!-- Next: D-017 -->
+### D-017 · Replicate serves some models with no credit — development only
+**2026-08-02**
+
+Probed every provider directly rather than trusting published free-tier claims. Results:
+
+| Provider | Verdict |
+|---|---|
+| fal.ai | `403 User is locked. Reason: Exhausted balance.` No trial credit. |
+| Google — text | **Free and working.** `gemini-3.1-flash-lite` translated a Lithuanian test prompt correctly. |
+| Google — image | `429 … free_tier_requests, limit: 0`. Image generation is explicitly zero on the free tier. |
+| Replicate | **Some models run with no credit at all.** |
+
+Replicate's free set, mapped by sending empty input and reading the status code
+(`402` = billing-blocked, `422` = allowed but invalid input):
+
+| Free | Needs credit |
+|---|---|
+| `black-forest-labs/flux-dev` | `flux-schnell`, `flux-2-dev`, `flux-1.1-pro-ultra` |
+| `black-forest-labs/flux-1.1-pro` | `google/imagen-4-fast`, `nano-banana`, `nano-banana-2` |
+| `black-forest-labs/flux-2-pro` | `nightmareai/real-esrgan`, `recraft-ai/recraft-v3` |
+
+`flux-dev` was confirmed by an actual generation, not just a status code — 1024×1024 in 1.4 s.
+
+**The split follows no pattern we can rely on.** The cheapest model (`flux-schnell`) is blocked
+while the top tier (`flux-2-pro`) is free. This is undocumented behaviour that can change without
+notice, and the rate limit is explicitly *reduced* for accounts without credit (~6 predictions
+per minute observed).
+
+**Therefore: free Replicate access is a development convenience, never a production dependency.**
+Production runs on a funded account. Anything built against it must survive the free access
+disappearing mid-request, which the provider registry's fallback chain (§8.5) already covers.
+
+**Also noted:** there is **no free upscaler** — `real-esrgan` is blocked. Development therefore
+uses GD bicubic, which is the production fallback anyway (D-013/D-015), so the free path and the
+worst-case production path happen to be the same code. That is a lucky alignment, not a plan.
+
+---
+
+### D-018 · Build the plugin first; the provider decision is deferred
+**2026-08-02** · re-sequences `docs/api-evaluation.md`
+
+Phase 0 was designed to run before any code, so nothing would be built on the wrong assumptions.
+Ruslan's call is to invert that: **build the real plugin against free models, then swap models,
+tune prompts and judge quality later.** Quality is explicitly not the current goal.
+
+This is sound because the provider abstraction (§8.5) already exists to make a swap a settings
+change, and because Phase 1 — skeleton, autoloader, tables, settings, capability detection, Site
+Health, logger, rate limiter, budget guard — contains nothing provider-specific. §22 already
+records that nothing blocks Phase 1.
+
+The free stack that makes it possible, all three confirmed working today at zero cost:
+
+| Layer | Development provider |
+|---|---|
+| Image generation | Replicate `black-forest-labs/flux-dev` |
+| Translate + moderate | Google `gemini-3.1-flash-lite` |
+| Upscale | GD bicubic in PHP — no external call |
+
+**The one thing not to defer indefinitely:** §3.1 makes the pre/post-payment split depend on a
+1024 px generation surviving an upscale to 300 DPI. If it does not, the pipeline shape changes,
+and pipeline shape is the expensive thing to change — not the model. Since development uses GD
+bicubic, we will find this out on the *worst* available upscaler, which is the honest test. If GD
+bicubic holds, the paid upscaler is an upgrade rather than a dependency.
+
+Phase 0 is not cancelled. It becomes a calibration step once the plugin runs end to end, at which
+point it is also cheaper — the harness is the plugin, and the "Test provider" screen from §8.5
+is how the comparison actually gets made.
+
+---
+
+<!-- Next: D-019 -->

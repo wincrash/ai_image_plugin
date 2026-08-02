@@ -1,7 +1,7 @@
 # Project state
 
 **Updated:** 2026-08-02
-**Phase:** 0 — API evaluation (keys in place; image suites blocked on provider credit)
+**Phase:** 1 — foundation. Phase 0 deferred to a later calibration step (D-018).
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -15,36 +15,43 @@ depends on the choice.
 
 | Phase | Status |
 |---|---|
-| 0 · API evaluation | **Planned.** Blocked on fal.ai + Google AI Studio keys. |
-| 1 · Foundation | Not started |
+| 0 · API evaluation | **Deferred** to a calibration step after the plugin runs end to end (D-018). |
+| 1 · Foundation | **In progress** |
 | 2–9 | Not started |
 
 ## Blocked on
 
-**Provider credit.** The keys are no longer the problem — three are in `.env` and all three
-authenticate. The problem is that **no provider will generate an image without money on the
-account.** Suite C (text) can run today for free; Suites A and B cannot run at all.
+**Nothing.** There is a complete free stack and Phase 1 contains nothing provider-specific.
 
 ### Provider access — probed directly 2026-08-02
 
-| Provider | Key | Verdict |
-|---|---|---|
-| **fal.ai** | valid | `403 User is locked. Reason: Exhausted balance.` No trial credit. |
-| **Replicate** | valid (`wincrash`) | `402 Insufficient credit.` **No free runs** — the old trial credit does not apply to this account. |
-| **Google — text** | valid | **Works free.** `gemini-3.1-flash-lite` translated a Lithuanian test prompt correctly, `serviceTier: standard`. |
-| **Google — image** | valid | `429 … free_tier_requests, limit: 0`. Image generation is **explicitly zero** on the free tier. |
+Keys for fal, Google and Replicate are in `.env` and all three authenticate. Every claim below
+was tested against the live API, not read off a pricing page.
 
-Both Suite A image models exist on the key (`gemini-3.1-flash-image`,
-`gemini-3.1-flash-lite-image`) — they are billing-gated, not missing.
+| Provider | Verdict |
+|---|---|
+| **Replicate** | **Some models run with no credit.** Free: `flux-dev` (confirmed by a real 1024² generation in 1.4 s), `flux-1.1-pro`, `flux-2-pro`. Blocked: `flux-schnell`, `flux-2-dev`, `flux-1.1-pro-ultra`, `imagen-4-fast`, `nano-banana`, `nano-banana-2`, `real-esrgan`, `recraft-v3`. |
+| **Google — text** | **Free and working.** `gemini-3.1-flash-lite` translates Lithuanian correctly. |
+| **Google — image** | `429 … free_tier_requests, limit: 0`. Explicitly zero on the free tier. |
+| **fal.ai** | `403 User is locked. Reason: Exhausted balance.` Needs a top-up. |
+
+The free stack we build against (D-018):
+
+| Layer | Development provider | Cost |
+|---|---|---|
+| Image generation | Replicate `black-forest-labs/flux-dev` | free |
+| Translate + moderate | Google `gemini-3.1-flash-lite` | free |
+| Upscale | GD bicubic in PHP | free, and it is the production fallback anyway |
+
+> **Free Replicate access is undocumented and must never be a production dependency** (D-017).
+> The split follows no pattern — the cheapest model is blocked, the top tier is free — and the
+> rate limit is reduced to ~6 predictions/min. Production runs on a funded account.
 
 `AICAKE_OPENAI_KEY` and `AICAKE_LLM_KEY` are still empty. `AICAKE_REPLICATE_KEY` was added and is
 not yet in `infra/.env.example`.
 
-**Cheapest way out:** top up **fal.ai** — it is the primary candidate in `PLAN.md` §8 and
-single-handedly covers Suite A (FLUX.2 klein/dev/pro) *and* Suite B (Real-ESRGAN, Clarity).
-Whole-phase budget is still under $5. Google pay-as-you-go is the alternative with no prepaid
-minimum, but it only covers Suite A. Replicate is not in the test matrix — it is a second host
-for the same models, useful as a fallback, not needed to decide.
+**When money is wanted later:** top up fal.ai — it is the primary candidate in `PLAN.md` §8 and
+covers Suite A *and* Suite B alone. Whole-phase budget is still under $5.
 
 The testbed is up and the repository is on GitHub.
 
@@ -151,15 +158,24 @@ C:\AI_IMAGE\
 
 ## Next actions
 
-1. Build the Phase 0 harness (`docs/api-evaluation.md` §2) — adapters written at their final
-   paths against their final interfaces, so Phase 2 reuses them. **Not blocked by credit;**
-   writing and dry-running the code needs no paid call.
-2. Run **Suite C** (translate + moderate) on the free Gemini text tier. Full deliverable, zero
-   spend. The Claude Haiku comparison waits for an Anthropic key — Gemini alone still answers
-   whether an LLM handles Lithuanian declensions.
-3. Top up fal.ai → run Suites A (generation) and B (upscaling, **against GD bicubic**).
-4. Record the outcome in `docs/api-evaluation.md` §9 and `DECISIONS.md`.
-5. Add `AICAKE_REPLICATE_KEY` to `infra/.env.example`.
+**Phase 1 — foundation** (`PLAN.md` §21). Nothing here is provider-specific.
+
+1. Plugin skeleton + hand-rolled SPL autoloader, `plugin/ai-cake-topper/`.
+2. Tables (`PLAN.md` §4.4), settings with constant-first keys, capability detection.
+3. Site Health panel — reports GD, **FreeType**, memory, storage root. This is also how the
+   open FreeType question gets answered on the live host without uploading a diagnostic.
+4. Logger, rate limiter, **budget guard**. Per §21, nothing spends money until the guard exists.
+
+Then Phase 2 wires the free stack above behind the §8.5 interfaces, adding a `ReplicateProvider`
+alongside the planned fal and Gemini adapters.
+
+Housekeeping, not blocking:
+
+- Add `AICAKE_REPLICATE_KEY` to `infra/.env.example`.
+- `PLAN.md` §8 predates the Replicate finding and still reads as though fal is the only image
+  candidate. Reconcile when the provider decision is actually made, not before.
+- The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
+  instructions are ignored: "no cake or background needed" produced exactly a cake.
 
 ## Open items, not blocking
 
