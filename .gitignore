@@ -1,0 +1,28 @@
+# Secrets — never commit
+.env
+*.key
+*.pem
+
+# Generated images and API test output
+aicake-files/
+results/
+docs/results/
+plugin/ai-cake-topper/tools/apitest/results/
+
+# Dev dependencies (never shipped, never committed)
+vendor/
+node_modules/
+composer.lock
+
+# Build and editor noise
+*.log
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*~
+
+# Windows / SMB artefacts
+~$*

@@ -1,0 +1,19 @@
+# Everything in this repo is destined for a Linux container, so LF is the
+# default. Without this, git on Windows checks files out as CRLF and sync.ps1
+# faithfully copies the CRLF into the container — which breaks Dockerfile line
+# continuations and shell scripts, and leaves stray \r in generated output.
+* text=auto eol=lf
+
+# PowerShell runs on Windows and wants CRLF.
+*.ps1 text eol=crlf
+
+# Never touch binary files.
+*.png  binary
+*.jpg  binary
+*.webp binary
+*.ttf  binary
+*.otf  binary
+*.woff  binary
+*.woff2 binary
+*.icc  binary
+*.zip  binary
