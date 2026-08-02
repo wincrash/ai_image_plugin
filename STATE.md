@@ -1,7 +1,7 @@
 # Project state
 
 **Updated:** 2026-08-02
-**Phase:** 0 — API evaluation (planned, blocked on API keys)
+**Phase:** 0 — API evaluation (keys in place; image suites blocked on provider credit)
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -21,10 +21,32 @@ depends on the choice.
 
 ## Blocked on
 
-**API keys** — fal.ai and Google AI Studio, into `Z:\ruslan\wordpress-test\.env`.
-Nothing in Phase 0 can run without them. (`docs/api-evaluation.md` §8)
+**Provider credit.** The keys are no longer the problem — three are in `.env` and all three
+authenticate. The problem is that **no provider will generate an image without money on the
+account.** Suite C (text) can run today for free; Suites A and B cannot run at all.
 
-That is the only blocker. The testbed is up and the repository is on GitHub.
+### Provider access — probed directly 2026-08-02
+
+| Provider | Key | Verdict |
+|---|---|---|
+| **fal.ai** | valid | `403 User is locked. Reason: Exhausted balance.` No trial credit. |
+| **Replicate** | valid (`wincrash`) | `402 Insufficient credit.` **No free runs** — the old trial credit does not apply to this account. |
+| **Google — text** | valid | **Works free.** `gemini-3.1-flash-lite` translated a Lithuanian test prompt correctly, `serviceTier: standard`. |
+| **Google — image** | valid | `429 … free_tier_requests, limit: 0`. Image generation is **explicitly zero** on the free tier. |
+
+Both Suite A image models exist on the key (`gemini-3.1-flash-image`,
+`gemini-3.1-flash-lite-image`) — they are billing-gated, not missing.
+
+`AICAKE_OPENAI_KEY` and `AICAKE_LLM_KEY` are still empty. `AICAKE_REPLICATE_KEY` was added and is
+not yet in `infra/.env.example`.
+
+**Cheapest way out:** top up **fal.ai** — it is the primary candidate in `PLAN.md` §8 and
+single-handedly covers Suite A (FLUX.2 klein/dev/pro) *and* Suite B (Real-ESRGAN, Clarity).
+Whole-phase budget is still under $5. Google pay-as-you-go is the alternative with no prepaid
+minimum, but it only covers Suite A. Replicate is not in the test matrix — it is a second host
+for the same models, useful as a fallback, not needed to decide.
+
+The testbed is up and the repository is on GitHub.
 
 ## Environment — verified 2026-08-02
 
@@ -129,11 +151,15 @@ C:\AI_IMAGE\
 
 ## Next actions
 
-1. Get fal.ai + Google AI Studio keys into `Z:\ruslan\wordpress-test\.env`.
-2. Build the Phase 0 harness (`docs/api-evaluation.md` §2) — adapters written at their final
-   paths against their final interfaces, so Phase 2 reuses them.
-3. Run Suites A (generation), B (upscaling, **against GD bicubic**), C (translate + moderate).
+1. Build the Phase 0 harness (`docs/api-evaluation.md` §2) — adapters written at their final
+   paths against their final interfaces, so Phase 2 reuses them. **Not blocked by credit;**
+   writing and dry-running the code needs no paid call.
+2. Run **Suite C** (translate + moderate) on the free Gemini text tier. Full deliverable, zero
+   spend. The Claude Haiku comparison waits for an Anthropic key — Gemini alone still answers
+   whether an LLM handles Lithuanian declensions.
+3. Top up fal.ai → run Suites A (generation) and B (upscaling, **against GD bicubic**).
 4. Record the outcome in `docs/api-evaluation.md` §9 and `DECISIONS.md`.
+5. Add `AICAKE_REPLICATE_KEY` to `infra/.env.example`.
 
 ## Open items, not blocking
 
