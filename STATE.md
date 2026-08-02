@@ -18,8 +18,49 @@ depends on the choice.
 | 0 · API evaluation | **Deferred** to a calibration step after the plugin runs end to end (D-018). |
 | 1 · Foundation | **Done and verified on the testbed.** |
 | 2 · Providers | **Done and verified against the live APIs.** |
-| 3 · Job system | **Next** |
-| 4–9 | Not started |
+| 3 · Job system | **Done and verified live, both dispatch paths.** |
+| 4 · Imaging | **Next** — and it needs no image provider, so the funding gap does not block it |
+| 5–9 | Not started |
+
+### Phase 3 — what exists and was verified live
+
+| File | What it does |
+|---|---|
+| `Domain/Job.php`, `JobRepository.php` | State machine + the **atomic claim** |
+| `Queue/Dispatcher.php` | Socket-spawn loopback, URL override, spawn-path self-test |
+| `Queue/Runner.php` | Claims and executes; moderation, budget, generation, storage |
+| `Queue/Scheduler.php` | Action Scheduler sweep, wp-cron fallback |
+| `Rest/RestController.php` | Route registration, explicit nonce verification |
+| `Rest/SessionEndpoint.php` | Uncached nonce + session cookie (§7) |
+| `Rest/GenerateEndpoint.php` | 202 in ~209 ms |
+| `Rest/JobStatusEndpoint.php` | Polling + poll-triggered execution (§6.2 layer 2) |
+| `Rest/FileEndpoint.php` | Ownership-checked delivery; master is never servable |
+| `Storage/PrivateStorage.php` | The two zones, with containment checks |
+| `Pipeline/PromptBuilder.php` | House style suffix, one place to tune |
+
+**Verified live — 17/17 end to end over real HTTP, plus 18 mechanics assertions:**
+
+- Atomic claim: second claimant loses, attempts increments exactly once.
+- Concurrency cap holds; refused jobs stay `queued`, and the sweeper ignores the cap so a stuck
+  queue can still recover.
+- Stale claim recovery, and giving up after 3 attempts rather than looping.
+- Ownership: a stranger polling someone else's job gets **404, not 403** — no id enumeration.
+- `POST /generate` without a nonce → 403.
+- **Both dispatch layers proven.** With loopback blocked, the job ran inside poll 1. With
+  loopback working, polls returned instantly while the job progressed `running → running → done`
+  in another worker.
+- The failure path was proven by a real provider outage, not a simulation (D-022): retry,
+  requeue, terminal failure, generic customer message, cost still recorded.
+
+Two bugs the tests caught, both fixed:
+
+- **The runner marked a job `done` when the image could not be stored**, producing a design row
+  pointing at nothing and a polling contract reporting success with no preview. Now retries, then
+  fails.
+- **Site Health checked the wrong directory.** It tested the storage *root*; writes happen in
+  `sessions/YYYY/MM/`. Activating over WP-CLI as root — normal on managed hosts — leaves those
+  owned by root while PHP runs as the web user, so the root looks fine and every write fails. It
+  now performs a real probe write, cached for five minutes.
 
 ### Phase 2 — what exists and was verified live
 
@@ -243,21 +284,26 @@ C:\AI_IMAGE\
 
 ## Next actions
 
-**Phase 3 — job system** (`PLAN.md` §21, §6). This is the phase that makes generation
-customer-safe: today the only caller is an admin screen that blocks for five seconds, which is
-fine for one shop owner and unacceptable for a storefront on 4–8 PHP workers.
+**Image generation is paused until an account is funded** (D-022). Replicate's free access ended
+mid-session — `flux-dev` produced three designs and then began answering `402`. fal.ai is the
+recommendation: primary candidate in `PLAN.md` §8, covers Suite A *and* Suite B, whole Phase 0
+budget still under $5.
 
-1. Jobs table is already created; add `Domain/Job.php` + `JobRepository.php` with the **atomic
-   claim** — `UPDATE … SET status='claimed' WHERE id=? AND status='queued'`, checking
-   `affected_rows`. A duplicate run costs real money (§6.3).
-2. `Queue/Dispatcher.php` — loopback spawn → poll fallback → Action Scheduler sweeper (§6.2).
-3. `Queue/Runner.php` — claims and executes one job, calling the Phase 2 registry.
-4. Concurrency cap, default 3 (§6.4).
-5. REST endpoints: uncached session/nonce (§7), generate, job status.
-6. **Test with loopback deliberately broken** — §21 is explicit about this.
+**This does not block Phase 4 — imaging** (`PLAN.md` §21, §9), which is the largest phase and
+needs no provider at all. It operates on images we already have, and there are stored masters on
+the testbed to work with.
 
-`ReplicateProvider::start()` and `poll()` already exist for exactly this, so the async path
-needs no adapter changes.
+1. `Imaging/ImageEngine.php` interface + `GdEngine.php`. GD only — `AICAKE_FORCE_GD` is on and
+   production has no Imagick (D-013/D-015).
+2. Shape mask (§9.1.1 — circle masking in GD without being slow), bleed, safe zone.
+3. `Support/Mm.php` — the §3 print maths. Pure functions, no WordPress, **unit-tested**.
+4. `Imaging/TextRenderer.php` + `FontCatalogue.php` — and this is where the open **FreeType**
+   question finally has to be answered on the live host. The Site Health panel already reports it.
+5. `Imaging/SheetLayout.php` — imposition, cols × rows (§3.5). Also pure and unit-tested.
+6. `Watermarker.php`, DPI metadata.
+
+§19 wants real PHPUnit tests for `Mm`, `SheetLayout` and `LtNormaliser` — the logic most likely
+to be subtly wrong. Phase 4 creates the first two, so `tests/` starts here.
 
 **The testbed is rebuilt and ready.** Confirmed inside the
 container: `AICAKE_REPLICATE_KEY` (40 chars), `AICAKE_GEMINI_KEY` (53), `AICAKE_FAL_KEY` (69),

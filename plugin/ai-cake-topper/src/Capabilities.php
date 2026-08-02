@@ -58,7 +58,7 @@ class Capabilities {
 		$gd = function_exists( 'gd_info' ) ? gd_info() : array();
 
 		$storage  = $this->settings->storage_dir();
-		$writable = is_dir( $storage ) && wp_is_writable( $storage );
+		$writable = $this->can_actually_write( $storage );
 
 		$this->report = array(
 			'php_version'       => PHP_VERSION,
@@ -82,6 +82,50 @@ class Capabilities {
 		);
 
 		return $this->report;
+	}
+
+	/**
+	 * Whether the web user can genuinely write where files actually go.
+	 *
+	 * `wp_is_writable()` on the storage root is not enough, and the difference
+	 * is not academic — it cost a silently broken generation on the testbed.
+	 * Files are written to `sessions/YYYY/MM/`, and those directories are
+	 * created by whoever first triggers a write. Activate the plugin through
+	 * WP-CLI as root — which is how plenty of managed hosts install things —
+	 * and they end up owned by root while PHP runs as the web user. The root
+	 * directory looks fine; every write into it fails.
+	 *
+	 * So this actually creates the dated directory and writes a file, which is
+	 * the only check that answers the real question. Cached, because the admin
+	 * notice consults it on every page load.
+	 *
+	 * @param string $root Storage root.
+	 */
+	private function can_actually_write( string $root ): bool {
+		$cached = get_transient( 'aicake_storage_writable' );
+
+		if ( false !== $cached ) {
+			return 'yes' === $cached;
+		}
+
+		$dir = $root . '/sessions/' . gmdate( 'Y/m' );
+		$ok  = false;
+
+		if ( is_dir( $dir ) || wp_mkdir_p( $dir ) ) {
+			$probe = $dir . '/.aicake-write-test';
+
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.PHP.NoSilencedErrors.Discouraged
+			$ok = false !== @file_put_contents( $probe, 'ok' );
+
+			if ( $ok ) {
+				// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.PHP.NoSilencedErrors.Discouraged
+				@unlink( $probe );
+			}
+		}
+
+		set_transient( 'aicake_storage_writable', $ok ? 'yes' : 'no', 5 * MINUTE_IN_SECONDS );
+
+		return $ok;
 	}
 
 	/**
@@ -235,8 +279,13 @@ class Capabilities {
 
 		if ( ! $r['storage_writable'] ) {
 			$result['status'] = 'critical';
-			$result['label']  = __( 'The storage directory is not writable', 'ai-cake-topper' );
-			$notes[]          = __( 'Generated images have nowhere to go. Check the path exists and the web server user can write to it.', 'ai-cake-topper' );
+			$result['label']  = __( 'Generated images cannot be saved', 'ai-cake-topper' );
+			$notes[]          = __( 'A test write into the sessions folder failed, so every generation will be paid for and then thrown away.', 'ai-cake-topper' );
+			$notes[]          = sprintf(
+				/* translators: %s: the storage path */
+				__( 'The usual cause is ownership: if the plugin was activated over WP-CLI as root, the folders under %s belong to root while PHP runs as the web user. Making them owned by the web user fixes it.', 'ai-cake-topper' ),
+				$r['storage_dir'] . '/sessions'
+			);
 		} elseif ( $r['storage_in_webroot'] ) {
 			$result['status'] = 'recommended';
 			$result['label']  = __( 'Storage sits inside the web root', 'ai-cake-topper' );

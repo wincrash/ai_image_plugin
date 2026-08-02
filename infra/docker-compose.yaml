@@ -83,6 +83,13 @@ services:
            has Imagick, and without this we would build against an engine the
            customer never runs (D-013/D-015). */
         define('AICAKE_FORCE_GD', true);
+
+        /* WP_HOME is the Docker host's Tailscale address, which the container
+           has no route back through, so loopback dispatch to admin_url()
+           times out. Point it at the container itself instead. Production
+           normally needs no override — this is a containerisation artifact,
+           not a WordPress one. */
+        define('AICAKE_LOOPBACK_URL', 'http://127.0.0.1/wp-admin/admin-post.php');
     volumes:
       - wp_data:/var/www/html
       - ./themes:/var/www/html/wp-content/themes

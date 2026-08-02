@@ -12,7 +12,10 @@ namespace AiCake\Admin;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\GenerationRequest;
 use AiCake\Domain\PromptAnalysis;
+use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\ProviderRegistry;
+use AiCake\Queue\Dispatcher;
+use AiCake\Storage\PrivateStorage;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
@@ -42,29 +45,44 @@ class TestProviderPage {
 
 	private BudgetGuard $budget;
 
+	private PromptBuilder $prompts;
+
+	private PrivateStorage $storage;
+
+	private Dispatcher $dispatcher;
+
 	private Settings $settings;
 
 	private Logger $logger;
 
 	/**
-	 * @param ProviderRegistry $registry Providers.
-	 * @param DesignRepository $designs  Persistence.
-	 * @param BudgetGuard      $budget   Spend ceiling.
-	 * @param Settings         $settings Configuration.
-	 * @param Logger           $logger   Logging.
+	 * @param ProviderRegistry $registry   Providers.
+	 * @param DesignRepository $designs    Persistence.
+	 * @param BudgetGuard      $budget     Spend ceiling.
+	 * @param PromptBuilder    $prompts    Style suffix.
+	 * @param PrivateStorage   $storage    Files.
+	 * @param Dispatcher       $dispatcher Loopback state, for the diagnostics table.
+	 * @param Settings         $settings   Configuration.
+	 * @param Logger           $logger     Logging.
 	 */
 	public function __construct(
 		ProviderRegistry $registry,
 		DesignRepository $designs,
 		BudgetGuard $budget,
+		PromptBuilder $prompts,
+		PrivateStorage $storage,
+		Dispatcher $dispatcher,
 		Settings $settings,
 		Logger $logger
 	) {
-		$this->registry = $registry;
-		$this->designs  = $designs;
-		$this->budget   = $budget;
-		$this->settings = $settings;
-		$this->logger   = $logger;
+		$this->registry   = $registry;
+		$this->designs    = $designs;
+		$this->budget     = $budget;
+		$this->prompts    = $prompts;
+		$this->storage    = $storage;
+		$this->dispatcher = $dispatcher;
+		$this->settings   = $settings;
+		$this->logger     = $logger;
 	}
 
 	/**
@@ -137,6 +155,14 @@ class TestProviderPage {
 			return $out;
 		}
 
+		$this->logger->info(
+			'Provider test run from the admin screen.',
+			array(
+				'aspect'   => $aspect,
+				'generate' => $generate,
+			)
+		);
+
 		$analysis         = $this->registry->analyse( $prompt_lt );
 		$out['analysis']  = $this->analysis_to_array( $analysis );
 		$design_id        = $this->designs->create(
@@ -202,7 +228,7 @@ class TestProviderPage {
 			return $out;
 		}
 
-		$prompt_final = $this->apply_style_suffix( $analysis->prompt_en );
+		$prompt_final = $this->prompts->build( $analysis->prompt_en );
 
 		$result = $this->registry->generate(
 			new GenerationRequest( $prompt_final, $aspect )
@@ -224,7 +250,7 @@ class TestProviderPage {
 			return $out;
 		}
 
-		$path = $this->store_master( $result->bytes, (string) ( $this->designs->find( $design_id )['public_id'] ?? '' ) );
+		$path = $this->storage->store_master( (string) ( $this->designs->find( $design_id )['public_id'] ?? '' ), $result->bytes );
 
 		if ( '' !== $path ) {
 			$this->designs->update( $design_id, array( 'file_master' => $path ) );
@@ -244,55 +270,6 @@ class TestProviderPage {
 		);
 
 		return $out;
-	}
-
-	/**
-	 * Append the house style suffix.
-	 *
-	 * Phrased entirely in the positive. A flux-dev test proved the negative
-	 * form is ignored: "no cake or background needed" produced exactly a cake
-	 * (STATE.md). Tuning this against real output is a Phase 0 deliverable;
-	 * this is a working starting point, not the final wording.
-	 *
-	 * @param string $prompt_en Translated prompt.
-	 */
-	private function apply_style_suffix( string $prompt_en ): string {
-		$suffix = (string) $this->settings->get(
-			'style_suffix',
-			'flat vector illustration, thick clean outlines, bright saturated flat colours, '
-			. 'centred single subject, isolated on a plain solid white background, '
-			. 'simple childrens picture book style, no text'
-		);
-
-		return '' === $suffix ? $prompt_en : $prompt_en . ', ' . $suffix;
-	}
-
-	/**
-	 * Write the clean generation to the sessions zone (PLAN.md §12.2).
-	 *
-	 * @param string $bytes     Image data.
-	 * @param string $public_id Design handle.
-	 * @return string Absolute path, or '' on failure.
-	 */
-	private function store_master( string $bytes, string $public_id ): string {
-		if ( '' === $public_id ) {
-			return '';
-		}
-
-		$dir = $this->settings->storage_dir() . '/sessions/' . gmdate( 'Y/m' );
-
-		if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
-			$this->logger->error( 'Could not create the storage directory.', array( 'dir' => $dir ) );
-
-			return '';
-		}
-
-		$path = $dir . '/' . $public_id . '-master.png';
-
-		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
-		$written = file_put_contents( $path, $bytes );
-
-		return false === $written ? '' : $path;
 	}
 
 	/**
@@ -417,6 +394,54 @@ class TestProviderPage {
 			esc_html__( 'this month:', 'ai-cake-topper' ),
 			esc_html( number_format( $this->budget->spent_this_month(), 4 ) )
 		);
+
+		$this->render_queue_status();
+	}
+
+	/**
+	 * Whether async dispatch actually works on this host.
+	 *
+	 * Worth showing prominently: when loopback is blocked, generation still
+	 * works but every request occupies a customer-facing worker, and that is
+	 * the difference between a site that scales and one that falls over on a
+	 * busy Saturday.
+	 */
+	private function render_queue_status(): void {
+		$works  = $this->dispatcher->loopback_works();
+		$tested = $this->dispatcher->last_tested();
+
+		echo '<h2>' . esc_html__( 'Queue', 'ai-cake-topper' ) . '</h2>';
+		echo '<table class="widefat striped" style="max-width:820px"><tbody>';
+
+		printf(
+			'<tr><th style="width:220px">%s</th><td><strong style="color:%s">%s</strong> — %s</td></tr>',
+			esc_html__( 'Loopback dispatch', 'ai-cake-topper' ),
+			$works ? '#008a20' : '#bd8600',
+			$works ? esc_html__( 'working', 'ai-cake-topper' ) : esc_html__( 'blocked', 'ai-cake-topper' ),
+			$works
+				? esc_html__( 'jobs run in a separate worker; the browser gets an immediate response', 'ai-cake-topper' )
+				: esc_html__( 'jobs run inside the polling request instead — slower, but the site keeps working', 'ai-cake-topper' )
+		);
+
+		printf(
+			'<tr><th>%s</th><td>%s</td></tr>',
+			esc_html__( 'Last tested', 'ai-cake-topper' ),
+			'' === $tested ? esc_html__( 'never', 'ai-cake-topper' ) : esc_html( $tested . ' UTC' )
+		);
+
+		printf(
+			'<tr><th>%s</th><td><code>%s</code></td></tr>',
+			esc_html__( 'Storage root', 'ai-cake-topper' ),
+			esc_html( $this->settings->storage_dir() )
+		);
+
+		printf(
+			'<tr><th>%s</th><td><em>%s</em></td></tr>',
+			esc_html__( 'Style suffix', 'ai-cake-topper' ),
+			esc_html( $this->prompts->suffix() )
+		);
+
+		echo '</tbody></table>';
 	}
 
 	/**

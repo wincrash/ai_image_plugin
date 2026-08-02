@@ -354,4 +354,73 @@ returning the last failure rather than dying on the first.
 
 ---
 
-<!-- Next: D-021 -->
+### D-021 · `wp_remote_post( 'blocking' => false )` is not non-blocking
+**2026-08-02** · changes `PLAN.md` §6.2
+
+`PLAN.md` §6.2 specifies loopback dispatch as
+`wp_remote_post( admin_url('admin-post.php'), ['blocking' => false, 'timeout' => 0.01] )`,
+returning in about 100 ms. **It does not.** Measured on the testbed:
+
+| Target | Time |
+|---|---|
+| Reachable address | **1002 ms** |
+| Deliberately unroutable address | **1002 ms** |
+
+WordPress passes the timeout to cURL as a whole number of seconds, so anything below one second
+becomes one second, and the call blocks for it either way. The identical idiom in core's own
+`spawn_cron()` has the same behaviour, which is presumably why it went unquestioned.
+
+One second of a PHP worker on every generation request is not acceptable when the whole site
+runs on four to eight of them — that is the second of this project's two governing constraints,
+so this is a correctness problem, not an optimisation.
+
+**Replaced with a raw socket write:** open the connection, write the HTTP request, close without
+reading. The runner already calls `ignore_user_abort()`, so it finishes the work after the caller
+hangs up.
+
+| | Before | After |
+|---|---|---|
+| `Dispatcher::dispatch()` | 1002 ms | **0.4 ms** |
+| `POST /generate` end to end | 1219 ms | **209 ms** |
+
+Bootstrap on this testbed is ~200 ms by itself, so the endpoint's own work is now ~10 ms.
+
+**Also decided: no HTTP fallback when the socket write fails**, and no dispatch attempt at all
+when the self-test has already established that loopback is blocked. Both would cost a full
+second to duplicate a mechanism that layers 2 and 3 are about to run anyway.
+
+**And the self-test now tests the spawn path**, not merely reachability. A blocking request
+proves the endpoint answers; it does not prove that a socket written and immediately closed still
+gets processed. Those are different questions and only the second one describes production. The
+probe spawns a request and watches for the transient it leaves behind.
+
+---
+
+### D-022 · Replicate's free access ended mid-session
+**2026-08-02** · supersedes the practical assumption in D-017, confirms D-020
+
+`black-forest-labs/flux-dev` generated designs #10, #11 and #12 successfully, then began
+answering `402 Insufficient credit` roughly eight images into the session. Nothing changed on our
+side. The free window is closed.
+
+D-017 already said this must never be a production dependency; it turns out it is not a reliable
+*development* dependency either. Combined with D-020 — the same model set answering 402 one hour
+and 404 the next — the honest summary is that Replicate's behaviour for an unfunded account is
+not predictable enough to plan around at all.
+
+**This is not a blocker for the code.** It was, in effect, an unannounced provider outage in the
+middle of an end-to-end test, and the system behaved exactly as designed: the registry walked
+Replicate → fal → Gemini, the job retried and then failed terminally, the customer-facing message
+stayed generic, and the cost was recorded. That is better evidence for the fallback design than
+any simulation would have been.
+
+**It does block further image generation.** Continuing requires funding an account. fal.ai remains
+the recommendation — it is the primary candidate in `PLAN.md` §8 and covers both Suite A and
+Suite B, and the whole Phase 0 budget is still under $5.
+
+Phases 4 and 5 need no image provider: shaping, text rendering, imposition and the blocklist all
+operate on images we already have, and there are three stored masters on the testbed to work with.
+
+---
+
+<!-- Next: D-023 -->

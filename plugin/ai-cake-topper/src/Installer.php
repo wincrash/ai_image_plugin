@@ -40,6 +40,19 @@ class Installer {
 		if ( false === get_option( Settings::OPTION ) ) {
 			add_option( Settings::OPTION, Settings::defaults() );
 		}
+
+		/*
+		 * Find out at activation whether this host allows loopback requests,
+		 * rather than discovering it from a customer whose generation hung
+		 * (PLAN.md §6.2). Deferred to shutdown because activation already
+		 * holds a worker and this makes an HTTP call to ourselves.
+		 */
+		add_action(
+			'shutdown',
+			static function (): void {
+				( new \AiCake\Queue\Dispatcher( new \AiCake\Support\Logger( new Settings() ) ) )->test_loopback();
+			}
+		);
 	}
 
 	/**
@@ -48,6 +61,7 @@ class Installer {
 	 */
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( 'aicake_cleanup' );
+		\AiCake\Queue\Scheduler::unschedule();
 	}
 
 	/**

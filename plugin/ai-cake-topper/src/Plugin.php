@@ -11,12 +11,23 @@ namespace AiCake;
 
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
+use AiCake\Domain\JobRepository;
+use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
 use AiCake\Providers\Image\GeminiImageProvider;
 use AiCake\Providers\Image\ReplicateProvider;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Providers\Text\GeminiTextProvider;
 use AiCake\Providers\Upscale\GdUpscaler;
+use AiCake\Queue\Dispatcher;
+use AiCake\Queue\Runner;
+use AiCake\Queue\Scheduler;
+use AiCake\Rest\FileEndpoint;
+use AiCake\Rest\GenerateEndpoint;
+use AiCake\Rest\JobStatusEndpoint;
+use AiCake\Rest\RestController;
+use AiCake\Rest\SessionEndpoint;
+use AiCake\Storage\PrivateStorage;
 use AiCake\Support\Http;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
@@ -55,6 +66,20 @@ class Plugin {
 
 	private ProviderRegistry $providers;
 
+	private JobRepository $jobs;
+
+	private PrivateStorage $storage;
+
+	private PromptBuilder $prompts;
+
+	private Dispatcher $dispatcher;
+
+	private Runner $runner;
+
+	private Scheduler $scheduler;
+
+	private RestController $rest;
+
 	/**
 	 * Build the object graph. No hooks are registered here.
 	 */
@@ -68,6 +93,45 @@ class Plugin {
 		$this->http         = new Http( $this->logger );
 		$this->designs      = new DesignRepository();
 		$this->providers    = $this->build_providers();
+
+		$this->jobs       = new JobRepository();
+		$this->storage    = new PrivateStorage( $this->settings, $this->logger );
+		$this->prompts    = new PromptBuilder( $this->settings );
+		$this->dispatcher = new Dispatcher( $this->logger );
+
+		$this->runner = new Runner(
+			$this->jobs,
+			$this->designs,
+			$this->providers,
+			$this->prompts,
+			$this->storage,
+			$this->budget_guard,
+			$this->dispatcher,
+			$this->settings,
+			$this->logger
+		);
+
+		$this->scheduler = new Scheduler( $this->jobs, $this->runner, $this->logger );
+		$this->rest      = $this->build_rest();
+	}
+
+	/**
+	 * Assemble the REST surface.
+	 */
+	private function build_rest(): RestController {
+		return new RestController(
+			new SessionEndpoint( $this->identity, $this->rate_limiter ),
+			new GenerateEndpoint(
+				$this->designs,
+				$this->jobs,
+				$this->dispatcher,
+				$this->rate_limiter,
+				$this->budget_guard,
+				$this->identity
+			),
+			new JobStatusEndpoint( $this->jobs, $this->designs, $this->runner, $this->dispatcher, $this->identity ),
+			new FileEndpoint( $this->designs, $this->identity, $this->settings )
+		);
 	}
 
 	/**
@@ -110,12 +174,20 @@ class Plugin {
 		add_action( 'admin_notices', array( $this, 'capability_notice' ) );
 
 		$this->capabilities->register();
+		$this->rest->register();
+		$this->runner->register();
+		$this->scheduler->register();
+
+		add_filter( 'cron_schedules', array( $this->scheduler, 'add_cron_interval' ) ); // phpcs:ignore WordPress.WP.CronInterval.ChangeDetected
 
 		if ( is_admin() ) {
 			( new TestProviderPage(
 				$this->providers,
 				$this->designs,
 				$this->budget_guard,
+				$this->prompts,
+				$this->storage,
+				$this->dispatcher,
 				$this->settings,
 				$this->logger
 			) )->register();
@@ -214,5 +286,47 @@ class Plugin {
 	 */
 	public function providers(): ProviderRegistry {
 		return $this->providers;
+	}
+
+	/**
+	 * The work queue.
+	 */
+	public function jobs(): JobRepository {
+		return $this->jobs;
+	}
+
+	/**
+	 * The worker.
+	 */
+	public function runner(): Runner {
+		return $this->runner;
+	}
+
+	/**
+	 * Loopback dispatch.
+	 */
+	public function dispatcher(): Dispatcher {
+		return $this->dispatcher;
+	}
+
+	/**
+	 * The sweeper.
+	 */
+	public function scheduler(): Scheduler {
+		return $this->scheduler;
+	}
+
+	/**
+	 * Private file storage.
+	 */
+	public function storage(): PrivateStorage {
+		return $this->storage;
+	}
+
+	/**
+	 * Style suffix application.
+	 */
+	public function prompts(): PromptBuilder {
+		return $this->prompts;
 	}
 }
