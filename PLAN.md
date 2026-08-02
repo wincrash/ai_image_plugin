@@ -910,10 +910,14 @@ add_action( 'before_woocommerce_init', function () {
 } );
 ```
 
-`cart_checkout_blocks` matters too — the block-based checkout is now the default for new
-stores, and classic-only cart integrations silently show nothing there. If the client's theme
-uses block checkout, the "show design thumbnail in cart" hooks need the Store API equivalent.
-**Worth confirming which checkout the testbed uses before building this part.**
+`cart_checkout_blocks` matters too — the block-based checkout is the default for new stores,
+and classic-only cart integrations silently show nothing there.
+
+**Confirmed 2026-08-02: this site uses the classic shortcode cart** (`/krepselis/` renders
+classic markup, no block markers). So the §13.2 hooks work directly and the Store API
+integration is not needed. Declare block compatibility anyway — it costs one line and prevents
+a scary incompatibility warning in wp-admin — but do not build the Store API path until the
+live site actually moves to block checkout.
 
 ### 13.2 Hooks
 
@@ -1040,9 +1044,15 @@ explanation, never a silent failure.
 
 Not legal advice — confirm each before launch.
 
-- **VMVT registration.** Selling edible products in Lithuania requires registration as a food
-  business with Valstybinė maisto ir veterinarijos tarnyba. This gates launch, not code, and
-  has a lead time — start it early.
+- **VMVT registration.** Anyone placing food on the market in Lithuania must be registered as a
+  *maisto tvarkymo subjektas* (food handling business) with their territorial Valstybinė maisto
+  ir veterinarijos tarnyba department. Registration is indefinite, may or may not involve an
+  on-site inspection depending on activity type, and requires hygiene-compliant premises plus a
+  *savikontrolės* (self-control) system.
+  **Almost certainly already in place here** — valgomosdekoracijos.lt already sells edible
+  decorations, so the client is already a food business. The AI feature changes *which image*
+  goes on a product already being sold; it does not change food status. Worth confirming the
+  existing registration covers printing, but not expected to be a new obligation.
 - **Allergen declaration** on packaging. Get the exact statement from the icing sheet supplier;
   typically starch, sugar, sometimes soy lecithin.
 - **GDPR.** IP hashing (never raw), stated retention windows, cleanup cron, and prompts
@@ -1240,19 +1250,20 @@ loopback disabled and a low memory limit to simulate cheap hosting, then product
 
 Nothing here blocks Phase 1.
 
-1. **Which LLM for translate + moderate?** Whichever key is easiest to get. Gemini Flash Lite
-   pairs naturally if we are already using Gemini as the image fallback — one vendor, one key.
-2. **Does the testbed use block checkout or classic?** Decides how much §13.1 cart work is
-   needed. Quick to check.
-3. **Actual printer make and model,** for the usable print area default (§3.4) and whether it
-   wants PNG or PDF.
-4. **Icing sheet supplier and exact sheet dimensions** — some "A4" edible sheets are slightly
-   undersized with a backing margin.
-5. **Real cupcake diameter sold** — I have assumed 4.5 cm to reach 24 per sheet. If it is 5 cm,
-   the sheet yields 20, and the SKU should say 20.
-6. **Free generation limit** — 5 is a guess. Tune against real conversion data once live.
-7. **Does the client want a "reprint" flow** for damaged shipments? Cheap to add now (the
-   master is already stored), annoying to retrofit.
+1. **Real cupcake diameter sold.** I have assumed 4.5 cm to reach 24 per A4. If it is 5 cm the
+   sheet yields 20, and the SKU name must say 20. Affects product naming and pricing, not code.
+2. **Printer make and model** — for the usable print area default (§3.4). Currently 200 × 287 mm,
+   a reasonable guess. Output format is settled: PNG.
+3. **Exact icing sheet dimensions.** Client says all paper is A4 but the icing sheet is slightly
+   shorter; to be corrected at a late stage. Until then the sheet size is an admin setting and
+   the imposition maths reads it, so the fix is a number, not a code change.
+4. **Which LLM for translate + moderate.** Decided by Phase 0 Suite C. Gemini Flash Lite pairs
+   naturally if Gemini is also the image fallback — one vendor, one key.
+5. **Free generation limit** — 5 is a guess. Tune against real conversion data once live.
+
+Resolved during planning: block vs classic checkout (**classic**, §13.1) · print file format
+(**PNG**, D-009) · reprint and reorder (**both in v1**, D-010) · SKU model (**product per size,
+material as variation**, D-005).
 
 ---
 
