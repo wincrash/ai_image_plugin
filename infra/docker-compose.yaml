@@ -1,0 +1,140 @@
+# Testbed for the AI Cake Topper plugin.
+#
+#   Source of truth : C:\AI_IMAGE\infra\docker-compose.yaml   (git-tracked)
+#   Deployed to     : Z:\ruslan\wordpress-test\docker-compose.yaml
+#
+# Every change from the original is marked [NEW] or [CHANGED] with the reason.
+# Nothing here touches the existing database or the themes mount, so the site
+# comes back exactly as it was.
+
+name: wordpress-test
+
+services:
+  db:
+    image: mariadb:10.11
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: my_root_secret
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp_user
+      MYSQL_PASSWORD: wp_password
+    volumes:
+      - db_data:/var/lib/mysql
+    # [NEW] Lets WordPress wait for a database that is actually accepting
+    # connections, instead of racing it on boot.
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  wordpress:
+    # [CHANGED] was `image: wordpress:latest`.
+    # Two reasons: we need Imagick guaranteed present (see Dockerfile), and
+    # `latest` silently upgrading WordPress mid-project is not what you want
+    # while debugging. Pinned to the version already running: 7.0.2 / PHP 8.3.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy      # [NEW]
+    ports:
+      - "8080:80"
+    # [NEW] API keys come from .env, which is never committed to git.
+    env_file:
+      - .env
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DEBUG: 1                # [NEW]
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_HOME',    'http://100.127.55.45:8080');
+        define('WP_SITEURL', 'http://100.127.55.45:8080');
+
+        /* [NEW] Diagnostics. Errors go to a log file, never to the page —
+           printing them would corrupt AJAX/REST JSON responses. */
+        define('WP_DEBUG_LOG',     '/var/www/html/wp-content/debug.log');
+        define('WP_DEBUG_DISPLAY', false);
+        define('SCRIPT_DEBUG',     true);
+
+        /* [NEW] 128M is not enough. An A4 print file at 300 DPI is
+           2480x3508 = 8.7M pixels, ~35MB per copy in memory before
+           compositing. This is also why `php -r 'require "wp-load.php"'`
+           currently fatals in this container. */
+        define('WP_MEMORY_LIMIT',     '512M');
+        define('WP_MAX_MEMORY_LIMIT', '512M');
+
+        /* [NEW] Plugin config. Constant-first by design: keys defined here
+           never enter wp_options, so they stay out of every DB backup.
+           Production defines the same names in wp-config.php. */
+        define('AICAKE_STORAGE_DIR', '/var/lib/aicake');
+        define('AICAKE_IP_SALT',     getenv('AICAKE_IP_SALT')    ?: 'dev-salt-not-for-production');
+        define('AICAKE_FAL_KEY',     getenv('AICAKE_FAL_KEY')    ?: '');
+        define('AICAKE_GEMINI_KEY',  getenv('AICAKE_GEMINI_KEY') ?: '');
+        define('AICAKE_OPENAI_KEY',  getenv('AICAKE_OPENAI_KEY') ?: '');
+        define('AICAKE_LLM_KEY',     getenv('AICAKE_LLM_KEY')    ?: '');
+    volumes:
+      - wp_data:/var/www/html
+      - ./themes:/var/www/html/wp-content/themes
+
+      # [NEW] Our plugin, editable from Windows, live in the container.
+      # NOTE: mounts the single plugin directory, NOT the whole plugins/
+      # folder — mounting the parent would hide WooCommerce and everything
+      # else that lives in the wp_data volume.
+      - ./plugins/ai-cake-topper:/var/www/html/wp-content/plugins/ai-cake-topper
+
+      # [NEW] Generated images. Outside the webroot, so HTTP cannot reach
+      # them at all, while still being a normal folder you can open from
+      # Windows at Z:\ruslan\wordpress-test\aicake-files\
+      - ./aicake-files:/var/lib/aicake
+
+      # [NEW] PHP limits (see php/zz-aicake.ini)
+      - ./php/zz-aicake.ini:/usr/local/etc/php/conf.d/zz-aicake.ini:ro
+
+      # [NEW] Dev-only must-use plugin: routes mail to Mailpit
+      - ./mu-plugins/00-dev-mail.php:/var/www/html/wp-content/mu-plugins/00-dev-mail.php:ro
+
+    # [NEW] Lets the container reach the host, useful when testing whether
+    # WordPress loopback requests work (the plugin's job dispatcher depends
+    # on them, with a fallback for hosts where they are blocked).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # [NEW] WP-CLI. Not a long-running service — invoke it on demand:
+  #   docker compose run --rm wpcli wp plugin list
+  #   docker compose run --rm wpcli wp option get stylesheet
+  # Shares the same volumes so it sees the same files as the site.
+  wpcli:
+    image: wordpress:cli-php8.3
+    profiles: ["tools"]
+    depends_on:
+      db:
+        condition: service_healthy
+    user: "33:33"
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
+      WORDPRESS_DB_NAME: wordpress
+    volumes:
+      - wp_data:/var/www/html
+      - ./themes:/var/www/html/wp-content/themes
+      - ./plugins/ai-cake-topper:/var/www/html/wp-content/plugins/ai-cake-topper
+      - ./aicake-files:/var/lib/aicake
+      - ./php/zz-aicake.ini:/usr/local/etc/php/conf.d/zz-aicake.ini:ro
+
+  # [NEW] Catches all outgoing mail so WooCommerce order emails can be read
+  # without sending anything to a real customer. Web UI on :8025
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: always
+    ports:
+      - "8025:8025"
+
+volumes:
+  db_data:
+  wp_data:
