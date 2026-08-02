@@ -152,4 +152,48 @@ twice, and the second version would not be the one that was actually tested.
 
 ---
 
-<!-- Next: D-013 -->
+### D-013 · GD is the target image engine; Imagick is an optional enhancement
+**2026-08-02** · client constraint
+
+The client cannot install PHP extensions on the production host, so Imagick cannot be assumed.
+Every feature must be complete and good-looking on GD. `AICAKE_FORCE_GD` defaults **on** in the
+testbed, so development happens on the production path even though the testbed has Imagick.
+
+**Why the inversion matters:** treating GD as a "fallback" leads to building against Imagick and
+discovering the gap at go-live. Treating it as the platform means the gap never exists.
+
+**What survives on GD:** everything except true ICC soft-proofing. Arc text is achievable by
+placing characters individually along the arc with per-character rotation, rather than warping
+a rendered strip. Circle masking is fast if done as per-row span fills plus an anti-aliased
+annulus, instead of a 5.9 M-iteration per-pixel loop. PNG DPI metadata needs a hand-written
+`pHYs` chunk.
+
+**What is actually lost:** ICC CMYK soft-proofing (was already v1.5 and off by default —
+replaced by a calibrated LUT approximation), and Lanczos resampling.
+
+**Knock-on:** losing Lanczos weakens the *free* local upscaler, which raises the value of paid
+Real-ESRGAN for the large SKUs. Phase 0 Suite B must therefore compare against **GD bicubic**,
+not Imagick Lanczos, or it measures a fallback we will not have.
+
+**Still to confirm:** whether the live host already ships Imagick. Most WordPress hosts do. If
+it does, it is a free quality upgrade — but nothing may depend on it.
+
+---
+
+### D-014 · GitHub remote, pushed via the server
+**2026-08-02**
+
+Remote is `github.com/wincrash/ai_image_plugin` (private). The client's Linux server has `gh`
+authenticated; the Windows machine does not, and its SSH key is not registered with GitHub.
+
+The initial push therefore went Windows → `git bundle` → server → GitHub, merging the repo's
+stub `init` commit with `--allow-unrelated-histories` rather than force-overwriting it, then
+returning the merge commit to Windows via a reverse bundle so all three stay in sync.
+
+**This is a bootstrap, not the workflow.** Adding the Windows public key
+(`~/.ssh/id_rsa.pub`, `rpace@ruslan-pc`) to the GitHub account makes `git push` work directly
+and retires the bundle dance.
+
+---
+
+<!-- Next: D-015 -->

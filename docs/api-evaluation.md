@@ -132,11 +132,17 @@ floral detail, gold, hard edges) and run each through:
 |---|---|---|
 | Real-ESRGAN 4× | ~$0.005 | Is faithful enough, actually enough? |
 | Clarity upscaler | ~$0.01–0.03 | Does the invented detail help or change the design? |
-| Imagick Lanczos 4× | $0 | How bad is free, really? |
+| **GD bicubic 4×** | $0 | The free fallback we will actually have |
+| Imagick Lanczos 4× | $0 | Reference only — see below |
 
-Judged at **100% zoom on a 2433 px crop** — i.e. how it will actually print, not shrunk to fit
-a screen. This is the test most likely to change the plan: if Lanczos is acceptable on flat
-illustration, cupcake *and* 15 cm SKUs need no paid upscale at all.
+**Compare against GD bicubic, not Imagick Lanczos.** The production host almost certainly has
+no Imagick (D-013), so measuring Lanczos would benchmark a fallback we will not get. Include
+Lanczos anyway as a reference point: it shows how much a host *with* Imagick would gain, and
+that is useful if we later find the live host has it.
+
+Judged at **100% zoom on a 2433 px crop** — how it will actually print, not shrunk to fit a
+screen. This is the test most likely to change the plan: if GD bicubic holds up on flat
+illustration, the 15 cm SKU may need no paid upscale either, and only 20 cm and A4 do.
 
 ### Suite C — translate + moderate
 

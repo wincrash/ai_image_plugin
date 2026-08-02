@@ -15,6 +15,7 @@ Written 2026-08-02. API prices verified same day (§8, sources at end).
 | Customer photo upload | **Out of scope.** Not v1, not designed for. Revisit only if v1 succeeds. |
 | SKU model | **A separate WooCommerce product per diameter/count.** Not variations. Simplifies a lot — see §4. |
 | Print file format | **PNG only.** No PDF. Removes the last hard Imagick dependency from the output path. |
+| Image engine | **GD is the target, Imagick an optional enhancement.** The client cannot install extensions on the live host. Testbed develops on the GD path by default (§9.1). |
 | Order file retention | **Permanent.** Order images live in their own folder, keyed by order, never auto-deleted. Reorder/reprint is a first-class feature. |
 | Testbed | `http://100.127.55.45:8080/` — Docker, full control, SSH open. |
 | Production | `valgomosdekoracijos.lt` — **plain WordPress, no additional services.** |
@@ -544,24 +545,71 @@ price, it is an unthrottled endpoint being hammered — §11.
 
 ## 9. Imaging engine
 
-### 9.1 Imagick with a GD fallback
+### 9.1 GD is the target. Imagick is an optional enhancement.
 
-Testbed will have Imagick. Production might not. Abstract behind `ImageEngine`:
+**The client cannot install extensions on the production host.** Imagick may or may not already
+be there — most WordPress hosts ship it, so this is worth checking rather than assuming — but
+we cannot depend on it.
 
-| Operation | Imagick | GD fallback |
+This inverts the usual framing. GD is not a degraded fallback we tolerate; **GD is the
+platform**, and every feature must be complete and good-looking on it. Imagick, where present,
+is used for a handful of quality improvements.
+
+Everything the product needs is achievable in GD:
+
+| Operation | GD implementation | Imagick, if available |
 |---|---|---|
-| Resize | `resizeImage` Lanczos | `imagescale` bicubic — visibly softer, acceptable |
-| Circle mask | `setImageMask` / composite alpha | `imagealphablending` + drawn ellipse — jaggier edges, mitigated by 4× supersampling then downscale |
-| Text | `annotateImage` + TTF | `imagettftext` — no arc support |
-| Arc / curved text | `distortImage(ARC)` | **not possible** — feature hidden if GD |
-| N-up imposition | `newImage` canvas + `compositeImage` | `imagecopyresampled` — fine |
-| CMYK soft proof | `profileImage` with ICC | **not possible** — feature hidden if GD |
-| PDF output | `setImageFormat('pdf')` | **not possible** — PNG only |
-| DPI metadata | `setImageResolution` | manual pHYs chunk write |
+| Downscale | `imagecopyresampled` — bicubic, genuinely fine for downscaling | Lanczos, marginally sharper |
+| Upscale (local fallback) | Bicubic — soft. Real weakness; see below | Lanczos, noticeably better |
+| Circle mask | Row-span alpha fill + anti-aliased annulus (§9.1.1) | `setImageMask` |
+| Straight text | `imagettftext` with TTF, full UTF-8 | `annotateImage` |
+| Text outline / shadow | Draw the glyph run 8× offset, then the fill on top | Stroke settings |
+| **Arc / curved text** | **Achievable** — per-character placement with per-call rotation (§9.4) | `distortImage(ARC)`, smoother |
+| N-up imposition | `imagecopyresampled` per cell | `compositeImage` |
+| PNG output | `imagepng` | — |
+| DPI metadata | Inject the `pHYs` chunk into the PNG bytes (~30 lines) | `setImageResolution` |
+| WebP preview | `imagewebp` (present in effectively all modern builds) | — |
+| CMYK soft proof | **Not possible without ICC** — see §9.5 | `profileImage` with an ICC profile |
 
-Capability detection at activation, stored in an option, surfaced in a **Site Health** panel
-so the client can see at a glance what their host supports. Features that need Imagick are
-hidden rather than broken.
+Only **one** feature is genuinely lost on GD: true ICC colour-managed soft-proofing. §9.5 was
+already scheduled as v1.5 and off by default, so nothing in v1 depends on it.
+
+The other real cost is **upscale quality**. GD has no Lanczos, so the free local upscaler is
+weaker than it would be with Imagick — which raises the value of the paid Real-ESRGAN path for
+the large SKUs. Phase 0 Suite B should therefore compare Real-ESRGAN against **GD bicubic**,
+not against Imagick Lanczos, or it will measure a fallback we will not have.
+
+Note that dropping PDF output (D-009) removed what would otherwise have been a second
+Imagick-only feature. PNG-only was a lucky decision.
+
+### 9.1.1 Circle masking in GD without being slow
+
+The naive approach — loop every pixel, test whether it is inside the circle, set alpha — is
+5.9 M iterations of PHP for a 2433 px topper. Slow enough to matter.
+
+Instead, for each row compute the circle's x-span analytically and clear the two outside
+segments with `imagefilledrectangle`. That is ~2 fills per row, about 4 900 operations instead
+of 5.9 M. Then anti-alias only the ~2 px annulus at the boundary per-pixel — roughly 30 k
+pixels, negligible.
+
+Result is visually indistinguishable from Imagick's mask at a fraction of the effort.
+
+**For the final print file, flatten onto white rather than keeping alpha.** On a white icing
+sheet, "no ink" and "white" are the same output, and some printer drivers mishandle alpha in
+PNGs. Keep alpha only for the on-screen preview, where the round shape needs to read as round.
+
+### 9.1.2 Develop against GD, not against Imagick
+
+The testbed has Imagick installed. Production probably will not. If we develop against Imagick
+we will discover the difference at the worst possible moment.
+
+So: **`AICAKE_FORCE_GD` defaults to on in the testbed.** All development and all screenshots
+happen on the GD path. Imagick gets switched on deliberately, to compare output quality and to
+confirm the enhancement path still works.
+
+Capability detection runs at activation, is stored in an option, and is surfaced in a **Site
+Health** panel — so before go-live we can see exactly what the real host provides rather than
+guessing.
 
 ### 9.2 Memory
 
@@ -610,8 +658,14 @@ Renderer features, in priority order:
 1. Straight text, configurable size / colour / position (top / centre / bottom).
 2. Outline or drop shadow — essential for legibility over a busy generated background.
 3. Auto-fit: shrink to fit the safe zone, wrap to a second line, never overflow.
-4. **Arc text** following the circle edge (Imagick `distortImage` with `ARC`). Extremely
-   common on round toppers. Imagick-only; hide on GD.
+4. **Arc text** following the circle edge. Extremely common on round toppers, so it needs to
+   work on the GD path — and it can. Rather than warping a rendered strip (`distortImage(ARC)`,
+   Imagick only), place each character individually: walk the arc, and for every character call
+   `imagettftext` at its own position and its own tangent angle. `imagettfbbox` gives the
+   advance width, so spacing stays correct.
+   Kerning between adjacent pairs is lost, which is invisible on the short strings this is for
+   ("Su gimtadieniu", a name). Where Imagick is available, use `distortImage` instead for a
+   smoother result — same feature, better rendering, not a different capability.
 
 The text is rendered independently at preview res and at print res from the same spec — never
 scaled up from the preview.
@@ -621,11 +675,22 @@ scaled up from the preview.
 Edible ink has a narrow gamut. Saturated blues, greens and purples print noticeably duller
 than the screen preview, which generates "it looked brighter online" complaints.
 
-Two levels:
-- **v1 (cheap):** the style suffix steers toward light backgrounds and simple bright-but-not-
-  neon palettes, plus a short note under the preview setting expectations.
-- **v1.5 (better):** Imagick `profileImage` with an sRGB → CMYK ICC profile and back, to show
-  a soft-proofed preview. Needs a profile file and Imagick. Off by default, admin toggle.
+Three levels, in the order we would actually build them:
+
+- **v1 (cheap, and the only one certain to work):** the style suffix steers toward light
+  backgrounds and bright-but-not-neon palettes, plus a short honest note under the preview.
+  Costs nothing and removes most of the complaint.
+- **v1.5, GD-compatible:** a fixed gamut-compression LUT applied in pure PHP — desaturate the
+  colours edible ink cannot reach and slightly lift the darkest tones. Not colorimetrically
+  correct, but it makes the preview *directionally* honest, which is the entire point. Works
+  without Imagick. The compression curve can be calibrated once against a real printed test
+  sheet, which is far more accurate for this specific printer and paper than a generic profile.
+- **v2, only where Imagick exists:** true `profileImage` sRGB → CMYK → sRGB round trip with an
+  ICC profile.
+
+Given the production host probably lacks Imagick (§9.1), the middle option is the realistic
+target. Calibrating it needs a printed test chart — worth doing once, at the point where real
+orders start.
 
 Dark backgrounds are worth blocking outright in the style suffix: they soak ink, look muddy,
 and genuinely taste bitter.
