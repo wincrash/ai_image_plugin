@@ -16,8 +16,41 @@ depends on the choice.
 | Phase | Status |
 |---|---|
 | 0 · API evaluation | **Deferred** to a calibration step after the plugin runs end to end (D-018). |
-| 1 · Foundation | **In progress** |
-| 2–9 | Not started |
+| 1 · Foundation | **Done and verified on the testbed.** |
+| 2 · Providers | **Next** |
+| 3–9 | Not started |
+
+### Phase 1 — what exists and was verified running
+
+Plugin activates clean on the testbed at version 0.1.0, no notices in `debug.log`, front page
+200, admin 302. 22 smoke-test assertions pass.
+
+| File | What it does |
+|---|---|
+| `ai-cake-topper.php` | Constants, SPL autoloader, PHP floor, HPOS declaration, activation hooks |
+| `src/Plugin.php` | Composition root — the only class that knows the wiring |
+| `src/Installer.php` | `dbDelta` both tables, schema version, storage root + zones |
+| `src/Capabilities.php` | GD/FreeType/WebP/memory/storage detection → two Site Health tests |
+| `src/Support/Settings.php` | Constant-first config; secrets never touch `wp_options` |
+| `src/Support/Logger.php` | Levelled logging with two-pass key redaction |
+| `src/Throttle/IdentityResolver.php` | Salted IP hash + session cookie + user, proxy-header aware |
+| `src/Throttle/RateLimiter.php` | Composite identity, per-IP daily ceiling, minimum interval |
+| `src/Throttle/BudgetGuard.php` | Daily/monthly USD ceiling, self-clearing, admin email |
+
+Verified on the running testbed: `wp_aicake_designs` (25 columns, 6 indexes),
+`wp_aicake_jobs` (9 columns, 3 indexes), `/var/lib/aicake/{sessions,orders}` writable and
+outside the webroot.
+
+**GD FreeType is present on the testbed** — the Site Health panel that reports it is now the
+mechanism for answering the same question on production, with nothing uploaded to the live shop.
+
+Two deviations from `PLAN.md`, both deliberate and commented in the code:
+
+- **JSON columns are declared `LONGTEXT`.** `dbDelta` cannot compare a JSON column against its
+  own definition and re-issues an `ALTER` on every page load. MariaDB aliases JSON to LONGTEXT
+  anyway, so nothing is lost.
+- **Secrets have no `wp_options` fallback.** `PLAN.md` §16 allows one; `CLAUDE.md` forbids it and
+  wins. A missing key is a configuration error the settings screen reports.
 
 ## Blocked on
 
@@ -65,6 +98,18 @@ The testbed is up and the repository is on GitHub.
 | SMB | `Z:\ruslan\wordpress-test` — readable **and writable** |
 | SSH | `ssh ruslan@ruslan-server` — key auth, works non-interactively |
 | Browser | Ruslan's Chrome is connectable if a logged-in session is needed |
+
+**`sudo` over SSH needs an interactive password — it is not available to Claude Code.** But
+`ruslan` is in the `docker` group, which is root-equivalent and needs no password. That is the
+route for anything requiring privilege:
+
+```bash
+docker run --rm -v /home/ruslan/wordpress-test/plugins:/t wordpress-test-wordpress chown -R 1000:1000 /t
+```
+
+**Docker creates missing bind-mount directories as `root:root`.** `plugins/` and
+`plugins/ai-cake-topper/` were root-owned, so `sync.ps1` failed with `ERROR 5 Access is denied`.
+Fixed by the command above. It will recur if those directories are ever deleted and recreated.
 
 **SSH is restricted by agreement to `/home/ruslan/wordpress-test`.** Do not touch anything else
 on that server.
@@ -158,24 +203,36 @@ C:\AI_IMAGE\
 
 ## Next actions
 
-**Phase 1 — foundation** (`PLAN.md` §21). Nothing here is provider-specific.
+**Phase 2 — providers** (`PLAN.md` §21). The three interfaces from §8.5, a registry with a
+fallback chain, and a "Test provider" admin screen.
 
-1. Plugin skeleton + hand-rolled SPL autoloader, `plugin/ai-cake-topper/`.
-2. Tables (`PLAN.md` §4.4), settings with constant-first keys, capability detection.
-3. Site Health panel — reports GD, **FreeType**, memory, storage root. This is also how the
-   open FreeType question gets answered on the live host without uploading a diagnostic.
-4. Logger, rate limiter, **budget guard**. Per §21, nothing spends money until the guard exists.
+1. `Support/Http.php` — `wp_remote_*` wrapper with timeouts, retries and key redaction.
+2. `Providers/{ImageProvider,UpscaleProvider,TextProvider}.php` — the §8.5 interfaces.
+3. `Providers/Image/ReplicateProvider.php` against `black-forest-labs/flux-dev`, which is the
+   one image model we can call for free today.
+4. `Providers/Text/GeminiTextProvider.php` — translate + moderate in one call, free tier.
+5. `ProviderRegistry` with primary → fallback, recording which provider actually served.
+6. "Test provider" admin screen — per §8.5 this is how the provider decision actually gets made.
 
-Then Phase 2 wires the free stack above behind the §8.5 interfaces, adding a `ReplicateProvider`
-alongside the planned fal and Gemini adapters.
+**Requires a container rebuild before Phase 2 can read the Replicate key:**
+
+```bash
+cd /home/ruslan/wordpress-test && docker compose up -d --build
+```
+
+That picks up `AICAKE_REPLICATE_KEY` and `AICAKE_FORCE_GD` from the compose file, plus wp-cli
+and the mysql client now baked into the Dockerfile. Without it, `AICAKE_REPLICATE_KEY` is
+undefined inside the container and the smoke test skips the real-key redaction assertion.
 
 Housekeeping, not blocking:
 
-- Add `AICAKE_REPLICATE_KEY` to `infra/.env.example`.
 - `PLAN.md` §8 predates the Replicate finding and still reads as though fal is the only image
-  candidate. Reconcile when the provider decision is actually made, not before.
+  candidate. §19 lists provider files that no longer match. Reconcile when the provider decision
+  is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
+- No unit tests yet. `tests/` is specified in §19 for `Mm`, `SheetLayout` and `LtNormaliser`;
+  none of those classes exist yet, so there is nothing to test that is not WordPress-bound.
 
 ## Open items, not blocking
 

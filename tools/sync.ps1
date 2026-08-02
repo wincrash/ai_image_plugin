@@ -28,7 +28,17 @@ $pluginDst = Join-Path $Target 'plugins\ai-cake-topper'
 if (Test-Path $pluginSrc) {
     New-Item -ItemType Directory -Force -Path $pluginDst | Out-Null
     # /MIR mirrors. Exit codes 0-7 are success for robocopy; 8+ is a real failure.
-    robocopy $pluginSrc $pluginDst /MIR /NFL /NDL /NJH /NJS /NP /XD .git node_modules /XF *.log
+    #
+    # /COPY:DT and /DCOPY:T copy data and timestamps but NOT attributes. The
+    # target is a Samba share with no concept of Windows file attributes, so
+    # the default /COPY:DAT fails with "ERROR 5 Access is denied" on every
+    # directory and then sits in a 30-second retry loop.
+    #
+    # /R:1 /W:1 caps that retry loop at one second instead of thirty, so a
+    # genuine permission problem surfaces immediately rather than looking
+    # like a hang.
+    robocopy $pluginSrc $pluginDst /MIR /COPY:DT /DCOPY:T /R:1 /W:1 `
+        /NFL /NDL /NJH /NJS /NP /XD .git node_modules /XF *.log
     if ($LASTEXITCODE -ge 8) { Write-Error "robocopy failed ($LASTEXITCODE)" }
     Write-Host "plugin  -> $pluginDst" -ForegroundColor Green
 } else {

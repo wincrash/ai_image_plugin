@@ -2,15 +2,15 @@
 # silently upgrade WordPress underneath us mid-project.
 FROM wordpress:7.0.2-php8.3-apache
 
-# Imagick is needed for the parts of the image pipeline GD cannot do well:
-#   - circle masks with clean anti-aliased edges
-#   - arc / curved text along a topper's edge
-#   - CMYK soft-proofing for the narrow edible-ink gamut
-#   - Lanczos resampling (visibly better than GD's bicubic on flat artwork)
+# Imagick is kept here as a REFERENCE ENGINE ONLY.
 #
-# The plugin has a GD fallback for all of it except arc text and CMYK, because
-# production hosting may not have Imagick. But the testbed should have it, so
-# we develop against the good path and test the fallback deliberately.
+# This comment used to say we develop against Imagick and treat GD as the
+# fallback. That was reversed by D-013/D-015: production is a managed platform
+# with GD only and no way to add system packages, so GD is the real target and
+# AICAKE_FORCE_GD defaults on. Development runs the path the customer runs.
+#
+# Imagick stays installed for one purpose: measuring what a host *with* it
+# would gain (Lanczos vs GD bicubic, CMYK soft-proofing). Never a dependency.
 #
 # Installed only if absent — the official image ships it in some builds.
 RUN set -eux; \
@@ -23,3 +23,20 @@ RUN set -eux; \
     fi; \
     echo "--- PHP image extensions ---"; \
     php -m | grep -iE '^(gd|imagick|exif)$' || true
+
+# wp-cli. Activating the plugin, inspecting the schema and running smoke tests
+# all go through it, and installing it by hand into a running container is lost
+# the moment the container is recreated.
+RUN set -eux; \
+    curl -sL https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar \
+        -o /usr/local/bin/wp; \
+    chmod +x /usr/local/bin/wp; \
+    wp --allow-root --version
+
+# The mysql client, so `wp db query` works. Without it wp-cli fails with
+# "Failed to get current SQL modes" and every schema check has to be rewritten
+# as a $wpdb call.
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends default-mysql-client; \
+    rm -rf /var/lib/apt/lists/*

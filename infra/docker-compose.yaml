@@ -77,6 +77,12 @@ services:
         define('AICAKE_GEMINI_KEY',  getenv('AICAKE_GEMINI_KEY') ?: '');
         define('AICAKE_OPENAI_KEY',  getenv('AICAKE_OPENAI_KEY') ?: '');
         define('AICAKE_LLM_KEY',     getenv('AICAKE_LLM_KEY')    ?: '');
+        define('AICAKE_REPLICATE_KEY', getenv('AICAKE_REPLICATE_KEY') ?: '');
+
+        /* Develop on the production path: production has GD only, the testbed
+           has Imagick, and without this we would build against an engine the
+           customer never runs (D-013/D-015). */
+        define('AICAKE_FORCE_GD', true);
     volumes:
       - wp_data:/var/www/html
       - ./themes:/var/www/html/wp-content/themes
