@@ -619,14 +619,25 @@ Site Health does not report it, and **the entire text layer depends on it.**
 `imagettftext()` needs GD compiled with FreeType. Without it there is no TrueType rendering at
 all — GD's built-in bitmap fonts are tiny, ugly and unusable on a cake topper.
 
-Bundled GD is compiled with FreeType on essentially every managed WordPress host, so this is
-very likely fine. But "very likely" is not good enough for the feature the product is built on,
-so `tools/host-check.php` verifies it directly — and goes further by rendering
-`ĄČĘĖĮŠŲŪŽ ąčęėįšųūž` and counting ink, which proves diacritics actually come out rather than
-trusting a capability flag.
+Bundled GD is compiled with FreeType on essentially every managed WordPress host. There is also
+direct evidence in the Site Health output above: **that GD build supports WebP**, which requires
+an explicit `--with-webp` at compile time — a *rarer* configure flag than FreeType. A build with
+WebP almost certainly has FreeType too.
+
+So we proceed on the assumption it is present, and confirm before Phase 4 rather than now. The
+client reasonably declined to upload a diagnostic to a live shop, and nothing in Phases 0–3
+touches text rendering.
+
+Three ways to confirm, cheapest first:
+
+1. Hosting control panel → PHP info / extensions. Read-only, uploads nothing.
+2. The plugin's own Site Health panel, which reports it at activation — i.e. on the day we
+   install on live, before any customer sees anything.
+3. `tools/host-check.php`, held in reserve. It goes further than a capability flag by rendering
+   `ĄČĘĖĮŠŲŪŽ ąčęėįšųūž` and counting ink, proving diacritics actually come out.
 
 If FreeType turned out to be missing, that — and only that — would justify reconsidering the
-architecture. Everything else already works.
+architecture. Everything else already works on GD.
 
 ### 9.1.3 Do we need an external render server? No.
 

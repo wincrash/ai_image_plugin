@@ -79,8 +79,23 @@ From wp-admin → Site Health → Media Handling:
 **No external render server is needed** — GD + pure PHP + the AI APIs cover everything
 (`PLAN.md` §9.1.3, D-015).
 
-**Unverified and critical: GD FreeType support.** Site Health does not report it and the whole
-text layer depends on it. Run `tools/host-check.php` on the live host to confirm.
+**GD FreeType: assumed present, not yet verified.** Site Health does not report it and the text
+layer depends on it. The client declined to upload a diagnostic to the live shop — reasonable,
+and it is not needed yet.
+
+Confidence is high on indirect evidence: **the reported GD build supports WebP**, which requires
+an explicit `--with-webp` at compile time. That is a *rarer* flag than FreeType, so a build with
+WebP almost certainly has FreeType too, which is near-universal in distro and control-panel PHP
+builds. Call it >95%.
+
+**Needs resolving before Phase 4** (imaging), not before. Phases 0–3 do not touch text rendering.
+Three ways, cheapest first:
+1. Hosting control panel → PHP info / extensions page. Read-only, uploads nothing. Look for
+   `freetype`.
+2. The plugin's own Site Health panel reports it at activation, before any customer sees anything.
+3. `tools/host-check.php` (token `sJE1SqqPpbsqAjX7HKOjhl-0`) — upload, read, delete. Also checks
+   large-canvas allocation, a writable dir outside the webroot, loopback, and outbound
+   reachability to fal/Google. Held in reserve.
 
 Note: the separate **theme** project also lives on this share (`Z:\...\themes\`) with its own
 `CLAUDE.md`. This project does not touch it.
@@ -122,10 +137,8 @@ C:\AI_IMAGE\
 
 ## Open items, not blocking
 
-- **Run `tools/host-check.php` on the live host.** Confirms GD FreeType (critical — the text
-  layer needs it), whether a 4096×4096 canvas can be allocated, whether a directory outside the
-  webroot is writable, whether loopback requests work, and whether fal/Google are reachable
-  outbound. Change the token at the top, upload, open with `?token=…`, read, **delete**.
+- **Confirm GD FreeType on the live host before Phase 4** — see Production above. Not urgent,
+  high confidence, three ways to check. Do not push the client to upload things to the live shop.
 - Cupcake diameter assumed 4.5 cm → 24 per A4. Confirm against what is actually sold; 5 cm
   yields 20 and the SKU name must match.
 - Printer make/model unknown → usable print area defaults to 200 × 287 mm.
