@@ -22,7 +22,7 @@ class Installer {
 	 * Bumped whenever the SQL below changes. Separate from the plugin version
 	 * so a plugin release with no schema change costs nothing on upgrade.
 	 */
-	public const SCHEMA_VERSION = 2;
+	public const SCHEMA_VERSION = 3;
 
 	public const SCHEMA_OPTION = 'aicake_schema_version';
 
@@ -122,6 +122,8 @@ class Installer {
 			user_id BIGINT UNSIGNED DEFAULT NULL,
 			product_id BIGINT UNSIGNED DEFAULT NULL,
 			variation_id BIGINT UNSIGNED DEFAULT NULL,
+			format_type VARCHAR(16) DEFAULT NULL,
+			format_mm DECIMAL(6,2) DEFAULT NULL,
 			prompt_raw TEXT NOT NULL,
 			prompt_en TEXT DEFAULT NULL,
 			prompt_final TEXT DEFAULT NULL,

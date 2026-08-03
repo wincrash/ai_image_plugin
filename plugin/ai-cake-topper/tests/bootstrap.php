@@ -31,6 +31,39 @@ require_once __DIR__ . '/../src/Support/Settings.php';
 require_once __DIR__ . '/../src/Support/Logger.php';
 require_once __DIR__ . '/../src/Imaging/GdEngine.php';
 
+/*
+ * FormatCatalogue and PrintSpec are pure arithmetic over Mm and SheetLayout,
+ * but they build customer-facing labels, so they reach for `__()`. Stubbing it
+ * keeps the catalogue testable without WordPress — and the catalogue is worth
+ * testing outside WordPress, because it is the thing that decides what physical
+ * size a customer is sold.
+ *
+ * `PrintSpec::for_product()` does touch `get_post_meta()`. Nothing here calls
+ * it; the format path never reads product meta, which is the point of D-035.
+ */
+if ( ! function_exists( '__' ) ) {
+	/**
+	 * @param string $text   Text.
+	 * @param string $domain Text domain.
+	 */
+	function __( string $text, string $domain = 'default' ): string { // phpcs:ignore
+		return $text;
+	}
+}
+
+if ( ! function_exists( 'number_format_i18n' ) ) {
+	/**
+	 * @param float $number   Number.
+	 * @param int   $decimals Decimals.
+	 */
+	function number_format_i18n( $number, int $decimals = 0 ): string { // phpcs:ignore
+		return number_format( (float) $number, $decimals );
+	}
+}
+
+require_once __DIR__ . '/../src/Domain/PrintSpec.php';
+require_once __DIR__ . '/../src/Domain/FormatCatalogue.php';
+
 /**
  * Where the bundled fonts live.
  */

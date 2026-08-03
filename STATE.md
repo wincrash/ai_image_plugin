@@ -550,7 +550,33 @@ Three sessions' worth of design discussion, agreed in principle, **no code writt
   as its own labelled row on the line. So AI generation is one more WCFF field with a price
   rule, and Ruslan edits prices exactly where he does today.
 
-None is scheduled against Phase 8. Read all three before starting any.
+### Being built now — the D-035…D-039 model
+
+**Step 1 done: the money path** (D-036). `WooCommerce/FieldsFactory.php` + `tools/wcff-check.php`,
+18 assertions. Product `ai-paveikslelis` on the testbed charges 3.50 / 4.50 / 5.00 by sheet type,
++1.00 with AI, all of it WCFF's doing.
+
+**Step 2 done: the geometry.**
+
+| File | What it does |
+|---|---|
+| `Domain/FormatCatalogue.php` | The three format types; hardcoded size lists, **derived** arrangement |
+| `Domain/PrintSpec.php` | Gains `for_design()` — design → variation → product → default |
+| `Imaging/SheetLayout.php` | Usable area now **210 × 282 mm** (D-039), plus `ICING_SHORTFALL_MM` |
+| `Admin/FormatsPage.php` | Every offered format drawn to scale on one page (D-038) |
+| `Installer.php` | Schema **3** — `format_type`, `format_mm` on `aicake_designs` |
+
+Verified on the testbed: the admin page renders all 16 formats, none unfit, counts matching §3.5
+exactly — A4, ⌀20…15 cm yield 1, ⌀14…11 cm yield 2, ⌀10 cm yields 4, cupcakes 35 / 24 / 20 / 12.
+
+> **`order-check.php`'s sheet assertion is now derived, not typed.** It was `array( 2363, 3390 )`
+> — right for the assumed 200 × 287 and wrong the moment D-039 corrected it. A frozen number
+> there goes red for the right reason and then gets "fixed" by pasting in whatever the code
+> produced, which asserts nothing. It now reads the usable-area constants.
+
+**Step 3 next: wizard step 1** — format + sheet type, resolving to the product.
+
+None of D-033/034 is scheduled against Phase 8. Read all of D-033 → D-039 before starting any.
 
 **Next concrete step for this thread: install WC Fields Factory 4.1.9 on the testbed** — the same
 build as production, not the wordpress.org one, because pricing behaviour is where those differ.
@@ -592,10 +618,12 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- **Three suites, all committed and all green:** `tests/run.php` (152 pure-PHP assertions),
+- **Four suites, all committed and all green — 304 assertions:** `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
-  a real order end to end). The last two test the *deployed* copy, so sync first. `rest-check.sh`
-  was falsified before being trusted — reintroducing D-025 turns 5 of its 12 red.
+  a real order end to end), `tools/wcff-check.php` (18, the money path). The last three test the
+  *deployed* copy, so sync first. Both `rest-check.sh` and `wcff-check.php` were falsified before
+  being trusted — reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of
+  the 18 red.
 
 - **The plugin's logging is invisible under WP-CLI**, and so is WooCommerce's own: a
   `wc_get_logger()->warning()` from `wp eval` reaches no file, while the same call over HTTP

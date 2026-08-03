@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AiCake;
 
 use AiCake\Admin\BlocklistPage;
+use AiCake\Admin\FormatsPage;
 use AiCake\Admin\OrderScreen;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
@@ -285,6 +286,7 @@ class Plugin {
 			) )->register();
 
 			( new BlocklistPage( $this->moderator ) )->register();
+			( new FormatsPage() )->register();
 
 			if ( class_exists( 'WooCommerce' ) ) {
 				( new OrderScreen( $this->designs, $this->fulfilment ) )->register();

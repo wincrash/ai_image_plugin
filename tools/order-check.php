@@ -318,9 +318,23 @@ if ( is_readable( $single_print ) ) {
 
 if ( is_readable( $sheet_print ) ) {
 	$s = getimagesize( $sheet_print );
-	// Usable area 200 x 287 mm at 300 dpi. 2363 not 2362: Mm::to_px ceils,
-	// because a pixel short is a visible white edge on the cut line.
-	aicake_check( '24-up sheet is the usable A4 area', array( 2363, 3390 ), array( $s[0], $s[1] ) );
+	/*
+	 * Derived from the usable area rather than typed, and that is the point.
+	 * This assertion was `array( 2363, 3390 )` — correct for the 200 × 287 mm
+	 * the printer was assumed to have, and wrong the moment D-039 measured it
+	 * as 210 × 282. A frozen number here would have gone red for the right
+	 * reason and then been "fixed" by pasting in whatever the code produced,
+	 * which asserts nothing. This still fails if the imposition stops using
+	 * the usable area at all.
+	 */
+	aicake_check(
+		'24-up sheet is the usable A4 area',
+		array(
+			AiCake\Support\Mm::to_px( AiCake\Imaging\SheetLayout::USABLE_WIDTH_MM ),
+			AiCake\Support\Mm::to_px( AiCake\Imaging\SheetLayout::USABLE_HEIGHT_MM ),
+		),
+		array( $s[0], $s[1] )
+	);
 }
 
 /* -------------------------------------------------------------- sidecar */

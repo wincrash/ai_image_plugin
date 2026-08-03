@@ -99,22 +99,27 @@ class SheetLayoutTest extends TestCase {
 	 * Slack becomes margins, and the admin is told when it does not.
 	 *
 	 * The headline 4.5 cm SKU is a good illustration of why this flag exists.
-	 * Across the width it has 4 mm of gutter, comfortably more than the 3 mm
-	 * bleed. Down the height it has only 2.43 mm — (287 − 6 × 45) ÷ 7 — so the
+	 * Across the width it has 6 mm of gutter, comfortably more than the 3 mm
+	 * bleed. Down the height it has only 1.71 mm — (282 − 6 × 45) ÷ 7 — so the
 	 * top and bottom rows *do* get their bleed clipped, which is not obvious
 	 * from looking at the sheet. Both axes are checked, and the flag reports
 	 * the worse of the two.
+	 *
+	 * These numbers moved with the usable area (D-039): 210 × 282 rather than
+	 * 200 × 287. They are asserted to the millimetre on purpose — the whole
+	 * argument for deriving layouts instead of freezing them is that this
+	 * arithmetic changes when the paper does, and silently.
 	 */
 	public function test_slack_becomes_gutters_and_clipping_is_reported(): void {
 		$plan = SheetLayout::plan( 45.0 );
 
-		$this->assert_close( 4.0, $plan['gutter_x_mm'], 0.01, '4.5 cm: 20 mm of horizontal slack across 5 gaps' );
-		$this->assert_close( 2.43, $plan['gutter_y_mm'], 0.01, '4.5 cm: only 17 mm of vertical slack across 7 gaps' );
+		$this->assert_close( 6.0, $plan['gutter_x_mm'], 0.01, '4.5 cm: 30 mm of horizontal slack across 5 gaps' );
+		$this->assert_close( 1.71, $plan['gutter_y_mm'], 0.01, '4.5 cm: only 12 mm of vertical slack across 7 gaps' );
 		$this->assert_true( $plan['bleed_clipped'], '4.5 cm: the tighter axis wins, so clipping is reported' );
 
-		// 4.0 cm divides the width exactly, leaving no margin at all.
+		// 4.0 cm leaves 10 mm across the width, spread over six gaps.
 		$tight = SheetLayout::plan( 40.0 );
-		$this->assert_close( 0.0, $tight['gutter_x_mm'], 0.001, '4.0 cm divides exactly, no slack' );
+		$this->assert_close( 1.67, $tight['gutter_x_mm'], 0.01, '4.0 cm: 10 mm across six gaps' );
 		$this->assert_true( $tight['bleed_clipped'], '4.0 cm bleed is clipped, and says so' );
 
 		// A circle with room on both axes reports no clipping.

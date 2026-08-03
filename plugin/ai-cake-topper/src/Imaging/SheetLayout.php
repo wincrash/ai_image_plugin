@@ -27,15 +27,24 @@ defined( 'ABSPATH' ) || exit;
 final class SheetLayout {
 
 	/**
-	 * Usable print area, not paper size (§3.4).
+	 * Usable print area (§3.4, D-039).
 	 *
-	 * Edible printers cannot reach the sheet edge. These are the defaults for
-	 * an A4 sheet on a Canon TS-series with edible cartridges; the real
-	 * printer is unknown, so it is an admin setting and getting it wrong
-	 * ruins whole sheets.
+	 * **Full A4 width, and A4 height less the 15 mm at the end that carries no
+	 * icing.** No printer margins are deducted: Ruslan prints ⌀20 cm circles
+	 * routinely, which a 5 mm margin would make impossible (200 + 6 mm bleed
+	 * against a 210 mm sheet needs every millimetre). The earlier 200 × 287
+	 * came from a spec sheet rather than from the printer, and was wrong.
+	 *
+	 * Still admin settings, because the icing shortfall is a property of the
+	 * sheets being bought. Getting them wrong ruins whole sheets.
 	 */
-	public const USABLE_WIDTH_MM  = 200.0;
-	public const USABLE_HEIGHT_MM = 287.0;
+	public const USABLE_WIDTH_MM  = 210.0;
+	public const USABLE_HEIGHT_MM = 282.0;
+
+	/**
+	 * The bare strip at the end of the icing sheet, along the feed direction.
+	 */
+	public const ICING_SHORTFALL_MM = 15.0;
 
 	/**
 	 * Not instantiable.

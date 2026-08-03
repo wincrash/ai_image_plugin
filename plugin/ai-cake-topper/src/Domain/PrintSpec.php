@@ -15,17 +15,22 @@ use AiCake\Support\Mm;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The print geometry for one product (PLAN.md §4.2).
+ * The print geometry for one design (PLAN.md §4.2).
  *
- * §4.1's model is the reason this class is simple: **size and count are
- * products, material is a variation.** Because each diameter is its own
- * product, the aspect ratio is known at page load, before the customer types
- * anything — which makes the "generated a square then switched to A4" problem
- * disappear rather than need handling.
+ * **Geometry comes from the design, not the product** (D-035). There is one AI
+ * product; the customer picks a format in the wizard at step 1, before anything
+ * is generated, and that choice is recorded on the design row. So the aspect
+ * ratio is still fixed before the customer types anything — which is what made
+ * the old "one product per size" model worth having — without ten products to
+ * keep in sync.
+ *
+ * Resolution order is **design → variation meta → product meta → default**
+ * (§4.2). The three later sources cost nothing and are the escape hatch for a
+ * one-off product that needs geometry of its own.
  *
  * Nothing about a 24-up cupcake sheet is special-cased. It is
- * `shape=round, width_mm=45, copies=24, sheet=a4`, and the imposition falls
- * out of the geometry (§3.5).
+ * `shape=round, width_mm=45, copies=24`, and the imposition falls out of the
+ * geometry (§3.5).
  */
 class PrintSpec {
 
@@ -64,11 +69,42 @@ class PrintSpec {
 	) {}
 
 	/**
+	 * The spec for a design, falling back to its product.
+	 *
+	 * This is the resolution order §4.2 specifies, and the only entry point
+	 * the pipeline should use: a design that recorded a format is authoritative
+	 * about its own geometry, because that is what the customer chose and saw
+	 * proofed. Product meta answers only when the design did not.
+	 *
+	 * An unrecognised format falls through rather than throwing. The catalogue
+	 * can legitimately shrink — a size withdrawn from sale — and an old design
+	 * must still be reprintable from the product's own geometry (§12.6).
+	 *
+	 * @param array<string, mixed> $design Design row.
+	 */
+	public static function for_design( array $design ): self {
+		$type = (string) ( $design['format_type'] ?? '' );
+
+		if ( '' !== $type ) {
+			$spec = FormatCatalogue::spec( $type, (float) ( $design['format_mm'] ?? 0.0 ) );
+
+			if ( $spec instanceof self ) {
+				return $spec;
+			}
+		}
+
+		return self::for_product(
+			(int) ( $design['product_id'] ?? 0 ),
+			(int) ( $design['variation_id'] ?? 0 )
+		);
+	}
+
+	/**
 	 * Read the spec for a product, honouring a variation override.
 	 *
 	 * Resolution order is variation meta → product meta → default (§4.2). The
-	 * variation layer exists so that if a material ever does need a different
-	 * bleed or DPI, it works without restructuring — not because any material
+	 * variation layer exists so that if a sheet type ever does need a different
+	 * bleed or DPI, it works without restructuring — not because any sheet type
 	 * currently does.
 	 *
 	 * @param int $product_id   Product id.
