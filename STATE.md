@@ -8,10 +8,9 @@ Phase 0 deferred to a later calibration step (D-018).
 > "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
 > suggestion button, and the print path composites the text layer.**
 >
-> **Start here: Ruslan reported problems with „Pasiūlyk dizainą" and the session reset before
-> he said what they were. Ask him first.** Triage notes are in "Next actions". The *other* bug
-> he reported — „Užrašo dydis netinka." — is fixed (D-043).
-> After that: step 4, the proof, and the cart hand-off.
+> **Both bugs Ruslan reported are dealt with.** „Užrašo dydis netinka." is fixed (D-043);
+> „Pasiūlyk dizainą" works today and he parked it until it recurs — see "Next actions".
+> **Start here: wizard step 4 — the proof, and the cart hand-off.**
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -556,36 +555,36 @@ declared `/generate` route args.
 > internal function refuses them in PHP 8 — `absint` and `sanitize_key` survive only because they
 > are userland. The declared `type` is what casts. Caught by `wizard-check.php`, as a fatal.
 
-### ⚠ Also open, reported but not diagnosed: „Pasiūlyk dizainą" misbehaves
+### „Pasiūlyk dizainą" — parked by Ruslan, and it works today
 
-**Ruslan, 2026-08-03, end of session: "some problems with Pasiūlyti dizainą".** No detail was
-captured before the session reset — **ask him what he saw before assuming any of the below.**
-It worked when built (a real call returned three sensible lines), so this is a regression, an
-intermittent path, or a usability problem rather than a dead feature.
+**Ruslan, 2026-08-03: he no longer remembers what he saw and asked to leave it** — he will report
+it again if it recurs. Not closed as fixed, closed as unreproducible. Two things were measured
+before parking it, so a future report starts from evidence:
 
-Triage in this order, cheapest first:
+- **The suggestion path works against the live API.** „Su gimtadieniu Ąžuolas 5 metai" came back
+  as three lines, the name largest and gold, outlined, every word preserved.
+- **The word-preservation clamp has never fired over real HTTP.** Not one
+  `Layout suggestion changed the text and was discarded` line exists in the wc-logs — so the
+  candidate the previous session called most likely is the one thing ruled out.
 
-1. **Read the log.** A discarded suggestion is recorded deliberately, with both strings:
-   `Layout suggestion changed the text and was discarded {"typed":…,"suggested":…}`. If that line
-   is frequent, the word-preservation check in `LayoutSuggester::clamp()` is the cause and the
-   customer just sees „Šįkart pasiūlymo nepavyko sugalvoti". **Most likely candidate.** Logs are
-   in `wp-content/uploads/wc-logs/` over HTTP — *not* under WP-CLI, where plugin logging is
-   invisible (see the note further down).
-2. **Temperature is 0.9**, chosen so pressing twice offers something different. That also means
-   the model sometimes returns a split that fails the word check where a colder one would not.
-   The fix is not simply to lower it — the check is doing its job — but the *rate* matters.
-3. **The cooldown is 3 s** (`LayoutEndpoint::MIN_INTERVAL`). Two quick presses give a 429 and
-   „Palaukite akimirką", which reads as broken rather than as throttling.
-4. **Every failure is deliberately quiet** — an unconfigured key, a refused call and a useless
-   answer all return 200 with no lines (D-041). Good for customers, poor for diagnosis: the
-   browser cannot tell those apart. Consider a distinguishing field for logged-in admins.
-5. **`arrange()` runs only on a suggestion**, not on manual edits. If the complaint is about
-   overlap *after* editing, that is why, and it is by design — re-flowing on every change would
-   undo dragging.
+**The likeliest remaining explanation, and it is a design tension rather than a fault:** two
+presses in a row return **429 „Palaukite akimirką ir bandykite dar kartą."** — measured, first
+200, second refused. Temperature is 0.9 *specifically so that pressing twice offers something
+different*, which invites the second press that the 3 s cooldown then refuses. Whether the
+cooldown should be shorter, or the button disabled with a countdown instead, is Ruslan's call —
+left alone deliberately.
 
-What is known good: the endpoint, the clamp and the word check have 16 unit assertions over a
-stubbed `HttpClient` (`tests/LayoutSuggesterTest.php`), and none of them need the network. If
-those pass, the fault is in the live call, the prompt, or the browser side — not in the clamp.
+Also worth knowing when it comes back:
+
+- **Every failure is deliberately quiet** — an unconfigured key, a refused call and a useless
+  answer all return 200 with no lines (D-041). Good for customers, poor for diagnosis: the
+  browser cannot tell those apart. Consider a distinguishing field for logged-in admins.
+- **`arrange()` runs only on a suggestion**, not on manual edits. If the complaint is about
+  overlap *after* editing, that is why, and it is by design — re-flowing on every change would
+  undo dragging.
+- The endpoint, the clamp and the word check have 16 unit assertions over a stubbed `HttpClient`
+  (`tests/LayoutSuggesterTest.php`) and need no network. If those pass, the fault is in the live
+  call, the prompt, or the browser side — not in the clamp.
 
 ---
 
