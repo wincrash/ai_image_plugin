@@ -8,8 +8,15 @@
  *
  * or, the way it is actually invoked from the host:
  *
- *   docker exec wordpress-test-wordpress-1 \
- *     wp eval-file /var/lib/aicake/order-check.php --allow-root --path=/var/www/html
+ *   docker compose exec -u www-data wordpress \
+ *     wp eval-file /var/lib/aicake/order-check.php --path=/var/www/html
+ *
+ * **Run it as the web user, never as root.** This creates
+ * `orders/YYYY/MM/<id>/`, and the dated parent is created by whoever gets
+ * there first. Run as root — which is what `--allow-root` means — and that
+ * parent ends up owned by root while PHP runs as the web user, so the next
+ * real order cannot create its folder and dies with "Nepavyko įrašyti
+ * spausdinimo failo." The gate passes and the shop breaks (D-031).
  *
  * The master is synthetic on purpose, and stays that way now that fal is
  * funded (D-030): quadrants, a ring at the trim line and an up-marker make a

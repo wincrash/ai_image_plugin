@@ -99,6 +99,17 @@ class Capabilities {
 	 * the only check that answers the real question. Cached, because the admin
 	 * notice consults it on every page load.
 	 *
+	 * **Both zones, not just `sessions/`.** `orders/YYYY/MM/` has the identical
+	 * failure mode and a worse consequence: the customer has already paid, the
+	 * image already exists, and fulfilment dies on the one step that cannot be
+	 * skipped. It is also the likelier of the two to be poisoned, because it is
+	 * created by whatever first archives an order — including a maintenance or
+	 * test run made from the command line as root (D-031).
+	 *
+	 * The dated directory is what gets probed rather than the zone root: the
+	 * per-order folder is created inside it, so its ownership is what decides
+	 * whether `mkdir` succeeds.
+	 *
 	 * @param string $root Storage root.
 	 */
 	private function can_actually_write( string $root ): bool {
@@ -108,22 +119,33 @@ class Capabilities {
 			return 'yes' === $cached;
 		}
 
-		$dir = $root . '/sessions/' . gmdate( 'Y/m' );
-		$ok  = false;
-
-		if ( is_dir( $dir ) || wp_mkdir_p( $dir ) ) {
-			$probe = $dir . '/.aicake-write-test';
-
-			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.PHP.NoSilencedErrors.Discouraged
-			$ok = false !== @file_put_contents( $probe, 'ok' );
-
-			if ( $ok ) {
-				// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.PHP.NoSilencedErrors.Discouraged
-				@unlink( $probe );
-			}
-		}
+		$ok = $this->probe_zone( $root . '/sessions/' . gmdate( 'Y/m' ) )
+			&& $this->probe_zone( $root . '/orders/' . gmdate( 'Y/m' ) );
 
 		set_transient( 'aicake_storage_writable', $ok ? 'yes' : 'no', 5 * MINUTE_IN_SECONDS );
+
+		return $ok;
+	}
+
+	/**
+	 * Create one dated directory and write a file into it.
+	 *
+	 * @param string $dir Absolute path to the dated directory.
+	 */
+	private function probe_zone( string $dir ): bool {
+		if ( ! is_dir( $dir ) && ! wp_mkdir_p( $dir ) ) {
+			return false;
+		}
+
+		$probe = $dir . '/.aicake-write-test';
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents, WordPress.PHP.NoSilencedErrors.Discouraged
+		$ok = false !== @file_put_contents( $probe, 'ok' );
+
+		if ( $ok ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.unlink_unlink, WordPress.PHP.NoSilencedErrors.Discouraged
+			@unlink( $probe );
+		}
 
 		return $ok;
 	}
@@ -280,11 +302,11 @@ class Capabilities {
 		if ( ! $r['storage_writable'] ) {
 			$result['status'] = 'critical';
 			$result['label']  = __( 'Generated images cannot be saved', 'ai-cake-topper' );
-			$notes[]          = __( 'A test write into the sessions folder failed, so every generation will be paid for and then thrown away.', 'ai-cake-topper' );
+			$notes[]          = __( 'A test write failed. In the sessions folder that means every generation is paid for and then thrown away; in the orders folder it means a paid order cannot be turned into a print file.', 'ai-cake-topper' );
 			$notes[]          = sprintf(
 				/* translators: %s: the storage path */
-				__( 'The usual cause is ownership: if the plugin was activated over WP-CLI as root, the folders under %s belong to root while PHP runs as the web user. Making them owned by the web user fixes it.', 'ai-cake-topper' ),
-				$r['storage_dir'] . '/sessions'
+				__( 'The usual cause is ownership: if the plugin was activated — or a maintenance command run — over WP-CLI as root, the dated folders under %s belong to root while PHP runs as the web user. Making them owned by the web user fixes it.', 'ai-cake-topper' ),
+				$r['storage_dir']
 			);
 		} elseif ( $r['storage_in_webroot'] ) {
 			$result['status'] = 'recommended';

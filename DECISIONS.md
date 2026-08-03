@@ -731,4 +731,53 @@ rather than under it. Both are prompt-suffix work, not pipeline work.
 
 ---
 
-<!-- Next: D-031 -->
+### D-031 · The Phase 7 gate, run as documented, broke the shop
+**2026-08-03** · corrects `tools/order-check.php` and `Capabilities.php`
+
+A real order — `Keksiukų dekoracijos ⌀6 cm, 12 vnt` — failed in the admin with
+**„Nepavyko įrašyti spausdinimo failo."** The image had been generated and paid
+for. `FulfilPipeline` rendered fine; `OrderArchive::archive()` returned `''`.
+
+`/var/lib/aicake/orders/2026/08` was owned by **root**, mode 775, group 1000.
+PHP runs as www-data (uid 33), not in that group, so it could not create the
+order's own folder inside it.
+
+**It was `order-check.php` that made it root-owned.** The header said to run the
+gate with `--allow-root`, so the dated parent was created by root the first time
+the gate ran. Every subsequent real order then failed. The gate went green and
+the storefront broke — *because* the gate had run.
+
+This is D-003's failure mode in the second zone. `Capabilities::can_actually_write()`
+already existed for exactly this, and its docblock describes this bug
+precisely — but it only ever probed `sessions/YYYY/MM`. The orders zone was
+never checked, and it is the worse of the two: the customer has already paid
+and the image already exists.
+
+Three changes:
+
+1. **The gate runs as the web user.** `-u www-data`, never `--allow-root`. A
+   verification that runs with privileges the real code does not have is not
+   verifying the real code. After a full run, `find /var/lib/aicake -uid 0`
+   returns nothing.
+2. **The Site Health probe covers both zones**, and probes the *dated*
+   directory, because that is the parent whose ownership decides whether the
+   per-order `mkdir` succeeds.
+3. The critical-status wording now names both consequences.
+
+**The probe was falsified before being trusted**, as D-026 requires: `chown
+root:root` on `orders/2026/08` turns `storage_writable` to `no`, and restoring
+it turns it back. Without step 2 that same fault reported a healthy site.
+
+The order recovered with no re-render once ownership was fixed — the retry
+produced a correct 2363 × 3390 sheet, 3 × 4 = 12 up at ⌀60 mm.
+
+**Not a bug, checked while here:** the order sat at `on-hold`, which
+`finish_if_complete()` deliberately excludes from promotion. That is right —
+an unpaid order must not walk into the print queue — and it is self-healing:
+on payment the order moves to `processing`, the idempotency check finds the
+existing print file, nothing is re-rendered and no money is spent, and the
+order lands in `aicake-approval`. Verified.
+
+---
+
+<!-- Next: D-032 -->

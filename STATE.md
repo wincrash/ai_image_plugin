@@ -21,6 +21,11 @@ longer the only thing the fulfilment chain has been fed.
 **218 committed assertions, all green:** 152 pure-PHP · 12 REST over real HTTP · 54 a real order
 through to print files.
 
+> **Run `tools/order-check.php` as `-u www-data`, never `--allow-root`** (D-031). Run as root it
+> leaves `orders/YYYY/MM` root-owned, and every subsequent real order then fails with „Nepavyko
+> įrašyti spausdinimo failo." on a paid order. The gate passes and the shop breaks. Site Health
+> now probes both zones and catches it; `find /var/lib/aicake -uid 0` should return nothing.
+
 | Phase | Status |
 |---|---|
 | 0 · API evaluation | **Deferred** to a calibration step after the plugin runs end to end (D-018). |
@@ -439,11 +444,9 @@ C:\AI_IMAGE\
 emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
 orders are already piling up in a real, filterable status waiting for it.
 
-**2. Buy a design through the storefront as a customer**, in a browser, as `testuser`. Every
-link in that chain is now verified individually and by script, but the customer's own path —
-type a Lithuanian prompt, watch it poll, pick from the history strip, add to cart, check out —
-has not been walked in one sitting by a person. That is a different kind of check from the 218
-assertions, and it is the one that finds wording and layout problems.
+**2. Keep buying designs through the storefront as a customer.** The first real customer order
+(D-031) found a bug none of the 218 assertions could, because the assertions ran with privileges
+the real code does not have. That is a different kind of check and it is worth repeating.
 
 Worth doing soon, none blocking:
 
