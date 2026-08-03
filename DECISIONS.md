@@ -998,4 +998,110 @@ as they do now. Both work; it is a merchandising call, not a technical one.
 
 ---
 
-<!-- Next: D-035 -->
+### D-035 · One product, three variations, and the format moves onto the design
+**2026-08-03** · Ruslan · **agreed, provisional — he will re-review once he can see the whole
+product** · supersedes `PLAN.md` §4.1 · follows D-033, D-034
+
+Ruslan: under D-033 every order is one A4 sheet, so what is the point of ten
+products? They are the same physical thing, and ten of them is ten things to
+keep in sync.
+
+He is right, and the argument is stronger than he put it: **the thing being sold
+is an A4 icing sheet.** Cost is identical whether it carries one 20 cm circle or
+24 cupcake rounds — same sheet, same ink, same print run. "⌀20 cm" and
+"keksiukams ⌀4.5 cm, 24 vnt" are not different products. They are different
+artwork layouts on the same product.
+
+**D-034's product count was wrong.** The live shop has ~2500 products, not ~265.
+That weakens its own SEO argument further: ten more product pages in a 2500-page
+catalogue move nothing, and a landing page can link into the wizard with a preset
+without being purchasable. The cost of not doing that is the price rich snippet
+on those pages. Small, real, and a merchandising call.
+
+#### Why §4.1's three reasons do not survive D-033
+
+1. *"Geometry is known at page load."* The wizard fixes geometry at step 1,
+   before anything is generated — that is why D-034 puts product choice first.
+   Solved without separate products.
+2. *"Each size gets its own URL for SEO."* See the count above.
+3. *"Pricing, stock and shipping differ per size."* Under D-033 they do not.
+   Same sheet. **Shipping is out of this conversation entirely** (Ruslan):
+   default methods, independent of size and product.
+
+What is left is drift — every geometry tweak, price change or description edit
+repeated N times, and the Nth one missed.
+
+#### What was decided
+
+1. **One AI product.** Not one per size or count.
+2. **Sheet type is the variation axis**, which is the one thing that genuinely
+   changes price and material: wafer paper €3.50 · thick wafer €4.50 · icing
+   sheet €5.00. §4.1's *"size and count are products, material is a variation"*
+   keeps its second half and loses its first.
+3. **Format — shape, size, copies — leaves product meta.** It becomes a wizard
+   choice at step 1, recorded on the design row, resolved from an
+   admin-editable **format catalogue** in the plugin. Adding a size becomes a
+   row in a table, not a new product to configure.
+4. **AI generation adds a flat €1.00** to the line, from a single plugin
+   setting.
+
+#### Where each price is edited, and why they are in different places
+
+**Base prices live in the product, as ordinary variation prices.** Not in the
+plugin. That is where WooCommerce, tax, reports, coupons and every other
+extension already read from, it is the screen Ruslan already knows, and
+reimplementing it would be exactly the thing D-034 said not to do.
+
+**The AI surcharge lives in `aicake_settings`, as one number.** It is not a
+second variation axis, because AI-or-not is orthogonal to sheet type: as an axis
+it produces six variations, and every base price change then has to be made
+twice, in the right pair, forever. That is the drift this decision exists to
+remove. There is no WooCommerce object for "this line was AI generated", so the
+plugin owns it.
+
+#### Mechanism
+
+`woocommerce_before_calculate_totals` → `set_price( base + surcharge )` on the
+cart item, which is what addon plugins do and what makes it behave correctly
+with quantity. Not `add_fee()` — that is cart-level, and one order can hold an
+AI line and a plain one.
+
+The line must also carry item meta saying *why* it costs more
+(„AI paveikslėlis: +1,00 €"), or the cart shows €6.00 with no explanation and
+generates a support email.
+
+**The surcharge is entered on the same tax basis as product prices.** `set_price`
+writes the same field the product price uses, so if the store enters prices
+including VAT the surcharge must be inclusive too. The settings field says so,
+because getting it wrong is invisible until an invoice is wrong.
+
+#### Consequence for the wizard
+
+Price is visible from step 1 (D-034) but the surcharge is not known until step 2.
+So the displayed price must update when generation is chosen, and step 4's proof
+must show the final figure. Honest, but it has to be built deliberately rather
+than discovered.
+
+#### What this costs
+
+`ProductFields` and `PrintSpec` get reworked — `PrintSpec` gains one resolution
+source ahead of the current chain: **design's format → variation meta → product
+meta → global default**. `CartIntegration` validates the design's format rather
+than the product's. Everything downstream is untouched, because `SheetLayout`,
+`FulfilPipeline` and the order screen only ever consumed a `PrintSpec`. Phase 7
+is unaffected.
+
+#### Open
+
+- Whether Fields Factory (already live, carries the three sheet types today) can
+  hold the selection and its price adjustment on the line item. If it does this
+  reliably, variations may not be needed at all. **Not yet inspected** — plugin
+  slug and testbed presence unknown.
+- Whether the format catalogue is seeded from the five current SKUs or entered
+  fresh.
+- Ruslan is holding the option set here deliberately until he can see the whole
+  product working and judge what is missing.
+
+---
+
+<!-- Next: D-036 -->

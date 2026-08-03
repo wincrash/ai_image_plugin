@@ -365,7 +365,8 @@ on that server.
 
 ### Production — capabilities confirmed 2026-08-02
 
-`valgomosdekoracijos.lt` — ~265 products. A **managed platform, not a Linux machine**: PHP
+`valgomosdekoracijos.lt` — **~2500 products** (Ruslan, 2026-08-03; the ~265 figure used up to and
+including D-034 was wrong). A **managed platform, not a Linux machine**: PHP
 libraries and WordPress plugins can be added, system packages cannot.
 
 From wp-admin → Site Health → Media Handling:
@@ -457,9 +458,9 @@ monthly USD ceilings. §8.6's conclusion is the frame for that talk — **the do
 not per-call price, it is an unthrottled endpoint being hammered.** Now that generation costs
 real money ($0.012 an image), the numbers deserve a decision rather than a default.
 
-### A design direction exists but is not scheduled — D-033 and D-034
+### A design direction exists but is not scheduled — D-033, D-034 and D-035
 
-Two sessions' worth of design discussion, agreed in principle, **no code written**:
+Three sessions' worth of design discussion, agreed in principle, **no code written**:
 
 - **D-033** — the text layer moves to the browser (transparent PNG + the plain string), the
   print canvas becomes A4 with everything centred in the usable region, and the server draws a
@@ -471,7 +472,19 @@ Two sessions' worth of design discussion, agreed in principle, **no code written
   products kept underneath it** for SEO, pricing, tax and cart. Presentation-layer change; Phase
   6 survives almost intact.
 
-Neither is scheduled against Phase 8. Read both before starting either.
+- **D-035** — **one AI product, not ten.** Sheet type becomes the variation axis (wafer €3.50,
+  thick wafer €4.50, icing €5.00); format — shape, size, copies — leaves product meta and becomes
+  a wizard choice recorded on the design, from an admin-editable format catalogue. AI generation
+  adds a flat **€1.00** from a single plugin setting, applied per line, never as a second
+  variation axis. Base prices stay ordinary Woo variation prices. **Supersedes `PLAN.md` §4.1**,
+  which is now rewritten. Reworks `ProductFields`, `PrintSpec` and `CartIntegration`; Phase 7 is
+  unaffected. Provisional — Ruslan re-reviews once he can see the whole product.
+
+None is scheduled against Phase 8. Read all three before starting any.
+
+Not yet inspected: the **Fields Factory** plugin already live on the shop, which carries the three
+sheet types today. If it holds the selection and its price adjustment on the line item reliably,
+variations may not be needed at all. Slug and testbed presence unknown.
 
 Worth doing soon, none blocking:
 

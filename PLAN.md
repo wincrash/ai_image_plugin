@@ -171,49 +171,68 @@ enabled, render at 0.15 mm in 15% grey.
 
 ## 4. Product and data model
 
-### 4.1 One product per size/count. No custom product type.
+### 4.1 One product. Sheet type is the variation. Format lives on the design. (D-035)
 
 Registering a custom product type is still wrong — it forfeits variable-product support and
-fights every theme and extension for no benefit. But **variations are also not how sizes are
-modelled here.** Each diameter/count is its own WooCommerce product:
+fights every theme and extension for no benefit.
+
+**And there is only one AI product.** Under D-033 every order is one A4 sheet, so ⌀20 cm and
+"24 cupcakes" are not different products — they are different artwork layouts on the same
+physical thing, at the same cost to produce. Ten products for one product is ten things to keep
+in sync.
+
+**Sheet type is the variation axis** — the one thing that genuinely changes price and material:
 
 ```
-Valgomas paveikslėlis A4                    → rect, 210 × 297 mm, ×1
-Valgomas paveikslėlis ⌀20 cm                → round, ⌀200 mm, ×1
-Valgomas paveikslėlis ⌀15 cm                → round, ⌀150 mm, ×1
-Keksiukų dekoracijos ⌀4.5 cm, 24 vnt        → round, ⌀45 mm, ×24 on A4
-Keksiukų dekoracijos ⌀6 cm, 12 vnt          → round, ⌀60 mm, ×12 on A4
+Product: Valgomas paveikslėlis (AI)
+  └── Variation: Vaflinis popierius (wafer)          €3.50
+  └── Variation: Storas vaflinis (thick wafer)       €4.50
+  └── Variation: Cukrinis lapas (icing sheet)        €5.00
 ```
 
-**This is a genuinely better model than variations, for three reasons:**
+Sheet type changes price and print notes but **not** shape, size or aspect ratio, so it never
+invalidates a generated design.
 
-1. **The geometry is known at page load.** The aspect ratio is fixed before the customer types
-   anything, so the "customer generated a square design then switched to A4" problem — which
-   was the most fragile part of the previous design — *disappears entirely*. No confirm
-   dialogs, no invalidated designs, no free-regeneration edge case.
-2. **Each size gets its own URL, title and description.** "Valgomas paveikslėlis 20 cm" as a
-   landing page is worth real search traffic that a variation dropdown never earns.
-3. Pricing, stock and shipping weight differ per size anyway.
-
-Cost: more products to maintain. Mitigated by a "duplicate product" starting point and
-sensible defaults.
-
-**Variations are still supported, for the axis that does not change geometry** — material:
+**Format — shape, size, copies — is a wizard choice, recorded on the design row**, resolved from
+an admin-editable format catalogue in the plugin:
 
 ```
-Product: Valgomas paveikslėlis ⌀20 cm
-  └── Variation: Cukrinis lapas (icing sheet)   +€2.00
-  └── Variation: Vafliniai popierius (wafer)     €0.00
+A4 visas lapas                → rect,  210 × 297 mm, ×1
+Apvalus ⌀20 cm                → round, ⌀200 mm,      ×1
+Apvalus ⌀15 cm                → round, ⌀150 mm,      ×1
+Keksiukams ⌀4.5 cm, 24 vnt    → round, ⌀45 mm,       ×24 on A4
+Keksiukams ⌀6 cm, 12 vnt      → round, ⌀60 mm,       ×12 on A4
 ```
 
-Material changes price and print notes but **not** shape, size or aspect ratio, so it never
-invalidates a generated design. That is the clean separation:
+Adding a size is a row in that table, not a new product to configure.
 
-> **Size and count are products. Material is a variation.**
+> **Sheet type is a variation. Format is a property of the design.**
+
+The "geometry must be known before generation" requirement that drove the old model still holds —
+the aspect ratio differs (1:1 round, 2:3 for A4, §3.2). The wizard satisfies it by fixing format
+at step 1, before anything is generated (D-034). It does not need separate products.
+
+**Pricing lives in two places, deliberately** (D-035):
+
+- **Base prices are ordinary variation prices, edited in the product.** That is where
+  WooCommerce, tax, reports and coupons already read from. The plugin does not reimplement it.
+- **The AI surcharge (+€1.00) is one number in the plugin settings**, applied per line via
+  `woocommerce_before_calculate_totals` → `set_price()`, with item meta stating why. It is not a
+  second variation axis: as an axis it doubles the variations and every base price change then
+  has to be made twice. Entered on the same tax basis as product prices.
+
+Shipping does not enter this model at all — default methods, independent of size and product.
 
 ### 4.2 Where the print spec lives
 
-Product-level meta, set in an "AI Topper" tab in the product data panel:
+**Primarily on the design row, from the format catalogue** (§4.1, D-035). `PrintSpec` resolves in
+this order:
+
+> **design's format → variation meta → product meta → global default**
+
+The three later sources are kept because they cost nothing and they are the escape hatch for a
+one-off product that needs geometry of its own. The format catalogue is the source of truth for
+everything the wizard offers, and each entry carries the same fields:
 
 ```
 _aicake_enabled           bool
@@ -229,14 +248,16 @@ _aicake_style_preset      slug   which prompt suffix / house style
 _aicake_max_regenerations int    0 = use global default
 ```
 
-A "24× cupcake" product is `shape=round, width_mm=45, copies=24, sheet=a4`. Nothing about it
-is special-cased in code — the imposition falls out of the geometry (§3.5).
+A "24× cupcake" format is `shape=round, width_mm=45, copies=24, sheet=a4`. Nothing about it
+is special-cased in code — the imposition falls out of the geometry (§3.5). Under D-033 the
+canvas is always A4, so `_aicake_sheet` no longer varies in practice; it stays because the
+maths reads it and a custom sheet costs nothing to keep supported.
 
-Variation-level meta is read as an **override** if present, so if a material ever does need a
-different bleed or DPI, that works without restructuring. Resolution order:
-variation meta → product meta → global default.
+Variation-level meta is still read as an **override** if present, so if a sheet type ever does
+need a different bleed or DPI, that works without restructuring.
 
-The product edit screen shows a live computed summary as the admin types:
+The catalogue editor — and the product screen, where meta is still used — shows a live computed
+summary as the admin types:
 
 > ⌀45 mm + 3 mm bleed → 603 px @300 DPI · 4 × 6 = **24 per A4 sheet** · no upscale needed
 
