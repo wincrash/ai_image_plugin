@@ -32,6 +32,39 @@ require_once __DIR__ . '/../src/Support/Logger.php';
 require_once __DIR__ . '/../src/Imaging/GdEngine.php';
 
 /*
+ * LayerInspector is the same shape — GD plus arithmetic, no WordPress — and it
+ * is the check D-033 calls non-optional, so it is worth exercising where a
+ * failure is a one-second test run rather than a deployment.
+ *
+ * It does log its refusals, though, and Logger reads its level through
+ * Settings. Hence the stub below: without it the suite dies on the first
+ * *rejection*, which is to say on every test that actually matters.
+ */
+if ( ! function_exists( 'get_option' ) ) {
+	/**
+	 * @param string $option  Option name.
+	 * @param mixed  $default Fallback.
+	 * @return mixed
+	 */
+	function get_option( string $option, $default = false ) { // phpcs:ignore
+		return $default;
+	}
+}
+
+if ( ! function_exists( 'wp_json_encode' ) ) {
+	/**
+	 * @param mixed $data  Data.
+	 * @param int   $flags Encoding flags.
+	 * @return string|false
+	 */
+	function wp_json_encode( $data, int $flags = 0 ) { // phpcs:ignore
+		return json_encode( $data, $flags ); // phpcs:ignore WordPress.WP.AlternativeFunctions.json_encode_json_encode
+	}
+}
+
+require_once __DIR__ . '/../src/Imaging/LayerInspector.php';
+
+/*
  * FormatCatalogue and PrintSpec are pure arithmetic over Mm and SheetLayout,
  * but they build customer-facing labels, so they reach for `__()`. Stubbing it
  * keeps the catalogue testable without WordPress — and the catalogue is worth
