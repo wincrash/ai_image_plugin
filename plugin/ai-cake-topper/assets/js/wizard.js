@@ -328,11 +328,7 @@
 
 	var editor = window.AiCakeEditor ? window.AiCakeEditor( config, {
 		onChange: function () {
-			renderLineControls();
-			renderPiecePicker();
-			// The font list previews the customer's own text, so it has to
-			// follow what they type.
-			renderFontChoices();
+			syncControls();
 		},
 		onError: function ( message ) {
 			if ( step3.error ) {
@@ -379,8 +375,7 @@
 				editor.addLine( '' );
 			}
 
-			renderLineControls();
-			renderPiecePicker();
+			syncControls();
 		} );
 
 		if ( step3.piecesField ) {
@@ -421,10 +416,56 @@
 	}
 
 	/**
+	 * Refresh the controls after any editor change.
+	 *
+	 * **The rows are only rebuilt when the set of rows actually changes.**
+	 * Rebuilding them on every change destroys and recreates the `<input
+	 * type="color">` — and a native colour dialog belongs to the element that
+	 * opened it, so it closes the instant that element is replaced. Dragging
+	 * inside the picker fires `input` continuously, so the picker shut on the
+	 * first movement and choosing a colour was impossible.
+	 *
+	 * Editing a value never changes the signature, so typing, resizing and
+	 * picking a colour all leave the DOM alone and keep focus where it was.
+	 */
+	function syncControls() {
+		var signature = controlsSignature();
+
+		if ( signature !== lastControls ) {
+			lastControls = signature;
+			renderLineControls();
+			renderPiecePicker();
+		}
+
+		// The font list previews the customer's own text, so it follows what
+		// they type. Nothing in it can hold an open dialog.
+		renderFontChoices();
+	}
+
+	/**
+	 * What the control rows depend on structurally — not their values.
+	 */
+	function controlsSignature() {
+		if ( ! editor ) {
+			return '';
+		}
+
+		var editorState = editor.state();
+
+		return [
+			editorState.sameForAll ? 'all' : editorState.selected,
+			editor.lines().length
+		].join( '|' );
+	}
+
+	var lastControls = null;
+
+	/**
 	 * One row per line of text, for whichever piece is selected.
 	 *
 	 * Rebuilt rather than diffed. There are at most a handful of rows and the
-	 * alternative is state in two places.
+	 * alternative is state in two places — but see `syncControls()` for why
+	 * this must not run on every change.
 	 */
 	function renderLineControls() {
 		if ( ! step3.lines || ! editor ) {

@@ -674,8 +674,46 @@
 				changed();
 			},
 
+			/**
+			 * Switch between one text for every piece and one per piece.
+			 *
+			 * Carries the text across in both directions. Without this,
+			 * unchecking the box silently emptied every piece — you type a
+			 * name, decide you want the cupcakes to differ, and lose what you
+			 * had. Nobody wants "different names" to start from nothing; they
+			 * want to start from the name they just typed.
+			 *
+			 * @param {boolean} on Whether one text covers every piece.
+			 */
 			setSameForAll: function ( on ) {
-				state.sameForAll = !! on;
+				var was = state.sameForAll;
+
+				on = !! on;
+
+				if ( was && ! on ) {
+					// Seed every piece with a copy of the shared text. Copies,
+					// not references, or editing one edits all of them and the
+					// checkbox does nothing.
+					state.layout.pieces.forEach( function ( piece, index ) {
+						state.lines[ String( index ) ] = ( state.lines.all || [] ).map( function ( line ) {
+							return {
+								text: line.text,
+								colour: line.colour,
+								size: line.size,
+								dx: line.dx,
+								dy: line.dy
+							};
+						} );
+					} );
+				}
+
+				if ( ! was && on ) {
+					// Collapsing the other way takes whichever piece was being
+					// looked at, which is the one whose text is on screen.
+					state.lines.all = ( state.lines[ String( state.selected ) ] || [] ).slice();
+				}
+
+				state.sameForAll = on;
 				state.selected = 0;
 				changed();
 			},
