@@ -403,9 +403,32 @@ The fragile alternative — hand-building the `wccpf_*` cart-item array so the n
 — also works, since the negotiator never reads `$_POST`. Do not use it: it depends on an
 undocumented internal shape that a WCFF update can change silently.
 
-Still to confirm by running it rather than reading it: that a **hidden** field type persists the
-same way as a visible one, and that the field key survives being resolved at runtime rather than
-hardcoded (keys are random, see above).
+**Proven by running it — `tools/wcff-check.php`, 18 assertions, all green.** The check is
+committed, idempotent and creates its own fixture, so it re-runs from nothing.
+
+| | |
+|---|---|
+| Product | `ai-paveikslelis` — „Valgomas paveikslėlis (AI)", **simple**, €3.50 |
+| Group | `ai_image` bound to it; AI field added with a +1.00 „AI paveikslėlio mokestis" rule |
+| Charged | 3.50 / 4.50 / 5.00 by sheet type, **+1.00 with AI** — from real `add_to_cart` + `calculate_totals` |
+| Keys | resolved **by label** at runtime via `FieldsFactory::field_key()`, never hardcoded |
+
+**Falsified before being trusted:** tampering the AI rule from 1.00 to 2.00 turns 3 of the 18
+red, and it is caught independently by both the read-only `surcharge()` path and the real cart
+price — so those two agree with each other rather than sharing a bug.
+
+> **One WCFF trap, cost an hour.** `split_cart_item_for_cloning()` flips its own
+> `is_native_add_to_cart` to false after the *first* add-to-cart in a process, and
+> `fields_persister()` only mines `$_REQUEST` while that flag is true. Correct for a real request;
+> in any script doing several add-to-carts, every scenario after the first silently prices at
+> base — which reads exactly like WCFF being broken. The check resets the flag through the hook
+> registry between scenarios.
+
+Still open: the AI field is currently a **visible radio**, so on a plain product page a customer
+could answer it themselves — pay €1 without AI, or use AI and not pay. **The fix is not to hide
+the field.** `CartIntegration` must derive the value from whether the design actually has a
+generated image and overwrite what was posted, because a posted flag about whether money was
+spent can never be trusted. Hiding is cosmetic; the server-side derivation is the control.
 
 ### Production — capabilities confirmed 2026-08-02
 
