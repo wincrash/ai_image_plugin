@@ -514,6 +514,18 @@ Housekeeping, not blocking:
   216 × 303 mm; §3.4 says usable area is 200 × 287 and that imposition must use the usable area,
   never the paper size. A printer that cannot reach the sheet edge cannot print full-bleed
   210 × 297. Resolve in favour of the usable area when the number above is measured.
-- Icing sheet is slightly shorter than A4; exact dimensions to be corrected late.
+- **The icing sheet is narrower than A4 — roughly 10–15 mm on the right must be left empty**
+  (Ruslan, 2026-08-03; approximate, needs measuring). This makes the usable region
+  **asymmetric**: it is offset left, not centred on the page. Content must therefore be centred
+  in the *usable region*, not on the sheet — centring on A4 would put artwork on the bare strip
+  and look correct in every preview. The canvas itself stays A4 page size so it still prints at
+  100% (D-033).
+  Still needed: the sheet's real width × height; whether it sits flush to the left edge; and
+  which "right" — as the image is viewed, or as the sheet feeds. If the tray feeds it rotated the
+  empty strip lands on the opposite side and every sheet is ruined.
+  Consequence to watch: usable width ~200 → ~190 mm may drop cupcakes per row from 4 to 3, i.e.
+  18 per sheet rather than 24 — and the SKU is named "24 vnt". `SheetLayout` derives the count
+  rather than trusting it, and the product screen already raises ⚠ on a mismatch, so this
+  surfaces in admin rather than in a print run.
 - VMVT food-business registration — almost certainly already held, since the shop already sells
   edible decorations. Allergen declaration from the sheet supplier is the genuinely new item.
