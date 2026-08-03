@@ -282,23 +282,79 @@ defined( 'ABSPATH' ) || exit;
 
 	</section>
 
-	<?php
-	/*
-	 * Step 4 is a placeholder until its own commit. It exists now so the
-	 * progress rail is honest about how many steps there are — a wizard that
-	 * grows extra steps as you go is the thing customers abandon.
-	 */
-	?>
 	<section class="aicake-wizard__step" data-step="4" hidden>
-		<h2 class="aicake-wizard__heading"><?php esc_html_e( 'Peržiūra', 'ai-cake-topper' ); ?></h2>
-		<p><?php esc_html_e( 'Šis žingsnis dar ruošiamas.', 'ai-cake-topper' ); ?></p>
-		<p class="aicake-actions">
-			<button type="button" class="button aicake-back" data-role="back-4">
-				<?php esc_html_e( 'Atgal', 'ai-cake-topper' ); ?>
-			</button>
-		</p>
-	</section>
 
-	<input type="hidden" name="aicake_design" data-role="design" value="">
+		<h2 class="aicake-wizard__heading"><?php esc_html_e( 'Peržiūra', 'ai-cake-topper' ); ?></h2>
+
+		<?php
+		/*
+		 * The proof is a capture of the editor's own canvas, not a second
+		 * rendering of the same thing. Two renderers that must agree is exactly
+		 * the browser↔GD parity problem D-033 removed, and it would reappear
+		 * here in the place the customer is most likely to notice it.
+		 *
+		 * It is watermarked, because the preview it is drawn from is.
+		 */
+		?>
+		<div class="aicake-proof">
+			<img data-role="proof" alt="<?php esc_attr_e( 'Kaip atrodys jūsų užsakymas', 'ai-cake-topper' ); ?>">
+		</div>
+
+		<dl class="aicake-review">
+			<div class="aicake-review__row">
+				<dt><?php esc_html_e( 'Formatas', 'ai-cake-topper' ); ?></dt>
+				<dd data-role="review-format"></dd>
+			</div>
+			<div class="aicake-review__row">
+				<dt><?php esc_html_e( 'Lakšto tipas', 'ai-cake-topper' ); ?></dt>
+				<dd data-role="review-sheet"></dd>
+			</div>
+			<div class="aicake-review__row">
+				<dt><?php esc_html_e( 'Užrašas', 'ai-cake-topper' ); ?></dt>
+				<dd data-role="review-text"></dd>
+			</div>
+			<div class="aicake-review__row aicake-review__row--total">
+				<dt><?php esc_html_e( 'Kaina', 'ai-cake-topper' ); ?></dt>
+				<dd data-role="review-price"></dd>
+			</div>
+		</dl>
+
+		<p class="aicake-terms">
+			<?php esc_html_e( 'Karpysite pagal juodą liniją. Užrašas ir piešinys spausdinami tokie, kokie matomi peržiūroje.', 'ai-cake-topper' ); ?>
+		</p>
+
+		<?php
+		/*
+		 * A real WooCommerce add-to-cart form, posting like any other product.
+		 *
+		 * The sheet type is posted as its Fields Factory field — WCFF then does
+		 * the pricing, the cart display, the order meta and the email itself
+		 * (D-036). **The AI field is deliberately not posted at all**: whether
+		 * AI was used decides €1, so `CartIntegration` derives it server-side
+		 * from whether the design really has a generated image. A flag about
+		 * whether money was spent cannot be trusted, not even enough to check.
+		 */
+		?>
+		<form class="aicake-cart-form" method="post"
+			action="<?php echo esc_url( apply_filters( 'woocommerce_add_to_cart_form_action', $product->get_permalink() ) ); ?>">
+
+			<input type="hidden" name="add-to-cart" value="<?php echo esc_attr( (string) $product->get_id() ); ?>">
+			<input type="hidden" name="quantity" value="1">
+			<input type="hidden" name="aicake_design" data-role="design" value="">
+			<input type="hidden" name="" data-role="sheet-field" value="">
+
+			<p class="aicake-actions">
+				<button type="button" class="button aicake-back" data-role="back-4">
+					<?php esc_html_e( 'Atgal', 'ai-cake-topper' ); ?>
+				</button>
+				<button type="submit" class="button alt aicake-buy" data-role="buy">
+					<?php esc_html_e( 'Į krepšelį', 'ai-cake-topper' ); ?>
+				</button>
+				<span class="aicake-hint" data-role="hint-4" role="status"></span>
+			</p>
+
+		</form>
+
+	</section>
 
 </div>

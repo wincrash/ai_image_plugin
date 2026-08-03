@@ -795,9 +795,112 @@
 		} );
 	}
 
+	/* ------------------------------------------------- step 4: the proof */
+
+	var step4 = {
+		proof: root.querySelector( '[data-role="proof"]' ),
+		format: root.querySelector( '[data-role="review-format"]' ),
+		sheet: root.querySelector( '[data-role="review-sheet"]' ),
+		text: root.querySelector( '[data-role="review-text"]' ),
+		price: root.querySelector( '[data-role="review-price"]' ),
+		sheetField: root.querySelector( '[data-role="sheet-field"]' ),
+		buy: root.querySelector( '[data-role="buy"]' ),
+		hint: root.querySelector( '[data-role="hint-4"]' )
+	};
+
+	/**
+	 * Fill in the review, and take the picture.
+	 *
+	 * Everything here is read back from state that has already been used —
+	 * the same option, the same price entry, the same canvas. Nothing is
+	 * recomputed for display, because a proof that derives its own version of
+	 * the answer is a proof of the wrong thing.
+	 */
+	function renderReview() {
+		var option = currentOption();
+
+		if ( step4.proof && editor ) {
+			var image = editor.snapshot();
+
+			if ( image ) {
+				step4.proof.src = image;
+			}
+		}
+
+		if ( step4.format ) {
+			step4.format.textContent = option ? option.label : '';
+		}
+
+		if ( step4.sheet ) {
+			var chosen = config.sheets.filter( function ( sheet ) {
+				return sheet.value === state.sheet;
+			} )[ 0 ];
+
+			step4.sheet.textContent = chosen ? chosen.label : state.sheet;
+		}
+
+		if ( step4.text ) {
+			var typed = editor ? editor.plainText().trim() : '';
+
+			step4.text.textContent = typed !== '' ? typed : config.i18n.noText;
+		}
+
+		if ( step4.price ) {
+			var entry = config.prices[ state.sheet + '|' + state.ai ];
+
+			step4.price.innerHTML = entry ? entry.html : '';
+		}
+
+		/*
+		 * The sheet type posts as its Fields Factory field, so WCFF prices it
+		 * (D-036). The key is random per shop and resolved server-side — never
+		 * hardcoded — so an unconfigured field leaves the input nameless and
+		 * therefore unsubmitted, which is the safe direction: the customer pays
+		 * the base price rather than the browser inventing a key.
+		 *
+		 * The AI field is not here on purpose. `CartIntegration` derives it.
+		 */
+		if ( step4.sheetField && config.sheetField ) {
+			step4.sheetField.name = config.sheetField;
+			step4.sheetField.value = state.sheet;
+		}
+
+		if ( step4.buy ) {
+			step4.buy.disabled = ! state.design;
+		}
+	}
+
 	/* -------------------------------------------------------------- steps */
 
+	/**
+	 * The furthest step the customer has actually earned.
+	 *
+	 * The steps are hash-addressable (D-034), so a reload or a shared link can
+	 * ask for step 4 with nothing chosen. Without this that renders an
+	 * "Į krepšelį" button over a blank proof, which the server then refuses —
+	 * a worse first impression than simply starting at the beginning.
+	 *
+	 * @param {number} step Requested step.
+	 */
+	function reachable( step ) {
+		if ( step >= 3 && ! state.design ) {
+			return 2;
+		}
+
+		if ( step >= 2 && ( state.type === '' || state.mm === null ) ) {
+			return 1;
+		}
+
+		return step;
+	}
+
 	function show( step ) {
+		step = reachable( step );
+
+		if ( 4 === step ) {
+			renderReview();
+		}
+
 		root.dataset.step = String( step );
 
 		root.querySelectorAll( '.aicake-wizard__step' ).forEach( function ( section ) {

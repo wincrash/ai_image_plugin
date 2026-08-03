@@ -33,13 +33,26 @@ fail=0
 
 # ---------------------------------------------------------------- helpers
 
+throttled=0
+
 # check <label> <expected> <actual>
 check() {
 	if [ "$2" = "$3" ]; then
 		printf '  ok    %-52s %s\n' "$1" "$3"
 		pass=$(( pass + 1 ))
 	else
-		printf '  FAIL  %-52s expected %s, got %s\n' "$1" "$2" "$3"
+		# A 429 is almost never a fault in the thing being asserted, and the
+		# customer-facing message is *the same* for the session allowance and
+		# the per-IP ceiling — so naming the code is the difference between a
+		# red run that is understood and one that gets debugged for an hour.
+		code=''
+
+		if [ "$3" = '429' ] && [ -f "$JAR.out" ]; then
+			code="$(json code < "$JAR.out")"
+			throttled=1
+		fi
+
+		printf '  FAIL  %-52s expected %s, got %s%s\n' "$1" "$2" "$3" "${code:+ ($code)}"
 		fail=$(( fail + 1 ))
 	fi
 }
@@ -130,4 +143,24 @@ check 'the owner can poll it' '200' \
 
 echo
 echo "$pass passed, $fail failed"
+
+if [ "$throttled" -eq 1 ]; then
+	cat <<'NOTE'
+
+  ^ At least one failure was a 429, so this run says nothing about the REST
+    layer — the request never reached it. Two different limits produce that,
+    with the same customer message, and the code above says which:
+
+      aicake_session_limit  free_per_user / free_per_session — a day of
+                            browser testing as the same user or session.
+      aicake_ip_limit       ip_daily_ceiling, default 30, counted per IP.
+
+    Lift the relevant one, re-run, and put it back — `tools/wizard-check.php`
+    does exactly that around its own request and is the pattern to copy:
+
+      wp eval 'AiCake\Plugin::instance()->settings()->update(
+        array( "free_per_user" => 1000, "ip_daily_ceiling" => 1000 ) );'
+NOTE
+fi
+
 [ "$fail" -eq 0 ]

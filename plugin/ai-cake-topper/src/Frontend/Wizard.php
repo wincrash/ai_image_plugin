@@ -149,12 +149,7 @@ class Wizard {
 	 * after a content migration, and this has exactly one product to find.
 	 */
 	public function product(): ?WC_Product {
-		$post = get_page_by_path( self::PRODUCT_SLUG, OBJECT, 'product' );
-
-		$product_id = (int) apply_filters(
-			'aicake_wizard_product_id',
-			$post instanceof \WP_Post ? $post->ID : 0
-		);
+		$product_id = self::product_id();
 
 		if ( $product_id <= 0 ) {
 			return null;
@@ -163,6 +158,23 @@ class Wizard {
 		$product = wc_get_product( $product_id );
 
 		return $product instanceof WC_Product ? $product : null;
+	}
+
+	/**
+	 * The id of the single AI product, or 0.
+	 *
+	 * Static because `CartIntegration` needs the same answer and must not have
+	 * to construct a wizard to get it: under D-035 "is this the AI product?" is
+	 * what decides whether an add-to-cart requires a design, and that question
+	 * is asked on a request that renders no wizard at all.
+	 */
+	public static function product_id(): int {
+		$post = get_page_by_path( self::PRODUCT_SLUG, OBJECT, 'product' );
+
+		return (int) apply_filters(
+			'aicake_wizard_product_id',
+			$post instanceof \WP_Post ? $post->ID : 0
+		);
 	}
 
 	/**
@@ -358,6 +370,15 @@ class Wizard {
 				'nonce'     => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 				'formats'   => $this->formats(),
 				'sheets'    => $this->sheet_types(),
+				/*
+				 * Which field name the sheet type posts under. Resolved at
+				 * runtime by label, because WCFF generates keys randomly when
+				 * the admin creates a field — `wccpf_qkKQtVWBjYfI` here, some
+				 * other string on production. Null when the field is not
+				 * configured, and the form then posts nothing rather than
+				 * guessing a key.
+				 */
+				'sheetField' => $this->fields->field_key( self::SHEET_LABEL ),
 				'prices'    => $this->prices( $product ),
 				'layouts'   => $this->layouts(),
 				'fonts'     => $this->fonts(),

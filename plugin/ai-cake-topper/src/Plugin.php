@@ -281,7 +281,7 @@ class Plugin {
 		 */
 		if ( class_exists( 'WooCommerce' ) ) {
 			( new ProductFields() )->register();
-			( new CartIntegration( $this->designs, $this->identity ) )->register();
+			( new CartIntegration( $this->designs, $this->identity, new FieldsFactory() ) )->register();
 			( new Generator( $this->settings, $this->fonts ) )->register();
 			( new Wizard( $this->settings, new FieldsFactory(), $this->logger ) )->register();
 

@@ -738,6 +738,30 @@
 				return state;
 			},
 
+			/**
+			 * The proof: what the customer is buying, as a picture.
+			 *
+			 * The visible canvas already *is* the composite — artwork clipped
+			 * per piece, cut lines, text where they dragged it — so the proof
+			 * is a capture of it rather than a second rendering. Compositing it
+			 * again server-side would mean two renderers that have to agree,
+			 * which is the browser↔GD parity problem D-033 deleted; the print
+			 * path composites the stored layer instead, and that path is
+			 * checked against the real file by `order-check.php`.
+			 *
+			 * Returns '' before the editor is mounted, so a caller cannot
+			 * silently show a blank proof.
+			 */
+			snapshot: function () {
+				if ( ! canvas || ! state.layout ) {
+					return '';
+				}
+
+				render();
+
+				return canvas.toDataURL( 'image/png' );
+			},
+
 			lines: currentLines,
 			addLine: addLine,
 			removeLine: removeLine,

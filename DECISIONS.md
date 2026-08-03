@@ -1665,4 +1665,88 @@ the design, hides the preview, disables "Toliau" and says why.
 
 ---
 
-<!-- Next: D-044 -->
+---
+
+### D-044 · The proof is the editor's own canvas, and the AI fee is derived
+**2026-08-03** · Claude · completes D-034's wizard, closes D-036's open risk
+
+Wizard step 4: the customer sees what they are buying, then buys it.
+
+#### The proof is a capture, not a second rendering
+
+The editor already draws the composite — artwork clipped per piece, cut lines,
+text where it was dragged. So `editor.snapshot()` returns that canvas as a data
+URL and step 4 shows it.
+
+The obvious alternative was to composite it server-side from the stored layer.
+That would mean **two renderers that have to agree**, which is exactly the
+browser↔GD parity problem D-033 deleted — and it would reappear in the one
+place the customer is most likely to notice a discrepancy. The print path
+already composites the stored layer, and `order-check.php` asserts ink at the
+pixel on a real print file; that is where the two are reconciled, once.
+
+#### The AI fee is derived server-side, and the field is not posted at all
+
+D-036 left this open: the Fields Factory field is an ordinary visible radio, so
+a customer on the product page could answer it themselves — use AI and not pay,
+or pay €1 and not use it. **Hiding the field is presentation, not a control.**
+
+`CartIntegration` writes `$_REQUEST[ <ai field key> ]` from whether the design
+really has a generated image — a provider name *and* a master file, both,
+because a master with no provider is what an uploaded photo will look like when
+that arrives, and a provider with no master is a failed generation. WCFF then
+prices, displays and records that answer as it would any other field, so we
+still write no pricing code.
+
+The wizard's form does not post the field at all. A posted claim about whether
+money was spent is not worth validating, only replacing.
+
+#### Two things found by doing it, both real
+
+- **`WC_Cart::add_to_cart()` never applies `woocommerce_add_to_cart_validation`.**
+  Only `WC_Form_Handler`, the AJAX endpoint, the Store API and the cart-session
+  restore do. The derivation was written on the validation hook first; that
+  would have left every other route into the cart charging nothing for AI,
+  silently and in the shop's disfavour. It now runs on
+  `woocommerce_add_cart_item_data` **at priority 5**, before WCFF's persister at
+  10 — an ordering that was previously only true by registration accident.
+- **The old "does this product need a design?" gate asked the product.** Under
+  D-035 the single AI product carries no `_aicake_*` meta at all, so it answered
+  *no* for the very product the wizard sells: no design on the order, no
+  ownership check, and a €3.50 line fulfilment could not print. It now also asks
+  whether the product *is* the AI product.
+
+#### The cart line says what was bought
+
+Format is a property of the design now, so without carrying it the cart line,
+the confirmation email and the packing slip all read „Valgomas paveikslėlis
+(AI)" whether it is one 20 cm topper or 35 cupcake circles.
+
+#### Falsified twice, then bought in a browser
+
+- Trusting the posted flag turns **3 of the 28** assertions red — both
+  directions of the lie, `ne` to dodge the fee and `taip` to invent it.
+- Restoring the product-meta-only gate turns **13** red.
+
+Then through the real form: 24 cupcakes with „Emilija" on each, cut lines, and
+a cart line reading **Formatas: Keksiukams ⌀4,5 cm — 24 vnt.** · **Piešinys** ·
+**Lakšto tipas** · **AI paveikslėlis: taip** · 4,50 €.
+
+#### An assertion that passed for the wrong reason
+
+`wizard-check`'s „a blocked prompt is refused" tested `is_error()`. The throttle
+is checked before moderation, so once a day of testing had used the allowance
+the 429 satisfied it, no design row was written, and the three assertions after
+it read whatever row was newest. It now asserts the specific code
+(`aicake_rejected`), finds its row by prompt rather than by "newest", and lifts
+the throttle around its own request and puts it straight back — a gate has to
+re-run from nothing on a busy day too.
+
+Related, and it cost time twice: **the session allowance and the per-IP ceiling
+return the same customer-facing message.** `rest-check.sh` now prints the error
+code on any 429 and explains which knob to lift, because "raise the ceiling" is
+the wrong advice half the time.
+
+---
+
+<!-- Next: D-045 -->

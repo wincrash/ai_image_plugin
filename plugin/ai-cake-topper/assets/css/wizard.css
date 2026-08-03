@@ -516,3 +516,50 @@
 .aicake-piece.is-selected {
 	outline: 2px solid #0073aa;
 }
+
+/*
+ * Step 4 — the proof.
+ *
+ * Functional only, per Ruslan: the testbed runs an older Blocksy child and he
+ * does the cosmetics at ship time. What is here is what breaks the step if it
+ * is missing — an unbounded proof image overflows the page on a phone, and a
+ * review list rendered as a bare <dl> reads as one run-on line.
+ */
+.aicake-proof {
+	margin: 0 0 1rem;
+	text-align: center;
+}
+
+.aicake-proof img {
+	max-width: 100%;
+	height: auto;
+}
+
+.aicake-review {
+	margin: 0 0 1rem;
+}
+
+.aicake-review__row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	padding: 0.35rem 0;
+	border-bottom: 1px solid #e0e0e0;
+}
+
+.aicake-review__row dt {
+	flex: 0 0 9rem;
+	font-weight: 600;
+}
+
+.aicake-review__row dd {
+	flex: 1 1 10rem;
+	margin: 0;
+	/* A long užrašas must wrap rather than widen the row past the page. */
+	overflow-wrap: anywhere;
+}
+
+.aicake-review__row--total {
+	border-bottom: 0;
+	font-size: 1.15em;
+}

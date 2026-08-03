@@ -8,9 +8,10 @@ Phase 0 deferred to a later calibration step (D-018).
 > "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
 > suggestion button, and the print path composites the text layer.**
 >
-> **Both bugs Ruslan reported are dealt with.** „Užrašo dydis netinka." is fixed (D-043);
-> „Pasiūlyk dizainą" works today and he parked it until it recurs — see "Next actions".
-> **Start here: wizard step 4 — the proof, and the cart hand-off.**
+> **Both bugs Ruslan reported are dealt with** — „Užrašo dydis netinka." is fixed (D-043) and
+> „Pasiūlyk dizainą" is parked until it recurs. **The wizard is now complete end to end: a
+> Lithuanian prompt becomes a cart line with the right price** (D-044).
+> **Start here: delete the server-side text rendering (1c), then Phase 8.**
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -591,24 +592,30 @@ Also worth knowing when it comes back:
 **Steps 1–3 of the wizard are done** (D-033, D-041, D-042) — see "Being built now" for what
 exists and what was measured. What follows is what is left.
 
-**1. Wizard step 4 — the proof, and the cart hand-off.** The agreed next task (Ruslan,
-2026-08-03). Two halves, and the second is the one with a security consequence:
+**1. Wizard step 4 is done — the proof and the cart hand-off (D-044).** The wizard now runs end
+to end: a Lithuanian prompt becomes a cart line at the right price.
 
-- **The proof.** The customer sees what they are buying — the artwork with their text on it, at
-  the format they chose — and then adds it to the cart. The pieces exist: the design has a
-  watermarked preview, `PrintSpec::editor_layout()` gives the geometry, and the text layer is
-  stored against the design. What does *not* exist is a composite of the two for display.
-  > **The obvious trap.** The editor already draws exactly this on a canvas. Re-rendering the
-  > composite server-side would mean two renderers that must agree, which is the browser↔GD
-  > parity problem D-033 deleted. Prefer showing the same canvas, or a preview built from the
-  > stored layer — not a second implementation of the same drawing.
-- **The cart hand-off.** The wizard posts `wccpf_<key>=<value>` like any other Fields Factory
-  field and WCFF builds price, cart display, order meta and email itself (D-036, proven by
-  `tools/wcff-check.php`). **`CartIntegration` must derive the AI flag server-side** from whether
-  the design really has a generated image, and overwrite whatever was posted. A posted flag about
-  whether money was spent cannot be trusted. Hiding the Fields Factory field is presentation, not
-  a control — the field is currently a *visible radio*, so on a plain product page a customer
-  could answer it themselves and pay €1 without AI, or use AI and not pay.
+- **The proof is a capture of the editor's own canvas**, not a second rendering. `editor.snapshot()`
+  returns what the customer has been looking at — artwork clipped per piece, cut lines, their
+  text where they dragged it. Compositing it again server-side would mean two renderers that must
+  agree, the browser↔GD parity problem D-033 deleted; the print path composites the stored layer
+  and `order-check.php` reconciles the two on a real file.
+- **The AI fee is derived server-side and the field is not posted at all.** `CartIntegration`
+  writes the Fields Factory answer from whether the design really has a generated image — a
+  provider name *and* a master, both — and WCFF prices it as it would any field.
+
+Bought in a real browser: 24 cupcakes with „Emilija", cart line reading **Formatas: Keksiukams
+⌀4,5 cm — 24 vnt.** · **Piešinys** · **Lakšto tipas** · **AI paveikslėlis: taip** · 4,50 €.
+
+> **`WC_Cart::add_to_cart()` never applies `woocommerce_add_to_cart_validation`.** Only the form
+> handler, AJAX, the Store API and the cart-session restore do. So the fee is derived on
+> `woocommerce_add_cart_item_data` **at priority 5** — before WCFF's persister at 10, an ordering
+> that used to hold only by registration accident. Deriving it on the validation hook would leave
+> every other route into the cart charging nothing for AI.
+>
+> It also means a check that calls `add_to_cart()` and asserts "the cart is empty" asserts
+> *nothing* — it passes for a plugin with no validation at all. `wcff-check` calls the filter
+> directly, the way the form handler does.
 
 **1b is done — the print path composites the layer.** `FulfilPipeline::composite_layer()` lays
 the stored PNG over the imposed canvas, **after imposition, not before**: text baked into a piece
@@ -942,20 +949,24 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-> **A red `rest-check.sh` is the per-IP ceiling before it is a bug.** Three assertions go 429 once
-> a day of browser testing has used the 30. Raising `ip_daily_ceiling` through `Settings::update()`
-> and putting it straight back to 30 turns an ambiguous run into a definite one — done on
-> 2026-08-03, and all 12 then passed.
-
-- **Seven suites, all committed and all green — 534 assertions:** `tests/run.php` 368,
+- **Seven suites, all committed and all green — 544 assertions:** `tests/run.php` 368,
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (58,
-  a real order end to end, including a D-033 layer), `tools/wcff-check.php` (18, the money path),
-  `tools/proof-check.php` (18, printable proofs — also writes them), `tools/wizard-check.php`
-  (35, steps 1–2 and the D-043 layout key), `tools/text-check.php` (25). All but the first test
-  the *deployed* copy, so sync first. Three have been falsified rather than merely passed:
-  reintroducing D-025 turns 5 of the 12 red, tampering the AI fee turns 3 of the 18 red, and
-  keying the wizard's layouts independently of `FormatCatalogue::layout_key()` turns 3 of the 35
-  red.
+  a real order end to end, including a D-033 layer), `tools/wcff-check.php` (28, the money path
+  and the D-044 hand-off), `tools/proof-check.php` (18, printable proofs — also writes them),
+  `tools/wizard-check.php` (35, steps 1–2 and the D-043 layout key), `tools/text-check.php` (25).
+  All but the first test the *deployed* copy, so sync first. Falsified rather than merely passed:
+  reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 28 red
+  and restoring the old product-meta gate turns 13 red; keying the wizard's layouts independently
+  of `FormatCatalogue::layout_key()` turns 3 of the 35 red.
+
+> **A 429 in any check is the throttle, not the thing under test — and there are two of them
+> behind one message.** `aicake_session_limit` is `free_per_user`/`free_per_session`;
+> `aicake_ip_limit` is `ip_daily_ceiling`, default 30, per IP. „Pasiektas dienos piešinių
+> limitas." is what the customer sees for *both*, which is why this cost time twice.
+> `rest-check.sh` now prints the code on a 429 and says which knob to lift;
+> `wizard-check.php` lifts and restores its own throttle so it re-runs from nothing on a busy
+> day. Lift `ip_daily_ceiling` only — raising `free_per_session` breaks „logged-in allowance
+> exceeds anonymous", correctly.
 
 - **The plugin's logging is invisible under WP-CLI**, and so is WooCommerce's own: a
   `wc_get_logger()->warning()` from `wp eval` reaches no file, while the same call over HTTP

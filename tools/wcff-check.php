@@ -219,21 +219,72 @@ function aicake_reset_native_flag(): void {
 }
 
 /**
+ * A finished design belonging to the current user.
+ *
+ * `$with_ai` is what the €1 turns on, and it is written the way the pipeline
+ * writes it: a provider name and a master file. Both, because a master with no
+ * provider is what an uploaded photo will look like when that arrives, and a
+ * provider with no master is a generation that failed.
+ *
+ * @param bool   $with_ai Whether a provider actually generated an image.
+ * @param string $format  Format type recorded on the design.
+ * @param float  $mm      Format size.
+ * @param int    $user_id Owner.
+ */
+function aicake_design( bool $with_ai, string $format = 'circle', float $mm = 150.0, int $user_id = 1 ): string {
+	$designs = AiCake\Plugin::instance()->designs();
+
+	$id = $designs->create(
+		array(
+			'session_key'  => 'wcff-check',
+			'ip_hash'      => 'wcff-check',
+			'user_id'      => $user_id,
+			'prompt_raw'   => 'wcff-check ' . ( $with_ai ? 'ai' : 'plain' ),
+			'aspect'       => '1:1',
+			'product_id'   => aicake_product(),
+			'format_type'  => $format,
+			'format_mm'    => $mm,
+			'status'       => AiCake\Domain\DesignRepository::STATUS_DONE,
+			'file_preview' => 'wcff-check-preview.webp',
+			'provider'     => $with_ai ? 'fal' : null,
+			'file_master'  => $with_ai ? 'wcff-check-master.png' : null,
+		)
+	);
+
+	$row = $designs->find( $id );
+
+	return (string) ( $row['public_id'] ?? '' );
+}
+
+/**
  * Add to cart with the given fields posted, and report the line price.
  *
  * `$_REQUEST` is what WCFF's persister mines, which is exactly the point: the
- * wizard will post these the same way, from its own form.
+ * wizard posts these the same way from its own form.
+ *
+ * The design goes in the request too, because under D-035 the AI product is
+ * **not sellable without one** — `CartIntegration::validate()` refuses it, the
+ * same as the wizard's own step 4 requires. A zero here therefore means
+ * "refused", which is what the negative scenarios below assert.
  *
  * @param int                   $product_id Product.
  * @param array<string, string> $posted     Field key => value.
+ * @param string                $design     Design handle, or '' to post none.
  */
-function aicake_line_price( int $product_id, array $posted ): float {
+function aicake_line_price( int $product_id, array $posted, string $design = '' ): float {
 	aicake_reset_native_flag();
 
 	foreach ( array_keys( $_REQUEST ) as $key ) {
 		if ( 0 === strpos( (string) $key, 'wccpf_' ) ) {
 			unset( $_REQUEST[ $key ], $_POST[ $key ] );
 		}
+	}
+
+	unset( $_REQUEST['aicake_design'], $_POST['aicake_design'] );
+
+	if ( '' !== $design ) {
+		$_REQUEST['aicake_design'] = $design;
+		$_POST['aicake_design']    = $design;
 	}
 
 	foreach ( $posted as $key => $value ) {
@@ -297,35 +348,154 @@ aicake_check( 'no AI adds nothing', 0.0, $factory->surcharge( AICAKE_AI_LABEL, '
 
 echo "\nWhat WooCommerce actually charges\n";
 
+/*
+ * The AI answer now comes from the design, never from the request — so each
+ * scenario names which kind of design it is adding, and the posted `$ai_key`
+ * below is deliberately the *wrong* one in places.
+ */
+wp_set_current_user( 1 );
+
+$ai_design    = aicake_design( true );
+$plain_design = aicake_design( false );
+
 aicake_check(
 	'krakmolo, no AI',
 	3.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $ai_key => 'ne' ) )
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $plain_design )
 );
 
 aicake_check(
 	'storas krakmolo, no AI',
 	4.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Storas krakmolo lakštas', $ai_key => 'ne' ) )
+	aicake_line_price( $product_id, array( $sheet_key => 'Storas krakmolo lakštas' ), $plain_design )
 );
 
 aicake_check(
 	'cukrinis, no AI',
 	5.00,
-	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas', $ai_key => 'ne' ) )
+	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas' ), $plain_design )
 );
 
 aicake_check(
 	'cukrinis + AI',
 	6.00,
-	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas', $ai_key => 'taip' ) )
+	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas' ), $ai_design )
 );
 
 aicake_check(
 	'krakmolo + AI',
 	4.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $ai_key => 'taip' ) )
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $ai_design )
 );
+
+echo "\nThe AI fee is derived, not posted\n";
+
+/*
+ * The control D-036 leaves open and this closes. The Fields Factory field is a
+ * visible radio on the product page, so a customer can answer it themselves —
+ * and the answer is worth €1. `CartIntegration` overwrites it from whether the
+ * design really has a generated image, so both lies below are ignored.
+ *
+ * The wizard does not post this field at all. These do, because the attack
+ * does.
+ */
+aicake_check(
+	'a posted "ne" cannot dodge the fee',
+	4.50,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $ai_key => 'ne' ), $ai_design )
+);
+
+aicake_check(
+	'a posted "taip" cannot invent the fee',
+	3.50,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $ai_key => 'taip' ), $plain_design )
+);
+
+/*
+ * And it reaches the order the same way any WCFF field does, because it *is*
+ * one — the derived value goes into the request before WCFF mines it, so the
+ * cart line, the order meta and the email all agree without us writing any of
+ * them.
+ */
+$charged = '';
+
+foreach ( WC()->cart->get_cart() as $item ) {
+	$charged = (string) ( $item[ $ai_key ]['user_val'] ?? '' );
+}
+
+aicake_check( 'the cart line records the derived answer', 'ne', $charged );
+
+echo "\nWhat the AI product refuses\n";
+
+/*
+ * Asserted through the filter rather than through `WC()->cart->add_to_cart()`,
+ * because **`WC_Cart::add_to_cart()` never applies
+ * `woocommerce_add_to_cart_validation`**. Only `WC_Form_Handler`, the AJAX
+ * endpoint, the Store API and the cart-session restore do. Calling add_to_cart
+ * here and asserting "the cart is empty" would therefore assert nothing at all
+ * — it would pass for a plugin with no validation whatsoever.
+ *
+ * This is the exact call `class-wc-form-handler.php` makes on a real POST.
+ *
+ * It is also why the AI fee is derived on `woocommerce_add_cart_item_data`
+ * instead: that one does run on every route into the cart.
+ */
+function aicake_validates( int $product_id, string $design = '' ): bool {
+	unset( $_REQUEST['aicake_design'], $_POST['aicake_design'] );
+
+	if ( '' !== $design ) {
+		$_REQUEST['aicake_design'] = $design;
+		$_POST['aicake_design']    = $design;
+	}
+
+	$passed = (bool) apply_filters( 'woocommerce_add_to_cart_validation', true, $product_id, 1 );
+
+	wc_clear_notices();
+
+	return $passed;
+}
+
+/*
+ * Under D-035 there is one AI product and it carries no `_aicake_*` meta —
+ * format lives on the design. So "does this product need a design?" cannot be
+ * answered from product meta any more, and if it is, the wizard's own product
+ * falls through as an ordinary sale: no design on the order, and a €3.50 line
+ * that fulfilment cannot print.
+ */
+aicake_check( 'a real design passes validation', true, aicake_validates( $product_id, $ai_design ) );
+aicake_check( 'no design at all is refused', false, aicake_validates( $product_id ) );
+aicake_check( 'an unknown handle is refused', false, aicake_validates( $product_id, str_repeat( 'a', 32 ) ) );
+
+$strangers = aicake_design( true, 'circle', 150.0, 999 );
+
+aicake_check( "someone else's design is refused", false, aicake_validates( $product_id, $strangers ) );
+
+echo "\nWhat the cart line says the customer bought\n";
+
+/*
+ * Format is a property of the design now (D-035), so without carrying it the
+ * cart line, the confirmation email and the packing slip read "Valgomas
+ * paveikslėlis (AI)" whether it is one 20 cm topper or 35 cupcake circles.
+ */
+aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), aicake_design( true, 'cupcake', 45.0 ) );
+
+$shown = array();
+
+foreach ( WC()->cart->get_cart() as $item ) {
+	foreach ( (array) apply_filters( 'woocommerce_get_item_data', array(), $item ) as $row ) {
+		// WooCommerce accepts either spelling and WCFF's own rows use `name`,
+		// so reading only `key` warns on every line the shop already displays.
+		$label = (string) ( $row['key'] ?? $row['name'] ?? '' );
+
+		if ( '' !== $label ) {
+			$shown[ $label ] = (string) ( $row['value'] ?? '' );
+		}
+	}
+}
+
+aicake_check( 'the format is named on the line', true, isset( $shown['Formatas'] ) );
+aicake_check( 'and it is the design\'s format, in words', true, false !== strpos( $shown['Formatas'] ?? '', '4,5' ) );
+aicake_check( 'the prompt is still shown too', true, isset( $shown['Piešinys'] ) );
 
 /*
  * The one that would have been missed: the surcharge must survive into the

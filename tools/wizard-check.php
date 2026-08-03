@@ -178,6 +178,33 @@ aicake_check( 'a whole sheet generates 2:3', '2:3', FormatCatalogue::spec( Forma
  */
 wp_set_current_user( 1 );
 
+/*
+ * Lift the per-visitor throttle for this one request, then put it back.
+ *
+ * Not to dodge a real limit — the limiter has its own assertions elsewhere —
+ * but because this scenario is about *moderation*, and the limiter is checked
+ * first. A day of browser testing as the same user exhausts the 20 and this
+ * request never reaches layer 1, which used to read as a pass. The gate has to
+ * re-run from nothing on any day (D-031's principle), and that includes a busy
+ * one.
+ */
+$settings  = $plugin->settings();
+$throttled = array(
+	'free_per_user'        => $settings->get( 'free_per_user' ),
+	'free_per_session'     => $settings->get( 'free_per_session' ),
+	'ip_daily_ceiling'     => $settings->get( 'ip_daily_ceiling' ),
+	'min_interval_seconds' => $settings->get( 'min_interval_seconds' ),
+);
+
+$settings->update(
+	array(
+		'free_per_user'        => 100000,
+		'free_per_session'     => 100000,
+		'ip_daily_ceiling'     => 100000,
+		'min_interval_seconds' => 0,
+	)
+);
+
 $request = new WP_REST_Request( 'POST', '/aicake/v1/generate' );
 $request->set_header( 'X-WP-Nonce', wp_create_nonce( 'wp_rest' ) );
 $request->set_header( 'Content-Type', 'application/json' );
@@ -196,12 +223,36 @@ $request->set_body_params(
 
 $response = rest_do_request( $request );
 
-aicake_check( 'a blocked prompt is refused', true, $response->is_error() );
+// Restored immediately, before any assertion can fail and skip it.
+$settings->update( $throttled );
+
+/*
+ * The *specific* code, not merely "an error".
+ *
+ * `is_error()` was true for any refusal, including the 429 the throttle
+ * returns once a day of testing has used the allowance — so a throttled run
+ * passed this assertion, wrote no design row, and the three below then read
+ * whatever row happened to be newest and failed for a reason that had nothing
+ * to do with them. An assertion that passes when the thing under test never
+ * ran is worse than no assertion.
+ */
+$code = $response->is_error() ? $response->as_error()->get_error_code() : '';
+
+aicake_check( 'a blocked prompt is refused by moderation', 'aicake_rejected', $code );
 
 global $wpdb;
 
+/*
+ * Found by its prompt rather than by "newest row". Other checks — and this
+ * file's own later scenarios — write designs too, and "the last one inserted"
+ * silently becomes someone else's row.
+ */
 $row = $wpdb->get_row(
-	"SELECT format_type, format_mm, aspect, status FROM {$wpdb->prefix}aicake_designs ORDER BY id DESC LIMIT 1"
+	$wpdb->prepare(
+		"SELECT format_type, format_mm, aspect, status FROM {$wpdb->prefix}aicake_designs
+		 WHERE prompt_raw = %s ORDER BY id DESC LIMIT 1",
+		'Elsos suknelė'
+	)
 );
 
 aicake_check( 'the rejection was logged', 'rejected', $row->status ?? '' );
