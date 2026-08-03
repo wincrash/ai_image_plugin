@@ -387,6 +387,26 @@ Two facts that matter for the integration:
   flagged this himself as a later step; it needs the consolidated AI product from D-035 to exist
   first. Until then the group applies to nothing and no cart test will show a surcharge.
 
+**D-036's open risk is resolved — read from the WCFF source, 2026-08-03.** The wizard can drive a
+Fields Factory field, and by the robust route rather than the fragile one:
+
+| | |
+|---|---|
+| `wcff_persister.php::persist_fields()` | mines **`$_REQUEST` by field key** on `woocommerce_add_cart_item_data` |
+| `wcff_negotiator.php::handle_custom_pricing()` | iterates **cart-item keys** matching `wccpf_*` that carry `pricing_rules` + `user_val`, then `set_price()` |
+
+So the wizard's add-to-cart form just posts `wccpf_<key>=<value>` like any other field, and WCFF
+builds the whole structure itself — price, cart display, order meta, email. **No coupling to
+WCFF internals and no pricing code of ours.**
+
+The fragile alternative — hand-building the `wccpf_*` cart-item array so the negotiator finds it
+— also works, since the negotiator never reads `$_POST`. Do not use it: it depends on an
+undocumented internal shape that a WCFF update can change silently.
+
+Still to confirm by running it rather than reading it: that a **hidden** field type persists the
+same way as a visible one, and that the field key survives being resolved at runtime rather than
+hardcoded (keys are random, see above).
+
 ### Production — capabilities confirmed 2026-08-02
 
 `valgomosdekoracijos.lt` — **~2500 products** (Ruslan, 2026-08-03; the ~265 figure used up to and
