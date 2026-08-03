@@ -590,7 +590,36 @@ just asserted: the 24-up shows its outer bleed rings clipping at the sheet edge,
 > there goes red for the right reason and then gets "fixed" by pasting in whatever the code
 > produced, which asserts nothing. It now reads the usable-area constants.
 
-**Step 3 next: wizard step 1** — format + sheet type, resolving to the product.
+**Step 3 done: wizard step 1.** `[aicake_wizard]` on
+`http://100.127.55.45:8080/ai-paveikslelis-vedlys/`, verified in a real browser inside Blocksy:
+choosing a format reveals the size list, the piece count is stated („Gausite: 35 vnt."), and the
+price tracks the sheet type — 3,50 → 5,00 € on cukrinis.
+
+| File | What it does |
+|---|---|
+| `Frontend/Wizard.php` | Shortcode, format grouping, sheet types read from WCFF, precomputed prices |
+| `templates/wizard.php` | Step 1 markup, theme-overridable at `ai-cake-topper/wizard.php` |
+| `assets/js/wizard.js` | Step logic, hash-addressable, live count and price |
+| `Rest/GenerateEndpoint.php` | Validates the format and **derives the aspect from it** |
+| `tools/wizard-check.php` | 24 assertions — also creates the page if missing |
+
+Two things done deliberately server-side:
+
+- **Prices are precomputed per combination, never calculated in the browser.** Whether a figure
+  includes VAT depends on two shop settings, and a running total that disagrees with the cart by
+  21% is worse than none. `wcff-check` proves WooCommerce charges those figures; `wizard-check`
+  proves the wizard quotes the same ones.
+- **The generation aspect comes from the format, not from the client.** They are not independent
+  (§3.2), and a posted aspect that disagrees produces a wrongly cropped generation at our expense.
+
+**Step 4 next:** generation inside the wizard, then the D-033 text editor and the proof step. The
+AI flag must be derived server-side in `CartIntegration` from whether the design really has a
+generated image — a posted flag about whether money was spent cannot be trusted.
+
+> **Do not polish the frontend against the testbed theme** (Ruslan, 2026-08-03). The testbed runs
+> an older Blocksy child; live has many small modifications, and he does the cosmetics at ship
+> time. Functional CSS only — a control that cannot be seen or clicked is worth fixing, spacing
+> and colour are not.
 
 None of D-033/034 is scheduled against Phase 8. Read all of D-033 → D-039 before starting any.
 
@@ -634,10 +663,10 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- **Five suites, all committed and all green — 322 assertions:** `tests/run.php` (220 pure-PHP),
+- **Six suites, all committed and all green — 346 assertions:** `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
   a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
-  (18, printable proofs — also writes them). All but the first test the *deployed* copy, so sync
+  (18, printable proofs — also writes them), `tools/wizard-check.php` (24, step 1). All but the first test the *deployed* copy, so sync
   first. Both `rest-check.sh` and `wcff-check.php` were falsified before being trusted —
   reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of the 18 red.
 

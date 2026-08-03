@@ -178,6 +178,8 @@ class DesignRepository {
 			'user_id',
 			'product_id',
 			'variation_id',
+			'format_type',
+			'format_mm',
 			'prompt_raw',
 			'prompt_en',
 			'prompt_final',

@@ -1,0 +1,238 @@
+/**
+ * Wizard styling. Mobile-first — most cake orders are placed on a phone (§15).
+ *
+ * Every selector is prefixed and specific enough to survive a theme. Phase 6
+ * lost `[hidden]` to Blocksy on specificity and the spinner showed permanently,
+ * so `[hidden]` is re-asserted here rather than trusted.
+ */
+
+.aicake-wizard {
+	--aicake-line: #d9d9e3;
+	--aicake-ink: #1d2327;
+	--aicake-accent: #b4436c;
+
+	max-width: 46rem;
+	margin: 0 auto;
+	color: var(--aicake-ink);
+}
+
+.aicake-wizard [hidden] {
+	display: none !important;
+}
+
+/* ------------------------------------------------------------- progress */
+
+/*
+ * Prefixed with `.aicake-wizard` throughout, not for tidiness: Blocksy styles
+ * `ol > li` with enough specificity to win, and the first version had every
+ * step number sitting on top of its own label. Phase 6 lost `[hidden]` to the
+ * same theme the same way.
+ */
+.aicake-wizard .aicake-wizard__progress {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem 1.25rem;
+	margin: 0 0 1.5rem;
+	padding: 0;
+	list-style: none;
+	counter-reset: aicake-step;
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+/*
+ * Flex rather than padding plus an absolutely positioned marker. The padding
+ * version lost: Blocksy computes `padding-left: 6px` on these list items and
+ * wins, so every step number sat on top of its own label. Out-specifying it
+ * would work until the next theme rule; laying the marker out as a flex child
+ * needs no padding to be respected at all.
+ */
+.aicake-wizard .aicake-wizard__progress li {
+	display: flex;
+	align-items: center;
+	gap: 0.45rem;
+	margin: 0;
+	counter-increment: aicake-step;
+}
+
+.aicake-wizard .aicake-wizard__progress li::marker {
+	content: none;
+}
+
+.aicake-wizard .aicake-wizard__progress li::before {
+	content: counter(aicake-step);
+	flex: 0 0 auto;
+	width: 1.15rem;
+	height: 1.15rem;
+	border: 1px solid var(--aicake-line);
+	border-radius: 50%;
+	font-size: 0.7rem;
+	line-height: 1.05rem;
+	text-align: center;
+}
+
+.aicake-wizard .aicake-wizard__progress li.is-current {
+	color: var(--aicake-ink);
+	font-weight: 600;
+}
+
+.aicake-wizard .aicake-wizard__progress li.is-current::before {
+	border-color: var(--aicake-accent);
+	color: var(--aicake-accent);
+}
+
+.aicake-wizard .aicake-wizard__progress li.is-done::before {
+	content: "✓";
+	border-color: var(--aicake-accent);
+	color: var(--aicake-accent);
+}
+
+/* -------------------------------------------------------------- formats */
+
+.aicake-wizard__heading {
+	margin: 0 0 1rem;
+	font-size: 1.25rem;
+}
+
+.aicake-formats {
+	display: grid;
+	grid-template-columns: 1fr;
+	gap: 0.75rem;
+	margin-bottom: 1.5rem;
+}
+
+@media (min-width: 34rem) {
+	.aicake-formats {
+		grid-template-columns: repeat(3, 1fr);
+	}
+}
+
+.aicake-format-card {
+	display: block;
+	padding: 0.9rem 1rem;
+	border: 1px solid var(--aicake-line);
+	border-radius: 0.5rem;
+	cursor: pointer;
+	transition: border-color 0.15s ease;
+}
+
+.aicake-format-card:hover {
+	border-color: #b9b9c4;
+}
+
+/*
+ * `:has()` is the whole styling mechanism for the selected state, and its
+ * fallback is honest: without it the native radio is still visible and still
+ * shows which card is chosen. Nothing becomes unusable.
+ */
+.aicake-format-card:has(input:checked) {
+	border-color: var(--aicake-accent);
+	box-shadow: inset 0 0 0 1px var(--aicake-accent);
+}
+
+.aicake-format-card input {
+	margin-right: 0.45rem;
+}
+
+.aicake-format-card__title {
+	font-weight: 600;
+}
+
+.aicake-format-card__note {
+	display: block;
+	margin-top: 0.3rem;
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+/* --------------------------------------------------------------- fields */
+
+.aicake-field {
+	margin: 0 0 1.25rem;
+}
+
+.aicake-field label,
+.aicake-field legend {
+	display: block;
+	margin-bottom: 0.35rem;
+	font-weight: 600;
+}
+
+.aicake-field select {
+	width: 100%;
+	max-width: 22rem;
+	padding: 0.55rem 0.6rem;
+	border: 1px solid var(--aicake-line);
+	border-radius: 0.35rem;
+	background: #fff;
+}
+
+.aicake-field__note {
+	display: block;
+	margin-top: 0.35rem;
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+.aicake-sheets {
+	border: 0;
+	padding: 0;
+	margin: 0 0 1.25rem;
+}
+
+.aicake-sheet {
+	display: block;
+	padding: 0.35rem 0;
+	cursor: pointer;
+}
+
+.aicake-sheet input {
+	margin-right: 0.45rem;
+}
+
+/* ---------------------------------------------------------------- price */
+
+.aicake-price {
+	display: flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin: 0 0 1.25rem;
+	padding-top: 1rem;
+	border-top: 1px solid var(--aicake-line);
+}
+
+.aicake-price__value {
+	font-size: 1.3rem;
+	font-weight: 700;
+}
+
+.aicake-price__note {
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+/* -------------------------------------------------------------- actions */
+
+.aicake-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	flex-wrap: wrap;
+}
+
+.aicake-wizard .button[disabled] {
+	opacity: 0.55;
+	cursor: not-allowed;
+}
+
+.aicake-hint {
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+.aicake-wizard-error {
+	padding: 0.75rem 1rem;
+	border-left: 3px solid #d63638;
+	background: #fcf0f1;
+}

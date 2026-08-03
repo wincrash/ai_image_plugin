@@ -16,6 +16,7 @@ use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
 use AiCake\Frontend\Generator;
+use AiCake\Frontend\Wizard;
 use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\GdEngine;
 use AiCake\Imaging\TextRenderer;
@@ -47,6 +48,7 @@ use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
 use AiCake\WooCommerce\CartIntegration;
+use AiCake\WooCommerce\FieldsFactory;
 use AiCake\WooCommerce\Fulfilment;
 use AiCake\WooCommerce\OrderStatuses;
 use AiCake\WooCommerce\ProductFields;
@@ -261,6 +263,7 @@ class Plugin {
 			( new ProductFields() )->register();
 			( new CartIntegration( $this->designs, $this->identity ) )->register();
 			( new Generator( $this->settings, $this->fonts ) )->register();
+			( new Wizard( $this->settings, new FieldsFactory() ) )->register();
 
 			/*
 			 * Statuses and fulfilment are registered on the frontend too. The

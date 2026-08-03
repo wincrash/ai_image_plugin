@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AiCake\Rest;
 
 use AiCake\Domain\DesignRepository;
+use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
 use AiCake\Domain\TextSpec;
@@ -133,6 +134,28 @@ class GenerateEndpoint {
 			$session_key = $this->identity->issue_session_key();
 		}
 
+		/*
+		 * The format the wizard chose at step 1, validated against the
+		 * catalogue rather than taken at its word — an unlisted size would
+		 * otherwise be generated, paid for, and then unprintable (D-038).
+		 */
+		$format = FormatCatalogue::find(
+			(string) $request->get_param( 'format_type' ),
+			(float) $request->get_param( 'format_mm' )
+		);
+
+		if ( null !== $format ) {
+			/*
+			 * And the aspect comes from the format, never from the client.
+			 * They are not independent: a round topper needs 1:1 and a whole
+			 * sheet needs 2:3 (§3.2). A posted aspect that disagrees produces
+			 * a generation that is cropped wrong, at our expense, and looks
+			 * like a bad model rather than a bad request.
+			 */
+			$spec   = FormatCatalogue::spec( (string) $format['type'], (float) $format['diameter_mm'] );
+			$aspect = null === $spec ? $aspect : $spec->generation_aspect();
+		}
+
 		$common = array(
 			'session_key'  => $session_key,
 			'ip_hash'      => $this->identity->ip_hash(),
@@ -141,6 +164,8 @@ class GenerateEndpoint {
 			'aspect'       => in_array( $aspect, array( '1:1', '2:3', '3:2', '4:5' ), true ) ? $aspect : '1:1',
 			'product_id'   => (int) $request->get_param( 'product_id' ) ?: null,
 			'variation_id' => (int) $request->get_param( 'variation_id' ) ?: null,
+			'format_type'  => null === $format ? null : (string) $format['type'],
+			'format_mm'    => null === $format ? null : (float) $format['diameter_mm'],
 			'text_payload' => $this->text_payload( $request ),
 		);
 

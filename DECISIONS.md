@@ -1388,4 +1388,34 @@ The operator has the printer. Ask, or wait for the print test.
 
 ---
 
-<!-- Next: D-040 -->
+### D-040 · The geometry is confirmed on paper
+**2026-08-03** · Ruslan · **verified physically, not asserted**
+
+Ruslan printed the ⌀4 cm and ⌀5 cm cupcake proofs and checked them.
+
+> *"all black lines are ok, and the margin at end of right page is also ok."*
+
+Which confirms three separate things that had only ever been arithmetic:
+
+1. **The trim circles are the size they claim.** 35-up and 20-up both, so the
+   imposition maths and the 300 DPI declaration survive a real printer — the
+   D-027 failure mode (a file that is right and prints at the wrong physical
+   size) is not present.
+2. **The 15 mm bare strip is where we think it is.** This was explicitly open:
+   if the driver rotated 180° for the feed path the offset would land at the
+   wrong end, and it was invisible until printed. It does not.
+3. **No printer margin is needed**, as D-039 said against my objection. The
+   sheet reaches the edges.
+
+**Everything downstream can now treat 210 × 282 mm as measured rather than
+assumed.** The remaining geometry unknowns are gone; `tools/proof-check.php`
+stays committed so the same check is one command if the sheets or printer ever
+change.
+
+Not yet printed: the single-circle formats, including ⌀20 cm, which is the one
+with the least clearance (4 mm across the short edge). Worth doing before it is
+offered for sale, but nothing depends on it now.
+
+---
+
+<!-- Next: D-041 -->
