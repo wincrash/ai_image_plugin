@@ -12,9 +12,7 @@ namespace AiCake\Pipeline;
 use AiCake\Domain\PrintFile;
 use AiCake\Domain\PrintSpec;
 use AiCake\Domain\TextLayer;
-use AiCake\Domain\TextSpec;
 use AiCake\Imaging\GdEngine;
-use AiCake\Imaging\TextRenderer;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Support\Logger;
 use GdImage;
@@ -24,14 +22,17 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The post-payment path from PLAN.md §5:
  *
- *   master → upscale (only if short) → shape + bleed → text (print res)
- *          → imposition (if copies > 1) → flatten → DPI metadata → print.png
+ *   master → upscale (only if short) → shape + bleed → imposition (if copies
+ *          > 1) → composite the text layer → flatten → DPI metadata → print.png
  *
  * Three things separate this from `PreviewPipeline`, and each is deliberate:
  *
  * 1. **No watermark.** This is the file that gets printed.
- * 2. **Text is rendered at 300 DPI**, not upscaled from the preview. Upscaling
- *    rendered text is what makes cheap print shops look cheap (§5).
+ * 2. **The text layer is composited after imposition, never before.** It
+ *    arrives from the browser already at print resolution and sheet sized
+ *    (D-033), so it is laid over the finished sheet at 1:1 and never scaled —
+ *    baking text into a piece and then imposing gives every cupcake the same
+ *    name, which is the whole reason the layer is sheet sized.
  * 3. **Flattened onto white.** On a white icing sheet "no ink" and "white" are
  *    the same output, and some printer drivers turn a transparent corner black
  *    (§9.1.1).
@@ -50,26 +51,21 @@ class FulfilPipeline {
 
 	private GdEngine $images;
 
-	private TextRenderer $text;
-
 	private ProviderRegistry $providers;
 
 	private Logger $logger;
 
 	/**
 	 * @param GdEngine         $images    Pixels.
-	 * @param TextRenderer     $text      Text layer.
 	 * @param ProviderRegistry $providers For the upscaler.
 	 * @param Logger           $logger    Logging.
 	 */
 	public function __construct(
 		GdEngine $images,
-		TextRenderer $text,
 		ProviderRegistry $providers,
 		Logger $logger
 	) {
 		$this->images    = $images;
-		$this->text      = $text;
 		$this->providers = $providers;
 		$this->logger    = $logger;
 	}
@@ -79,14 +75,12 @@ class FulfilPipeline {
 	 *
 	 * @param string         $master_path Absolute path to the clean generation.
 	 * @param PrintSpec      $spec        Product geometry.
-	 * @param TextSpec|null  $text        Legacy server-rendered text, or null.
 	 * @param TextLayer|null $layer       D-033 composed layer, or null.
 	 * @return PrintFile|null Null on any failure; the caller retries.
 	 */
 	public function render(
 		string $master_path,
 		PrintSpec $spec,
-		?TextSpec $text = null,
 		?TextLayer $layer = null
 	): ?PrintFile {
 		if ( ! is_readable( $master_path ) ) {
@@ -104,7 +98,7 @@ class FulfilPipeline {
 
 		list( $bytes, $factor, $upscaler ) = $this->maybe_upscale( $bytes, $spec );
 
-		$piece = $this->render_piece( $bytes, $spec, $text );
+		$piece = $this->render_piece( $bytes, $spec );
 		unset( $bytes );
 
 		if ( null === $piece ) {
@@ -208,13 +202,12 @@ class FulfilPipeline {
 	}
 
 	/**
-	 * One finished piece: bled, shaped, texted, still with its alpha.
+	 * One finished piece: bled and shaped, still with its alpha.
 	 *
 	 * @param string        $bytes Master image data.
 	 * @param PrintSpec     $spec  Product geometry.
-	 * @param TextSpec|null $text  Text layer.
 	 */
-	private function render_piece( string $bytes, PrintSpec $spec, ?TextSpec $text ): ?GdImage {
+	private function render_piece( string $bytes, PrintSpec $spec ): ?GdImage {
 		$master = $this->images->from_string( $bytes );
 
 		if ( null === $master ) {
@@ -232,15 +225,11 @@ class FulfilPipeline {
 			return null;
 		}
 
-		// Shape before text, so text near the edge is clipped by the circle
-		// exactly as it will be on the finished piece — the same order the
-		// preview used, which is what makes the preview honest.
+		// The circle is the artwork's shape, not the text's. Text is composited
+		// over the imposed sheet later and is constrained to the cut line in
+		// the browser (D-042), so nothing here clips it.
 		if ( $spec->is_round() ) {
 			$this->images->circle_mask( $piece );
-		}
-
-		if ( null !== $text && ! $text->is_empty() ) {
-			$this->text->render( $piece, $text, $spec->dpi, $spec->is_round() );
 		}
 
 		return $piece;

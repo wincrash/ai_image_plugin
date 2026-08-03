@@ -24,6 +24,7 @@ use AiCake\Domain\DesignRepository;
 use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\PrintSpec;
 use AiCake\Domain\TextLayer;
+use AiCake\Pipeline\ProofPipeline;
 use AiCake\Throttle\IdentityResolver;
 
 $GLOBALS['aicake_pass'] = 0;
@@ -86,7 +87,40 @@ function aicake_fixture_design( DesignRepository $designs, string $session, stri
 		)
 	);
 
-	return (array) $designs->find( $id );
+	$design = (array) $designs->find( $id );
+
+	/*
+	 * A real preview file, not just a row. The D-045 proof lays this out per
+	 * piece and composites the layer over it, so a fixture with no artwork on
+	 * disk cannot exercise it — and would report the feature broken rather
+	 * than the fixture incomplete.
+	 *
+	 * Deliberately not a flat colour: „the proof differs from the preview"
+	 * has to fail for the right reason, and two solid images of different
+	 * sizes differ for the wrong one.
+	 */
+	$plugin = AiCake\Plugin::instance();
+	$canvas = $plugin->images()->blank( 400, 400, false );
+
+	if ( null !== $canvas ) {
+		imagefilledrectangle( $canvas, 0, 0, 399, 399, imagecolorallocate( $canvas, 210, 180, 140 ) );
+		imagefilledellipse( $canvas, 200, 200, 260, 260, imagecolorallocate( $canvas, 90, 140, 200 ) );
+
+		$path = $plugin->storage()->write(
+			$plugin->storage()->session_path( (string) $design['public_id'], 'preview.webp' ),
+			$plugin->images()->to_webp( $canvas, 82 )
+		);
+
+		$plugin->images()->free( $canvas );
+
+		if ( '' !== $path ) {
+			$designs->update( $id, array( 'file_preview' => $path ) );
+
+			$design = (array) $designs->find( $id );
+		}
+	}
+
+	return $design;
 }
 
 /**
@@ -253,6 +287,49 @@ aicake_check( 'at the canvas size', $cw, $stored->width_px );
  * file that declares 300 cannot be the one that was uploaded (D-027).
  */
 aicake_check( 'and re-encoded, declaring print DPI', 300, $plugin->images()->read_dpi( (string) file_get_contents( $stored->path ) ) );
+
+echo "\nThe proof the cart shows (D-045)\n";
+
+/*
+ * The cart, the order screen and the email have no canvas, so they cannot show
+ * step 4's proof. Without a server-built one they showed the bare artwork, and
+ * a customer who placed twelve names saw one plain circle and no way to tell
+ * whether their text had survived.
+ *
+ * Asserted on the *file*, not on the column: a path recorded for an image that
+ * was never written is exactly the failure this is meant to rule out.
+ */
+$row   = (array) $designs->find( (int) $circle['id'] );
+$proof = (string) ( $row['file_proof'] ?? '' );
+
+aicake_check( 'a proof is recorded', true, '' !== $proof );
+aicake_check( 'and it is on disk', true, '' !== $proof && is_readable( $proof ) );
+
+$proof_size = '' !== $proof && is_readable( $proof )
+	? (array) getimagesize( $proof )
+	: array( 0, 0 );
+
+/*
+ * Its shape is the print canvas's shape, scaled — so a 24-up sheet's proof is
+ * sheet-shaped and a single topper's is square. Compared as a ratio rather than
+ * as fixed pixels, because the long edge is a constant that may be tuned.
+ */
+$want_ratio = $cw / max( 1, $ch );
+$got_ratio  = ( $proof_size[0] ?? 0 ) / max( 1, $proof_size[1] ?? 1 );
+
+aicake_check( 'the proof has the canvas aspect', true, abs( $want_ratio - $got_ratio ) < 0.02 );
+aicake_check( 'and its long edge is the proof size', ProofPipeline::PROOF_PX, max( (int) ( $proof_size[0] ?? 0 ), (int) ( $proof_size[1] ?? 0 ) ) );
+
+/*
+ * And it really carries the text, rather than being a copy of the preview.
+ * The layer is the only thing between the two, so a proof that weighs the same
+ * as a shaped preview is a proof with nothing composited onto it.
+ */
+aicake_check(
+	'the proof differs from the bare preview',
+	true,
+	'' !== $proof && is_readable( $proof ) && (string) file_get_contents( $proof ) !== (string) file_get_contents( (string) $row['file_preview'] )
+);
 
 echo "\nWhat it refuses\n";
 

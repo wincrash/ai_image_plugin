@@ -32,8 +32,7 @@ defined( 'ABSPATH' ) || exit;
  * is exactly why `LayerInspector` inspects the pixels rather than trusting
  * this.
  *
- * `TextSpec` still exists and the print path still uses it. D-033 says delete
- * nothing until the browser side works.
+ * `TextSpec` is gone (D-045). This is now the only text the server keeps.
  */
 class TextLayer {
 
@@ -87,10 +86,11 @@ class TextLayer {
 	/**
 	 * Read one out of a design row.
 	 *
-	 * The column is shared with `TextSpec`, which has no `path`. A spec-shaped
-	 * payload therefore reads back as a layer with no bitmap rather than as an
-	 * error — which is what lets both live in the column while the browser side
-	 * is being built.
+	 * **Rows written before D-045 hold the old `TextSpec` shape**, which has no
+	 * `path`. Those read back as a layer with no bitmap rather than as an error:
+	 * nothing is composited, so the print is the artwork alone, while the `text`
+	 * they do carry still shows the shop manager what was ordered. Refusing them
+	 * outright would break reprinting an old order (§12.6) to no purpose.
 	 *
 	 * @param array<string, mixed> $design Design row.
 	 */

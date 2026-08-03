@@ -20,7 +20,6 @@ use AiCake\Frontend\Wizard;
 use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\GdEngine;
 use AiCake\Imaging\LayerInspector;
-use AiCake\Imaging\TextRenderer;
 use AiCake\Imaging\Watermarker;
 use AiCake\Moderation\Blocklist;
 use AiCake\Moderation\Moderator;
@@ -28,6 +27,7 @@ use AiCake\Moderation\Sanitiser;
 use AiCake\Pipeline\FulfilPipeline;
 use AiCake\Pipeline\LayoutSuggester;
 use AiCake\Pipeline\PreviewPipeline;
+use AiCake\Pipeline\ProofPipeline;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
 use AiCake\Providers\Image\GeminiImageProvider;
@@ -108,13 +108,13 @@ class Plugin {
 
 	private FontCatalogue $fonts;
 
-	private TextRenderer $text;
-
 	private Watermarker $watermarker;
 
 	private Moderator $moderator;
 
 	private PreviewPipeline $previews;
+
+	private ProofPipeline $proofs;
 
 	private FulfilPipeline $prints;
 
@@ -143,7 +143,6 @@ class Plugin {
 
 		$this->images      = new GdEngine( $this->logger );
 		$this->fonts       = new FontCatalogue( $this->logger );
-		$this->text        = new TextRenderer( $this->fonts, $this->logger );
 		$this->watermarker = new Watermarker( $this->fonts, $this->logger, $this->settings );
 
 		$this->moderator = new Moderator(
@@ -153,9 +152,10 @@ class Plugin {
 			$this->logger
 		);
 
+		$this->proofs = new ProofPipeline( $this->images, $this->storage, $this->logger );
+
 		$this->previews = new PreviewPipeline(
 			$this->images,
-			$this->text,
 			$this->watermarker,
 			$this->storage,
 			$this->settings,
@@ -176,7 +176,7 @@ class Plugin {
 			$this->logger
 		);
 
-		$this->prints  = new FulfilPipeline( $this->images, $this->text, $this->providers, $this->logger );
+		$this->prints  = new FulfilPipeline( $this->images, $this->providers, $this->logger );
 		$this->archive = new OrderArchive( $this->storage, $this->designs, $this->logger );
 
 		$this->fulfilment = new Fulfilment(
@@ -215,6 +215,7 @@ class Plugin {
 				$this->images,
 				new LayerInspector( $this->logger ),
 				$this->storage,
+				$this->proofs,
 				$this->logger
 			),
 			new LayoutEndpoint(
@@ -282,7 +283,7 @@ class Plugin {
 		if ( class_exists( 'WooCommerce' ) ) {
 			( new ProductFields() )->register();
 			( new CartIntegration( $this->designs, $this->identity, new FieldsFactory() ) )->register();
-			( new Generator( $this->settings, $this->fonts ) )->register();
+			( new Generator( $this->settings ) )->register();
 			( new Wizard( $this->settings, new FieldsFactory(), $this->logger ) )->register();
 
 			/*
@@ -465,13 +466,6 @@ class Plugin {
 	 */
 	public function fonts(): FontCatalogue {
 		return $this->fonts;
-	}
-
-	/**
-	 * The text layer.
-	 */
-	public function text(): TextRenderer {
-		return $this->text;
 	}
 
 	/**

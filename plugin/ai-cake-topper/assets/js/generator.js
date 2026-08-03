@@ -30,11 +30,7 @@
 		preview: root.querySelector( '[data-aicake-preview]' ),
 		history: root.querySelector( '[data-aicake-history]' ),
 		strip: root.querySelector( '[data-aicake-history-strip]' ),
-		design: root.querySelector( '[data-aicake-design]' ),
-		text: root.querySelector( '#aicake-text' ),
-		font: root.querySelector( '#aicake-font' ),
-		placement: root.querySelector( '#aicake-placement' ),
-		colour: root.querySelector( '#aicake-colour' )
+		design: root.querySelector( '[data-aicake-design]' )
 	};
 
 	function show( node, visible ) {
@@ -123,17 +119,6 @@
 
 	/* ---------------------------------------------------------------- wiring */
 
-	function textPayload() {
-		if ( ! el.text || ! el.text.value.trim() ) { return null; }
-
-		return {
-			text: el.text.value.trim(),
-			font: el.font ? el.font.value : '',
-			colour: el.colour ? el.colour.value : '#ffffff',
-			placement: el.placement ? el.placement.value : 'bottom'
-		};
-	}
-
 	function generate() {
 		var prompt = el.prompt ? el.prompt.value.trim() : '';
 
@@ -155,8 +140,6 @@
 			variation_id: 0
 		};
 
-		var text = textPayload();
-		if ( text ) { payload.text = text; }
 
 		engine.generate( payload );
 	}

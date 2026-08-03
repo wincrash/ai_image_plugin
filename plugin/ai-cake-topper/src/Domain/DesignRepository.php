@@ -192,6 +192,7 @@ class DesignRepository {
 			'moderation',
 			'file_master',
 			'file_preview',
+			'file_proof',
 			'file_print',
 			'order_id',
 			'order_item_id',

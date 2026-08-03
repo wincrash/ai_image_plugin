@@ -8,10 +8,9 @@ Phase 0 deferred to a later calibration step (D-018).
 > "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
 > suggestion button, and the print path composites the text layer.**
 >
-> **Both bugs Ruslan reported are dealt with** — „Užrašo dydis netinka." is fixed (D-043) and
-> „Pasiūlyk dizainą" is parked until it recurs. **The wizard is now complete end to end: a
-> Lithuanian prompt becomes a cart line with the right price** (D-044).
-> **Start here: delete the server-side text rendering (1c), then Phase 8.**
+> **The wizard track is finished.** A Lithuanian prompt becomes a cart line with the right price
+> and the finished picture on it (D-043 → D-045). All server-side text rendering is deleted.
+> **Start here: Phase 8 — operations (§14). The review queue first.**
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -646,21 +645,56 @@ is per-piece text proven on a real print file.
 > uses 646, the 15 cm topper, and reverting turns it red (2481 vs 1843) along with the ink
 > assertion, because the layer then no longer matches the canvas.
 
-**1c. Only now delete the server-side text rendering.** D-033 says delete nothing until the
-browser side works; it works and the print path no longer needs it for wizard designs.
-`TextRenderer` (arc text, auto-fit, wrapping, faked outlines), the Lithuanian cmap gate and
-`TextSpec` can go — **but the product-page generator still uses `TextSpec`**, so that has to
-retire or move first. Fonts stay for the watermark.
+**1c is done — the server draws no glyphs but the watermark (D-045).** `TextRenderer`,
+`TextSpec`, the product page's text controls, the `text` parameter on `/generate` and the text
+step in both pipelines are all gone.
+
+**`FontCatalogue` and `TtfCmap` were kept**, contrary to what this file used to say. They are now
+the **Lithuanian coverage gate on the font list the browser is offered**, and D-041 raised the
+stakes: the layout model names a font, so the offered set is what it picks from and each entry
+must be able to spell `ĄČĘĖĮŠŲŪŽ`.
+
+Old rows still hold the retired payload shape. They read back as a layer with **no bitmap** —
+nothing composites, the artwork prints alone, and the `text` they carry still tells a shop
+manager what was ordered. Asserted in `order-check`.
+
+**The cart shows the finished picture now (Ruslan, D-045).** `Pipeline/ProofPipeline.php` lays
+the watermarked preview out per piece and composites the stored layer over it; `file_proof` is
+**schema 4** and a `proof` file variant serves it. Not a second renderer — it composites the same
+bitmap the browser made and draws no glyphs. Looked at: 24 cupcakes, „Emilija" on each.
+
+> **A third instance of the D-043 bug, found while deleting.** `Runner` built previews with
+> `PrintSpec::for_product()`, so every wizard preview used the default round 150 mm — which
+> circle-masks the preview of a whole A4 sheet. Invisible for round formats, which is why it
+> survived. Now `for_design()`, like the print path and the editor.
 
 > **`rest-check.sh` can fail for a boring reason.** The per-IP daily ceiling is 30, and a day of
 > browser testing uses it up — `generate` then returns 429 and three assertions go red. Confirm
 > before debugging: count today's designs per `ip_hash`. Raising `ip_daily_ceiling` through
 > `Settings::update()` and putting it back to 30 turns an ambiguous run into a definite one.
 
-**3. Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
-emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
-orders are already piling up in a real, filterable status waiting for it. Not started, and now
-behind the wizard track.
+**3. Phase 8 — operations (§14). This is the next track.** Five screens, and they are not equal:
+the first is what stands between the shop and printing something it should not, and the rest are
+convenience until volume exists.
+
+| | What it is | Why now |
+|---|---|---|
+| **a. Review queue** | Large image, prompt in LT *and* EN, moderation verdict and which layer flagged it, customer, approve / reject-with-reason, keyboard shortcuts | **The only one that is non-negotiable.** §10 layer 3 is a human looking at the picture, and layers 0–2 cannot see what an image actually contains. `aicake-approval` orders are already piling up in a real, filterable status with no screen to work them. Ruslan reviews every image anyway, so this is his actual daily tool |
+| **b. Print queue** | Every approved, unprinted file; batch download as ZIP; mark as printed | The second daily tool. Today the files are browsable on the share, which works and does not scale past a few orders a day |
+| **c. Cost dashboard** | Spend by day / provider / model, generation→purchase conversion, most-rejected prompts | All of it already sits in `aicake_designs`; no new tracking. Matters more now that generation costs real money ($0.012) and `BudgetGuard`'s ceilings have never fired against non-zero cost |
+| **d. Cleanup cron** | §12.5 retention — delete unpurchased designs after N days, never one attached to an order | Storage grows with every generation, purchased or not. `order_id` on the design row exists precisely so this can be answered without a query per candidate |
+| **e. Emails** | Order-status mails carrying the design | Partly free already: the proof (D-045) is the image they should carry, and WCFF puts the sheet type and AI answer on the order itself |
+
+Two things worth deciding before starting (a): **keyboard shortcuts are in §14 for a reason** —
+this screen gets used dozens of times a day — and **the review queue is a prerequisite for
+Ruslan's parked photo-upload idea**, because a photo product is arbitrary customer bitmaps by
+design and layers 0–2 are blind to them.
+
+> **Open, and Ruslan's call: the print file draws no cut line.** D-033 says it should — the
+> customer cuts by hand — and the editor draws one on screen, and `ProofSheet` draws one on the
+> admin proofs. `FulfilPipeline` does not. So the printed sheet and the D-045 cart proof agree
+> with each other and both differ from what the customer saw in the editor. Whether ink belongs
+> on the cut line is a printing decision, not a code one.
 
 **4. Keep buying designs through the storefront as a customer.** The first real customer order
 (D-031) found a bug none of the assertions could, because they ran with privileges the real code
@@ -949,15 +983,17 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 544 assertions:** `tests/run.php` 368,
-  `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (58,
-  a real order end to end, including a D-033 layer), `tools/wcff-check.php` (28, the money path
-  and the D-044 hand-off), `tools/proof-check.php` (18, printable proofs — also writes them),
-  `tools/wizard-check.php` (35, steps 1–2 and the D-043 layout key), `tools/text-check.php` (25).
+- **Seven suites, all committed and all green — 552 assertions:** `tests/run.php` 368,
+  `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (59,
+  a real order end to end, including a D-033 layer), `tools/wcff-check.php` (30, the money path,
+  the D-044 hand-off and the D-045 thumbnail), `tools/proof-check.php` (18, printable proofs —
+  also writes them), `tools/wizard-check.php` (35, steps 1–2 and the D-043 layout key),
+  `tools/text-check.php` (30, including the D-045 proof).
   All but the first test the *deployed* copy, so sync first. Falsified rather than merely passed:
-  reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 28 red
+  reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 30 red
   and restoring the old product-meta gate turns 13 red; keying the wizard's layouts independently
-  of `FormatCatalogue::layout_key()` turns 3 of the 35 red.
+  of `FormatCatalogue::layout_key()` turns 3 of the 35 red; serving the preview instead of the
+  proof turns the thumbnail assertion red.
 
 > **A 429 in any check is the throttle, not the thing under test — and there are two of them
 > behind one message.** `aicake_session_limit` is `free_per_user`/`free_per_session`;

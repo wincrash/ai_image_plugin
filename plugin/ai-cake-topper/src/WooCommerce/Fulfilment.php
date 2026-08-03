@@ -12,7 +12,6 @@ namespace AiCake\WooCommerce;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\PrintSpec;
 use AiCake\Domain\TextLayer;
-use AiCake\Domain\TextSpec;
 use AiCake\Pipeline\FulfilPipeline;
 use AiCake\Storage\OrderArchive;
 use AiCake\Support\Logger;
@@ -214,7 +213,6 @@ class Fulfilment {
 		$print = $this->pipeline->render(
 			(string) $design['file_master'],
 			$spec,
-			$this->text_spec( $design ),
 			TextLayer::from_design( $design )
 		);
 
@@ -471,48 +469,6 @@ class Fulfilment {
 		}
 
 		return $items;
-	}
-
-	/**
-	 * The stored text layer, if the customer asked for one.
-	 *
-	 * @param array<string, mixed> $design Design row.
-	 */
-	private function text_spec( array $design ): ?TextSpec {
-		$payload = (string) $design['text_payload'];
-
-		if ( '' === $payload ) {
-			return null;
-		}
-
-		$decoded = json_decode( $payload, true );
-
-		if ( ! is_array( $decoded ) || empty( $decoded['text'] ) ) {
-			return null;
-		}
-
-		/*
-		 * A D-033 layer, not a TextSpec. The two share this column while the
-		 * browser editor is being built, and they are told apart by `path` —
-		 * only a layer has one. A layer is composited by the pipeline instead;
-		 * see `FulfilPipeline::composite_layer()`.
-		 *
-		 * This discrimination is load-bearing rather than tidy. **Both shapes
-		 * carry a `text` key**, so without it a layer falls straight through
-		 * into `TextSpec::from_array()` and the whole string renders through
-		 * the old server-side path with every default it never set: bottom
-		 * placement, white, auto-fit. Twelve cupcakes would each print all
-		 * twelve names across the bottom, on top of the composited layer, and
-		 * the order would look successful.
-		 */
-		if ( isset( $decoded['path'] ) ) {
-			return null;
-		}
-
-		// from_array(), not the constructor: it is the one place that validates
-		// the placement and the colours, and the print file is the last moment
-		// to discover a stored payload is malformed.
-		return TextSpec::from_array( $decoded );
 	}
 
 	/**

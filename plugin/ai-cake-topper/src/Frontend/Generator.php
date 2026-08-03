@@ -10,7 +10,6 @@ declare( strict_types=1 );
 namespace AiCake\Frontend;
 
 use AiCake\Domain\PrintSpec;
-use AiCake\Imaging\FontCatalogue;
 use AiCake\Rest\RestController;
 use AiCake\Support\Settings;
 
@@ -34,15 +33,11 @@ class Generator {
 
 	private Settings $settings;
 
-	private FontCatalogue $fonts;
-
 	/**
 	 * @param Settings      $settings Configuration.
-	 * @param FontCatalogue $fonts    Fonts.
 	 */
-	public function __construct( Settings $settings, FontCatalogue $fonts ) {
+	public function __construct( Settings $settings ) {
 		$this->settings = $settings;
-		$this->fonts    = $fonts;
 	}
 
 	/**
@@ -166,7 +161,6 @@ class Generator {
 		$data = array(
 			'spec'  => $spec->to_frontend(),
 			'chips' => $this->example_prompts(),
-			'fonts' => $this->fonts->usable(),
 			'lead'  => (string) $this->settings->get( 'lead_time_note', __( 'Pagaminame per 2–3 darbo dienas.', 'ai-cake-topper' ) ),
 		);
 

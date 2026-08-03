@@ -228,6 +228,9 @@ class CartIntegration {
 			 * or thirty-five cupcake circles.
 			 */
 			'format'    => $this->format_label( $design ),
+			// Whether a proof exists, so the thumbnail does not have to re-read
+			// the design row on every cart render.
+			'proof'     => '' !== (string) ( $design['file_proof'] ?? '' ),
 		);
 
 		/*
@@ -307,7 +310,18 @@ class CartIntegration {
 			return $html;
 		}
 
-		$url = rest_url( 'aicake/v1/file/' . rawurlencode( (string) $cart[ self::CART_KEY ]['public_id'] ) . '/preview' );
+		/*
+		 * The proof, not the bare preview: the artwork laid out per piece with
+		 * the customer's own text over it (D-045). Someone who spent five
+		 * minutes placing „Emilija" on twelve cupcakes should see that in their
+		 * cart, not one plain circle that gives them no way to tell whether
+		 * their text was kept.
+		 *
+		 * Falls back to the preview when there is no proof — a design with no
+		 * text, or one saved before this existed.
+		 */
+		$variant = empty( $cart[ self::CART_KEY ]['proof'] ) ? 'preview' : 'proof';
+		$url     = rest_url( 'aicake/v1/file/' . rawurlencode( (string) $cart[ self::CART_KEY ]['public_id'] ) . '/' . $variant );
 
 		return sprintf(
 			'<img src="%s" alt="" style="max-width:100%%;height:auto" />',

@@ -8,7 +8,6 @@
  *
  * @var array<string, mixed> $spec  Frontend print spec.
  * @var string[]             $chips Example prompts.
- * @var array<string, mixed> $fonts Available fonts.
  * @var string               $lead  Lead-time note.
  */
 
@@ -56,42 +55,15 @@ defined( 'ABSPATH' ) || exit;
 		</p>
 	</div>
 
-	<div class="aicake__field aicake__text-controls">
-		<label class="aicake__label" for="aicake-text">
-			<?php esc_html_e( 'Užrašas ant dekoracijos (nebūtina)', 'ai-cake-topper' ); ?>
-		</label>
-		<input type="text" id="aicake-text" class="aicake__text" maxlength="60"
-			placeholder="<?php esc_attr_e( 'pvz. Su gimtadieniu, Emilija!', 'ai-cake-topper' ); ?>">
-
-		<div class="aicake__row">
-			<label class="aicake__sub">
-				<span><?php esc_html_e( 'Šriftas', 'ai-cake-topper' ); ?></span>
-				<select id="aicake-font" class="aicake__select">
-					<?php foreach ( $fonts as $handle => $font ) : ?>
-						<option value="<?php echo esc_attr( (string) $handle ); ?>"><?php echo esc_html( (string) $font['label'] ); ?></option>
-					<?php endforeach; ?>
-				</select>
-			</label>
-
-			<label class="aicake__sub">
-				<span><?php esc_html_e( 'Vieta', 'ai-cake-topper' ); ?></span>
-				<select id="aicake-placement" class="aicake__select">
-					<option value="bottom"><?php esc_html_e( 'Apačioje', 'ai-cake-topper' ); ?></option>
-					<option value="top"><?php esc_html_e( 'Viršuje', 'ai-cake-topper' ); ?></option>
-					<option value="centre"><?php esc_html_e( 'Viduryje', 'ai-cake-topper' ); ?></option>
-					<?php if ( ! empty( $spec['round'] ) ) : ?>
-						<option value="arc_top"><?php esc_html_e( 'Lanku viršuje', 'ai-cake-topper' ); ?></option>
-						<option value="arc_bottom"><?php esc_html_e( 'Lanku apačioje', 'ai-cake-topper' ); ?></option>
-					<?php endif; ?>
-				</select>
-			</label>
-
-			<label class="aicake__sub">
-				<span><?php esc_html_e( 'Spalva', 'ai-cake-topper' ); ?></span>
-				<input type="color" id="aicake-colour" class="aicake__colour" value="#ffffff">
-			</label>
-		</div>
-	</div>
+	<?php
+	/*
+	 * No text controls. D-033 moved the text layer into the browser, where it is
+	 * composed over the preview and uploaded as a bitmap — and that editor lives
+	 * in the wizard, which is how this product is bought (D-034). What stood here
+	 * was the old server-rendered path: one string, one placement, one colour,
+	 * drawn by GD after the fact.
+	 */
+	?>
 
 	<button type="button" class="aicake__generate button alt" data-aicake-generate>
 		<span data-aicake-generate-label><?php esc_html_e( 'Sukurti piešinį', 'ai-cake-topper' ); ?></span>

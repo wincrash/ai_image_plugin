@@ -253,8 +253,29 @@ aicake_check( 'the folder follows the order, not the clock', true, str_contains(
 
 echo "\nfulfilment\n";
 
+/*
+ * `$single` deliberately carries a **legacy** `TextSpec` payload — the shape
+ * the retired server-side renderer used, which real rows in the database still
+ * have. D-045 deleted that renderer, so the payload no longer draws anything;
+ * what matters is that such an order still fulfils rather than fataling on a
+ * class that no longer exists.
+ */
 $single = aicake_design( 646, array( 'text' => 'Su gimtadieniu, Emilija', 'placement' => 'arc_bottom', 'colour' => '#ffffff' ) );
 $sheet  = aicake_design( 649 );
+
+/*
+ * Asserted on the *behaviour*, not on the mechanism. A legacy payload still
+ * reads back as a layer — deliberately, because its `text` is what the shop
+ * manager reads on the order — but it carries no bitmap, so there is nothing to
+ * composite and the print is the artwork alone.
+ */
+aicake_check(
+	'a legacy text payload has no bitmap to composite',
+	false,
+	AiCake\Domain\TextLayer::from_design(
+		array( 'text_payload' => wp_json_encode( array( 'text' => 'Su gimtadieniu', 'placement' => 'arc_bottom' ) ) )
+	)->has_bitmap()
+);
 
 list( $order, $item_ids ) = aicake_order(
 	array(
@@ -309,10 +330,10 @@ echo "\nD-033 text layer on the print file\n";
 
 /*
  * The case the suite was missing, and the reason a real bug survived: every
- * scenario above uses the *old* TextSpec payload, so nothing exercised what
- * happens when a design carries a composed layer. Both payload shapes have a
- * `text` key, and a layer was falling through into the old server-side
- * renderer.
+ * scenario above used the legacy payload, so nothing exercised what happens
+ * when a design carries a composed layer. Both payload shapes have a `text`
+ * key, and a layer was falling through into the old server-side renderer —
+ * which D-045 has since deleted outright.
  *
  * This asserts the thing that matters on paper — that ink from the layer lands
  * at the pixel the layer put it at, on the imposed sheet, without scaling.

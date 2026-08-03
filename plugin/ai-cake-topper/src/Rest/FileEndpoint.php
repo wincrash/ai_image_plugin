@@ -43,6 +43,12 @@ class FileEndpoint {
 	 */
 	private const VARIANTS = array(
 		'preview' => array( 'file_preview', '' ),
+		/*
+		 * The preview with the customer's own text over it (D-045). Same
+		 * exposure as the preview — it is watermarked, and it is their own
+		 * words on their own picture — and it is what the cart shows.
+		 */
+		'proof'   => array( 'file_proof', '' ),
 		'print'   => array( 'file_print', 'manage_woocommerce' ),
 	);
 

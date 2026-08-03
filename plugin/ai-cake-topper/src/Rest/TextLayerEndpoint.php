@@ -15,6 +15,7 @@ use AiCake\Domain\TextLayer;
 use AiCake\Imaging\GdEngine;
 use AiCake\Imaging\LayerInspector;
 use AiCake\Moderation\Moderator;
+use AiCake\Pipeline\ProofPipeline;
 use AiCake\Storage\PrivateStorage;
 use AiCake\Support\Logger;
 use AiCake\Throttle\IdentityResolver;
@@ -78,6 +79,8 @@ class TextLayerEndpoint {
 
 	private PrivateStorage $storage;
 
+	private ProofPipeline $proofs;
+
 	private Logger $logger;
 
 	/**
@@ -87,6 +90,7 @@ class TextLayerEndpoint {
 	 * @param GdEngine         $images    Decoding and re-encoding.
 	 * @param LayerInspector   $inspector The colour gate.
 	 * @param PrivateStorage   $storage   Where the layer lands.
+	 * @param ProofPipeline    $proofs    The image the cart and the order show.
 	 * @param Logger           $logger    Logging.
 	 */
 	public function __construct(
@@ -96,6 +100,7 @@ class TextLayerEndpoint {
 		GdEngine $images,
 		LayerInspector $inspector,
 		PrivateStorage $storage,
+		ProofPipeline $proofs,
 		Logger $logger
 	) {
 		$this->designs   = $designs;
@@ -104,6 +109,7 @@ class TextLayerEndpoint {
 		$this->images    = $images;
 		$this->inspector = $inspector;
 		$this->storage   = $storage;
+		$this->proofs    = $proofs;
 		$this->logger    = $logger;
 	}
 
@@ -259,9 +265,31 @@ class TextLayerEndpoint {
 
 		$encoded = wp_json_encode( $stored->to_array() );
 
+		/*
+		 * Build the proof now, while the layer is fresh on disk. This is the
+		 * image the cart, the order screen and the confirmation email show —
+		 * the artwork laid out per piece with the customer's text over it,
+		 * watermarked. Without it they all show the bare preview, and someone
+		 * who placed twelve names sees one plain circle in their cart with no
+		 * way to tell whether their text survived.
+		 *
+		 * A failure here is not a failure of the save. The layer is stored and
+		 * will print correctly; the cart falls back to the preview, which is
+		 * how it looked before this existed.
+		 */
+		$proof = $this->proofs->build(
+			(string) $design['file_preview'],
+			(string) $design['public_id'],
+			PrintSpec::for_design( $design ),
+			$stored
+		);
+
 		$this->designs->update(
 			(int) $design['id'],
-			array( 'text_payload' => false === $encoded ? null : $encoded )
+			array(
+				'text_payload' => false === $encoded ? null : $encoded,
+				'file_proof'   => '' === $proof ? null : $proof,
+			)
 		);
 
 		$this->mark_upload();

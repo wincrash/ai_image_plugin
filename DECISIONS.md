@@ -1749,4 +1749,91 @@ the wrong advice half the time.
 
 ---
 
-<!-- Next: D-045 -->
+---
+
+### D-045 · The server draws no glyphs, and the cart shows the finished picture
+**2026-08-03** · Claude, cart change requested by Ruslan · completes D-033
+
+Two changes that belong together: one deletes the old text renderer, the other
+replaces the last thing that still depended on how text used to work.
+
+#### Deleted: all server-side text rendering
+
+D-033 said delete nothing until the browser side works. It works, the print
+path composites the layer (D-043/D-044), so:
+
+- **`Imaging/TextRenderer.php`** — arc text, auto-fit, wrapping, faked outlines.
+- **`Domain/TextSpec.php`** — one string, one font, one colour, one of five
+  placements.
+- The product page's **text controls**, which posted that spec. The wizard is
+  how this product is bought (D-034) and its editor is the text UI.
+- The `text` parameter on `/generate`, and the text step in both pipelines.
+
+**`FontCatalogue` and `TtfCmap` stay**, contrary to the earlier note in
+`STATE.md`. They are no longer there for the server to draw with — they are the
+**Lithuanian coverage gate on the list the browser is offered**, and D-041 made
+that list matter more, not less: the layout model *names a font*, so the offered
+set is what it picks from and each entry must be able to spell `ĄČĘĖĮŠŲŪŽ`.
+Deleting the gate would remove the only check that a decorative font can. The
+watermark also still draws text, and that is the only glyph the server renders.
+
+Rows written before this hold the old payload shape. They read back as a layer
+with **no bitmap**: nothing is composited, the artwork prints alone, and the
+`text` they carry still tells a shop manager what was ordered. Refusing them
+would break reprinting an old order (§12.6) for nothing.
+
+#### A third instance of the D-043 bug, found while deleting
+
+`Runner` built the preview with `PrintSpec::for_product()`. Under D-035 the AI
+product carries no geometry, so **every wizard preview was built at the default
+round 150 mm** — which circle-masks the preview of a whole A4 sheet. Invisible
+for round formats, which is why it survived; a sheet design would have shown a
+circle. Now `for_design()`, like the print path and the editor.
+
+#### Added: the proof the cart shows
+
+Ruslan: the cart should show the final image, watermarked. It showed the bare
+artwork, so a customer who spent five minutes placing „Emilija" on twenty-four
+cupcakes saw one plain circle and no way to tell whether their text survived.
+
+`Pipeline/ProofPipeline.php` lays the watermarked preview out per piece and
+composites the stored layer over it, at 900 px. Stored in a new `file_proof`
+column (**schema 4**) and served as a `proof` variant, with the same exposure as
+the preview — it is watermarked, and it is the customer's own words on their own
+picture.
+
+**This is not the second renderer D-033 deleted.** It composites the *same
+bitmap the browser produced*; it draws no glyphs, chooses no font, lays nothing
+out. Nothing here can disagree with the editor about where a word sits because
+nothing here decides that. The only shared knowledge is piece placement, which
+comes from `editor_layout()` — the single source both sides already read.
+
+Step 4 still uses the canvas capture (D-044). The cart, the order screen and the
+email have no canvas, which is the whole reason this exists.
+
+#### Falsified
+
+- Serving `preview` instead of `proof` turns the thumbnail assertion red.
+- The proof assertions are on the **file**: that it is on disk, that its aspect
+  is the print canvas's, and that it **differs from the preview** — a proof
+  identical to the preview is one with nothing composited onto it.
+
+Looked at, not just asserted: 24 cupcakes, „Emilija" on each, watermark intact.
+
+> **`text-check`'s fixture had no artwork on disk**, so the first run reported
+> the feature broken rather than the fixture incomplete. It now writes a real
+> preview. A fixture that cannot exercise the thing under test is worse than a
+> missing test, because it looks like coverage.
+
+#### Open, and Ruslan's call
+
+**The print file draws no cut line.** D-033 says it should — the customer cuts
+by hand — and `ProofSheet` draws one on the admin proofs, and the editor draws
+one on screen. `FulfilPipeline` does not. So the proof matches what is actually
+printed today, and both are missing a line D-033 asked for. Left alone rather
+than silently added: whether ink is wanted on the cut line is a printing
+decision, and the operator has the printer.
+
+---
+
+<!-- Next: D-046 -->

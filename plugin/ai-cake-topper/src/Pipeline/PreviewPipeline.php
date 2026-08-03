@@ -10,9 +10,7 @@ declare( strict_types=1 );
 namespace AiCake\Pipeline;
 
 use AiCake\Domain\PrintSpec;
-use AiCake\Domain\TextSpec;
 use AiCake\Imaging\GdEngine;
-use AiCake\Imaging\TextRenderer;
 use AiCake\Imaging\Watermarker;
 use AiCake\Storage\PrivateStorage;
 use AiCake\Support\Logger;
@@ -23,12 +21,14 @@ defined( 'ABSPATH' ) || exit;
 /**
  * The pre-payment path from PLAN.md §5:
  *
- *   master → shape → text (preview res) → watermark → downscale → preview.webp
+ *   master → shape → watermark → downscale → preview.webp
  *
- * Cheap enough to run synchronously, which matters because the customer
- * changes the text and expects to see it. There is no API call here — the
- * master is already on disk, and everything below is local GD work on an
- * 800 px image.
+ * Cheap enough to run synchronously. There is no API call here — the master is
+ * already on disk, and everything below is local GD work on an 800 px image.
+ *
+ * **No text.** The customer's text is composed in the browser over this image
+ * and lives as its own layer (D-033), so the preview is the artwork alone —
+ * which is also what makes it reusable while they retype.
  *
  * The preview is rendered at the true output aspect and shape, so what the
  * customer approves is what they get.
@@ -42,15 +42,7 @@ class PreviewPipeline {
 	 */
 	public const PREVIEW_PX = 800;
 
-	/**
-	 * The resolution the preview pretends to be, so a text size given in
-	 * millimetres lands in the right place relative to the artwork.
-	 */
-	private const PREVIEW_DPI = 96;
-
 	private GdEngine $images;
-
-	private TextRenderer $text;
 
 	private Watermarker $watermarker;
 
@@ -62,7 +54,6 @@ class PreviewPipeline {
 
 	/**
 	 * @param GdEngine       $images      Pixels.
-	 * @param TextRenderer   $text        Text layer.
 	 * @param Watermarker    $watermarker Watermark.
 	 * @param PrivateStorage $storage     Files.
 	 * @param Settings       $settings    Configuration.
@@ -70,14 +61,12 @@ class PreviewPipeline {
 	 */
 	public function __construct(
 		GdEngine $images,
-		TextRenderer $text,
 		Watermarker $watermarker,
 		PrivateStorage $storage,
 		Settings $settings,
 		Logger $logger
 	) {
 		$this->images      = $images;
-		$this->text        = $text;
 		$this->watermarker = $watermarker;
 		$this->storage     = $storage;
 		$this->settings    = $settings;
@@ -90,10 +79,9 @@ class PreviewPipeline {
 	 * @param string        $master_path Absolute path to the clean generation.
 	 * @param string        $public_id   Design handle.
 	 * @param PrintSpec     $spec        Product geometry.
-	 * @param TextSpec|null $text        Text layer, or null for none.
 	 * @return string Path to the preview, or '' on failure.
 	 */
-	public function build( string $master_path, string $public_id, PrintSpec $spec, ?TextSpec $text = null ): string {
+	public function build( string $master_path, string $public_id, PrintSpec $spec ): string {
 		if ( ! is_readable( $master_path ) ) {
 			$this->logger->warning( 'Preview skipped: no master on disk.', array( 'path' => $master_path ) );
 
@@ -117,14 +105,10 @@ class PreviewPipeline {
 			return '';
 		}
 
-		// The shape is applied before the text, so text near the edge is
-		// clipped by the circle exactly as it will be on the finished piece.
+		// Shaped, so the customer sees what a circular crop does to their
+		// picture before paying for it (§15).
 		if ( $spec->is_round() ) {
 			$this->images->circle_mask( $canvas );
-		}
-
-		if ( null !== $text && ! $text->is_empty() ) {
-			$this->text->render( $canvas, $text, self::PREVIEW_DPI, $spec->is_round() );
 		}
 
 		$this->watermarker->apply( $canvas, $this->watermark_text() );

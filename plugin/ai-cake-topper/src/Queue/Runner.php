@@ -14,7 +14,6 @@ use AiCake\Domain\GenerationRequest;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
 use AiCake\Domain\PrintSpec;
-use AiCake\Domain\TextSpec;
 use AiCake\Moderation\Moderator;
 use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
@@ -310,15 +309,19 @@ class Runner {
 		}
 
 		/*
-		 * Shape, text and watermark, at the product's real aspect ratio. This
-		 * is the only image a customer ever sees — the master is never served
-		 * under any URL (§9.3).
+		 * Shape and watermark, at the design's real aspect ratio. This is the
+		 * only image a customer ever sees — the master is never served under
+		 * any URL (§9.3).
+		 *
+		 * `for_design()`, not `for_product()`: under D-035 the format is a
+		 * wizard choice on the design and the AI product carries no geometry
+		 * meta at all, so asking the product returns the default round 150 mm
+		 * — which circle-masks the preview of a whole A4 sheet.
 		 */
 		$preview = $this->previews->build(
 			$path,
 			(string) $design['public_id'],
-			PrintSpec::for_product( (int) $design['product_id'], (int) $design['variation_id'] ),
-			$this->text_spec( $design )
+			PrintSpec::for_design( $design )
 		);
 
 		$this->designs->update(
@@ -369,23 +372,6 @@ class Runner {
 				'review'   => $analysis->needs_review(),
 			)
 		);
-	}
-
-	/**
-	 * The text layer stored against a design, if any.
-	 *
-	 * @param array<string, mixed> $design Design row.
-	 */
-	private function text_spec( array $design ): ?TextSpec {
-		$payload = json_decode( (string) ( $design['text_payload'] ?? '' ), true );
-
-		if ( ! is_array( $payload ) ) {
-			return null;
-		}
-
-		$spec = TextSpec::from_array( $payload );
-
-		return $spec->is_empty() ? null : $spec;
 	}
 
 	/**

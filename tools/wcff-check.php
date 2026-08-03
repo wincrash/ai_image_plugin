@@ -477,11 +477,21 @@ echo "\nWhat the cart line says the customer bought\n";
  * cart line, the confirmation email and the packing slip read "Valgomas
  * paveikslėlis (AI)" whether it is one 20 cm topper or 35 cupcake circles.
  */
-aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), aicake_design( true, 'cupcake', 45.0 ) );
+/*
+ * One design carrying a proof, because the thumbnail assertions below need one
+ * and the line assertions do not care either way.
+ */
+$rich = aicake_design( true, 'cupcake', 45.0 );
+
+$designs = AiCake\Plugin::instance()->designs();
+$designs->update( (int) $designs->find_by_public_id( $rich )['id'], array( 'file_proof' => 'wcff-check-proof.webp' ) );
+
+aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $rich );
 
 $shown = array();
+$thumb = '';
 
-foreach ( WC()->cart->get_cart() as $item ) {
+foreach ( WC()->cart->get_cart() as $key => $item ) {
 	foreach ( (array) apply_filters( 'woocommerce_get_item_data', array(), $item ) as $row ) {
 		// WooCommerce accepts either spelling and WCFF's own rows use `name`,
 		// so reading only `key` warns on every line the shop already displays.
@@ -491,11 +501,22 @@ foreach ( WC()->cart->get_cart() as $item ) {
 			$shown[ $label ] = (string) ( $row['value'] ?? '' );
 		}
 	}
+
+	$thumb = (string) apply_filters( 'woocommerce_cart_item_thumbnail', '', $item, $key );
 }
 
 aicake_check( 'the format is named on the line', true, isset( $shown['Formatas'] ) );
 aicake_check( 'and it is the design\'s format, in words', true, false !== strpos( $shown['Formatas'] ?? '', '4,5' ) );
 aicake_check( 'the prompt is still shown too', true, isset( $shown['Piešinys'] ) );
+
+/*
+ * And the picture on the line is the *proof* — the artwork laid out per piece
+ * with the customer's own text over it (D-045) — not the bare artwork. Someone
+ * who placed twelve names should see them here; the preview alone gives them no
+ * way to tell whether their text survived.
+ */
+aicake_check( 'the cart thumbnail is the proof', true, false !== strpos( $thumb, '/' . $rich . '/proof' ) );
+
 
 /*
  * The one that would have been missed: the surcharge must survive into the
@@ -516,6 +537,21 @@ foreach ( WC()->cart->get_cart() as $item ) {
 
 aicake_check( 'cart item carries both field values', 2, count( $titles ) );
 aicake_check( 'cart item records the AI choice', 'taip', $titles[ $ai_key ] ?? '' );
+
+/*
+ * Last, because it leaves a non-AI design in the cart: falling back matters as
+ * much as the proof itself. A design with no text has no proof, and neither
+ * does any design saved before D-045 — neither may show a broken image.
+ */
+aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $plain_design );
+
+$fallback = '';
+
+foreach ( WC()->cart->get_cart() as $key => $item ) {
+	$fallback = (string) apply_filters( 'woocommerce_cart_item_thumbnail', '', $item, $key );
+}
+
+aicake_check( 'and falls back to the preview with no proof', true, false !== strpos( $fallback, '/' . $plain_design . '/preview' ) );
 
 WC()->cart->empty_cart();
 
