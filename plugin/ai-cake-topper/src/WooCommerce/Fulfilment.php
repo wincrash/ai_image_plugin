@@ -480,6 +480,32 @@ class Fulfilment {
 			return null;
 		}
 
+		/*
+		 * A D-033 layer, not a TextSpec. The two share this column while the
+		 * browser editor is being built, and they are told apart by `path` —
+		 * only a layer has one.
+		 *
+		 * This guard is load-bearing. Both shapes carry a `text` key, so
+		 * without it a layer falls straight through into
+		 * `TextSpec::from_array()` and the *whole* string renders through the
+		 * old server-side path with every default it never set: bottom
+		 * placement, white, auto-fit. Twelve cupcakes would each print all
+		 * twelve names across the bottom, and the order would look successful.
+		 *
+		 * Returning null means the print carries no text at all, which is
+		 * wrong but visibly wrong. Compositing the stored layer is the next
+		 * task; until then nothing may pretend the old renderer understands
+		 * the new payload.
+		 */
+		if ( isset( $decoded['path'] ) ) {
+			$this->logger->warning(
+				'Design carries a D-033 text layer, which the print path cannot composite yet.',
+				array( 'design' => $design['public_id'] ?? '' )
+			);
+
+			return null;
+		}
+
 		// from_array(), not the constructor: it is the one place that validates
 		// the placement and the colours, and the print file is the last moment
 		// to discover a stored payload is malformed.

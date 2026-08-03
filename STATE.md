@@ -4,9 +4,10 @@
 **Phase:** Phases 1–7 built. **Actively building the D-035…D-039 wizard track**, not Phase 8.
 Phase 0 deferred to a later calibration step (D-018).
 
-> **A reset session picking this up:** read D-033 → D-041 in `DECISIONS.md` first, then
-> "Being built now" below. The next task is **wizard step 3, the D-033 text editor —
-> now including D-041's AI layout suggestion.**
+> **A reset session picking this up:** read D-033 → D-042 in `DECISIONS.md` first, then
+> "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
+> suggestion button. The next task is step 4, the proof, and the cart hand-off** — see
+> "Next actions".
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -23,7 +24,7 @@ design `done`, inside an ordinary `rest-check.sh` run. That same real master wen
 `FulfilPipeline` to a 1843×1843 print file at the 15 cm spec. Phase 7's synthetic master is no
 longer the only thing the fulfilment chain has been fed.
 
-**350 committed assertions, all green**, across six suites — see the full list further down. The
+**473 committed assertions, all green**, across seven suites — see the full list further down. The
 product/pricing model changed substantially on 2026-08-03 (D-035 → D-039): **one AI product
 rather than ten**, geometry on the design rather than the product, and **the plugin prices
 nothing** — WC Fields Factory does.
@@ -516,38 +517,53 @@ C:\AI_IMAGE\
 
 **Nothing is blocked.** fal is funded and the success path is verified (D-030).
 
-**1. Wizard step 3 — the D-033 text editor.** This is the agreed next task (Ruslan,
-2026-08-03, end of session). Read D-033 in full before starting; the short version:
+**Steps 1–3 of the wizard are done** (D-033, D-041, D-042) — see "Being built now" for what
+exists and what was measured. What follows is what is left.
 
-- The customer composes text **in the browser**, over the watermarked preview. No PHP worker is
-  touched while editing.
-- What crosses the wire is a **PNG-32 with a transparent background, plus the plain string** —
-  the string is not used for rendering, it exists so moderation layers 0 and 1 can still read
-  what was typed, and so the order record is readable without opening an image.
-- The layer is **the size of the whole print file**, not one piece, so twelve cupcakes can carry
-  twelve different names. `SheetLayout` supplies piece positions server-side; the client must
-  never compute them or text lands across a gutter and looks right in the editor.
-- **The editor prevents text outside the safe zone** — a constraint, not a guide.
-- **The load-bearing new check:** every non-transparent pixel in an uploaded layer must be close
-  to a colour the customer declared. Antialiasing passes; a photograph or a franchise character
-  does not. Without it the endpoint accepts arbitrary artwork and layers 0–2 are blind to it.
-  **Not optional.**
+**1. Wizard step 4 — the proof, and the cart hand-off.** The agreed next task (Ruslan,
+2026-08-03). Two halves, and the second is the one with a security consequence:
 
-This also deletes all server-side text rendering — arc text, auto-fit, wrapping, the Lithuanian
-cmap gate — but delete nothing until the browser side works.
+- **The proof.** The customer sees what they are buying — the artwork with their text on it, at
+  the format they chose — and then adds it to the cart. The pieces exist: the design has a
+  watermarked preview, `PrintSpec::editor_layout()` gives the geometry, and the text layer is
+  stored against the design. What does *not* exist is a composite of the two for display.
+  > **The obvious trap.** The editor already draws exactly this on a canvas. Re-rendering the
+  > composite server-side would mean two renderers that must agree, which is the browser↔GD
+  > parity problem D-033 deleted. Prefer showing the same canvas, or a preview built from the
+  > stored layer — not a second implementation of the same drawing.
+- **The cart hand-off.** The wizard posts `wccpf_<key>=<value>` like any other Fields Factory
+  field and WCFF builds price, cart display, order meta and email itself (D-036, proven by
+  `tools/wcff-check.php`). **`CartIntegration` must derive the AI flag server-side** from whether
+  the design really has a generated image, and overwrite whatever was posted. A posted flag about
+  whether money was spent cannot be trusted. Hiding the Fields Factory field is presentation, not
+  a control — the field is currently a *visible radio*, so on a plain product page a customer
+  could answer it themselves and pay €1 without AI, or use AI and not pay.
 
-**Inside step 3, D-041: a „Pasiūlyk dizainą" button.** `gemini-3.1-flash-lite` returns a layout
-as JSON — lines, sizes, colours, placements — and **the canvas draws it; the customer then moves
-and edits everything.** The model's font sizes are hints, clamped by real measurement, never
-authority. It is a button, not a step: the editor must work fully with the API down. Nothing
-downstream changes — the wire still carries the transparent PNG-32 plus the plain string, so
-moderation still reads what was typed. Read D-041 for why the rendering does **not** go
-server-side, which is what the original spec proposed.
+**1b. `FulfilPipeline` must composite the stored text layer. It does not yet, and there is a
+guard in the way that must be removed as part of doing it.**
 
-**2. Then step 4, the proof**, and the cart hand-off. At the cart, **derive the AI flag
-server-side** in `CartIntegration` from whether the design really has a generated image, and
-overwrite whatever was posted. A posted flag about whether money was spent cannot be trusted, and
-hiding the Fields Factory field is presentation, not a control.
+`TextLayer` and `TextSpec` share the `text_payload` column while the editor is being built, and
+**both shapes carry a `text` key**. `Fulfilment::text_spec()` therefore read a layer straight
+into `TextSpec::from_array()` and rendered the *whole* string — every name at once — through the
+old server-side path with every default it never set: bottom placement, white, auto-fit. Twelve
+cupcakes would each have printed all twelve names across the bottom, and the order would have
+looked successful.
+
+Latent rather than live, because a `TextLayer` can only be created by the wizard and the wizard
+cannot reach the cart yet. Found by reading the code while writing this file, not by a test.
+
+**Fixed for now by telling the two apart on `path`** — only a layer has one — and returning null,
+so a print carries no text rather than the wrong text. Wrong, but visibly wrong. **Delete that
+guard when the composite lands.** `TextLayer::from_design()` gives the path, and the layer is
+already exactly `PrintSpec::canvas_px()`, so it composites without scaling.
+
+> Worth a test either way: `order-check.php` has no case for a design carrying a text layer.
+> That is why this survived — the suites cover the *old* payload shape only.
+
+**1c. Only then delete the server-side text rendering.** D-033 says delete nothing until the
+browser side works. It now works, so `TextRenderer` (arc text, auto-fit, wrapping, faked
+outlines), the Lithuanian cmap gate and `TextSpec` can go — **but not before 1b**, because
+`FulfilPipeline` still calls the old renderer. Fonts stay for the watermark.
 
 **3. Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
 emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
