@@ -1337,4 +1337,55 @@ setting rather than a rule in code.
 
 ---
 
-<!-- Next: D-039 -->
+### D-039 · No printer margins. Full A4, minus the 15 mm of bare icing.
+**2026-08-03** · Ruslan · **decided, overriding my objection** · supersedes the margin half of
+D-037 and the ⌀20 cm finding in D-038
+
+I argued twice that ⌀20 cm could not fit. Ruslan: *"it should be printed 20cm, so your
+calculations on margin are incorrect or we don't use margins at all… we usually print 20cm
+circles, and it is maximum we declare."*
+
+He is right and the error was mine — not in the arithmetic but in its premise. I assumed 5 mm
+printer margins from a spec sheet. He prints these every day. With margins at zero:
+
+```
+long axis   297 − 15 (bare icing, right)  = 282 mm
+short axis  210                           = 210 mm
+```
+
+⌀200 + 6 mm bleed = **206 against 210**. It fits, with 4 mm of slack. The whole objection existed
+only because of a number I invented.
+
+**Usable area is 282 × 210 mm.** The 15 mm is a setting; nothing else is deducted. Compose on
+full A4 and let the printer driver do what it does.
+
+#### Everything that moved back
+
+The ⌀4.0 cm cupcake case returns to **35 per sheet**, matching `PLAN.md` §3.5 as originally
+written. 24 / 20 / 12 are unchanged. Single circles: ⌀20…15 cm yield 1, ⌀14…11 cm yield 2,
+⌀10 cm yields 4 — from the identical formula, which confirms D-038's read that the two wizard
+paths are one mechanism with two lists.
+
+The circle list is **20 → 10 cm in 1 cm steps** as Ruslan specified, ⌀20 cm the declared maximum.
+
+#### The count rule, settled by default
+
+"As many as fit", with the wizard stating the count. No cap. ⌀10 cm therefore yields 4 rather
+than the 2 D-038 guessed at. Not worth a separate decision — it is the least code, and it is
+correctable.
+
+#### What this changes about how the geometry gets validated
+
+> *"Later I will personally test every format and print it, and if some errors or mismatches
+> will be, we will make corrections later."*
+
+That is the right validation for this, and better than more arithmetic from me. Physical print
+tests are the authority on the geometry; D-038's admin screen showing every derived layout exists
+to make that test session fast, not to replace it.
+
+**Standing instruction taken from this: do not re-derive printer physics from specifications.**
+The operator has the printer. Ask, or wait for the print test.
+
+---
+
+<!-- Next: D-040 -->

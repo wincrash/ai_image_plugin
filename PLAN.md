@@ -136,17 +136,16 @@ Two different margins, both needed, easy to conflate:
 
 ### 3.4 Usable area — the number everything derives from (D-037)
 
-Edible printers cannot print to the sheet edge, and **the icing sheet is 15 mm shorter than the
-paper along the feed direction** — the trailing 15 mm carries no icing (Ruslan, fixed as the
-working figure). Both losses come off A4:
+**No printer margins.** Compose on the full A4, and let the printer driver do whatever it does
+(Ruslan, D-039 — he prints ⌀20 cm circles routinely, so the margins are not what a spec sheet
+would predict). The only deduction is the **15 mm at the right that carries no icing**:
 
 ```
-long axis   297 − 15 (bare icing, trailing) − 5 (leading margin)  = 277 mm
-short axis  210 − 5 − 5 (side margins)                            = 200 mm
+long axis   297 − 15 (bare icing, right)  = 282 mm
+short axis  210                           = 210 mm
 ```
 
-**Working usable area: 277 × 200 mm.** All four margins are admin settings — they are
-printer-specific and getting them wrong ruins whole sheets.
+**Usable area: 282 × 210 mm.** The 15 mm is a setting; the rest is the paper.
 
 Imposition maths uses the *usable* area, never the paper size.
 
@@ -155,35 +154,35 @@ Imposition maths uses the *usable* area, never the paper size.
 usable region is not important, so the pipeline does not need to centre precisely on A4, and it
 must not, because the usable region is not centred on the sheet.
 
-> **⌀20 cm does not fit.** Largest circle that fits is `min(277, 200) − 2 × 3 mm bleed` =
-> **⌀194 mm**. The §3 table's 20 cm row and the Phase 6 ⌀20 cm product both assume it does.
-> Either the margins are smaller than assumed, or bleed is dropped for large circles, or the
-> maximum offered is ⌀19 cm. Resolve when the printer margins are actually measured.
+⌀20 cm is the declared maximum and it fits: 200 + 6 mm bleed = 206 against 210. Four millimetres
+of slack, which is why the side margins had to go to zero for it to work.
+
+Ruslan prints and checks every format physically before launch; corrections come from that, not
+from more arithmetic here.
 
 ### 3.5 Imposition — how "24 on A4" actually works
 
-Given usable area 200 × 277 mm (§3.4) and a circle of ⌀45 mm, pitched on the **trim** diameter
+Given usable area 210 × 282 mm (§3.4) and a circle of ⌀45 mm, pitched on the **trim** diameter
 because adjacent bleeds overlap and you cut between them:
 
-- columns = floor(200 / 45) = **4**
-- rows = floor(277 / 45) = **6**
+- columns = floor(210 / 45) = **4**
+- rows = floor(282 / 45) = **6**
 - total = **24** ✓
 
 Other sizes fall out of the same formula:
 
 | Circle | Cols × Rows | Per sheet |
 |---|---|---|
-| 4.0 cm | 5 × 6 | 30 |
+| 4.0 cm | 5 × 7 | 35 |
 | 4.5 cm | 4 × 6 | **24** |
 | 5.0 cm | 4 × 5 | 20 |
 | 6.0 cm | 3 × 4 | 12 |
 
-So the count is *derived*, not typed in — and under D-037 this table is what the wizard's cupcake
-step **shows the customer**, generated rather than hardcoded. Leftover slack is distributed as
-gutters; exact distribution does not matter (§3.4).
+Single circles come out of the identical formula — ⌀20…15 cm yield 1, ⌀14…11 cm yield 2, ⌀10 cm
+yields 4 — which is why the two wizard paths are one mechanism with two lists (D-038).
 
-> The 4.0 cm case yielded 35 under the old 287 mm figure and yields **30** under 277. A worked
-> example of why the usable area has to be measured before anything quotes a count.
+So the count is *derived*, not typed in, and this table is what the wizard **shows the customer**.
+Leftover slack is distributed as gutters; exact distribution does not matter (§3.4).
 
 Cut guides: optional, off by default. A printed guide line is printed in *edible ink on the
 product* — visible on the finished topper. Better to rely on a physical circle cutter. If
@@ -233,20 +232,19 @@ catalogue of SKUs but **three format types** (D-037):
 | Type | What the customer chooses | Geometry |
 |---|---|---|
 | **A4 visas lapas** | nothing | rect, the whole usable area |
-| **Vienas apskritimas** | a diameter from a fixed list — 19…10 cm in 1 cm steps | round, ×N as fits |
+| **Vienas apskritimas** | a diameter from a fixed list — 20…10 cm in 1 cm steps | round, ×N as fits |
 | **Keksiukams** | one predefined case showing **count and diameter** | round, ⌀ as listed, ×N |
 
 Both are **comboboxes over a hardcoded list of offered sizes** (D-038) — no free numeric input,
 so there is no ⌀17.5 cm and no floor to define.
 
 **The list is hardcoded; the arrangement is not** (D-038). `SheetLayout` derives cols, rows and
-positions from the chosen size and the measured usable area, so "⌀5 cm, 20 vnt" is arithmetic
-rather than a maintained table and a count can never disagree with the geometry. Freezing
-positions would encode the usable area implicitly, and it is still not measured — the ⌀4.0 cm
-case already moved from 35 per sheet to 30 when the long axis went 287 → 277.
+positions from the chosen size and the usable area, so "⌀5 cm, 20 vnt" is arithmetic rather than
+a maintained table and a count can never disagree with the geometry.
 
 An admin screen renders every offered size's derived layout on one page, so all of them can be
-reviewed at once without any of them going stale.
+reviewed at once without any of them going stale. Ruslan prints every format physically before
+launch; that is what corrections come from.
 
 > **Format is a property of the design, not of the product.**
 

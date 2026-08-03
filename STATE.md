@@ -565,16 +565,18 @@ Housekeeping, not blocking:
 
 - **Confirm GD FreeType on the live host before Phase 4** — see Production above. Not urgent,
   high confidence, three ways to check. Do not push the client to upload things to the live shop.
-- **⌀20 cm does not fit, and it is arithmetic rather than a setting** (D-038). ⌀200 + 6 mm bleed
-  = 206 mm against a 210 mm short edge, so it needs side margins ≤ 2 mm — optimistic for any
-  inkjet. It fits only with bleed dropped entirely, at ~1.6 mm a side, which shows white edges on
-  a hand cut. **The circle list realistically starts at ⌀19 cm.** Raised twice, not yet answered.
-- **How many pieces a "single circle" yields** (D-038). Ruslan said "1 circle, or 2 if fit", but
-  at ⌀10 cm *four* fit — there is no natural stop at 2. Either "as many as fit" (which makes
-  single-circle and cupcakes the same mechanism) or an explicit per-size cap. Note the existing
-  catalogue prices by count: `Lakštas, 1 vnt.` and `Lakštas, 12 vnt.` are separate products.
 - Cupcake diameter assumed 4.5 cm → 24 per A4. Under D-037/D-038 this stops mattering as a
   *product* question, but it still decides which cases are worth offering.
+
+**The geometry is settled (D-039) and validated by printing, not by arithmetic.** Usable area is
+**282 × 210 mm** — full A4 less the 15 mm of bare icing at the right, no printer margins. ⌀20 cm
+is the declared maximum and fits (206 against 210). Circle list 20 → 10 cm in 1 cm steps, count
+"as many as fit" and stated in the wizard. Cupcakes 35 / 24 / 20 / 12 at ⌀4.0 / 4.5 / 5.0 / 6.0.
+
+> **Do not re-derive printer physics from specifications.** I twice argued ⌀20 cm could not fit,
+> from 5 mm margins I had assumed off a spec sheet. Ruslan prints ⌀20 cm circles routinely. The
+> operator has the printer — ask, or wait for the print test. He will print and check every
+> format before launch, and corrections come from that.
 
 **Settled 2026-08-03 by D-037, previously open here:** the 15 mm bare-icing strip is fixed at the
 right safe margin; the usable area is **277 × 200 mm** with all four margins as admin settings;
