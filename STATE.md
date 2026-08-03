@@ -1,16 +1,31 @@
 # Project state
 
 **Updated:** 2026-08-03
-**Phase:** Phases 1–7 built. **Actively building the D-035…D-039 wizard track**, not Phase 8.
-Phase 0 deferred to a later calibration step (D-018).
+**Phase:** Phases 1–7 built. **The wizard track is finished** (D-033 → D-045). **Phase 8 has
+started** — the review queue is done (D-046). Phase 0 deferred to a later calibration step
+(D-018).
 
-> **A reset session picking this up:** read D-033 → D-042 in `DECISIONS.md` first, then
-> "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
-> suggestion button, and the print path composites the text layer.**
+> **A reset session picking this up:** read D-033 → D-046 in `DECISIONS.md` first. The wizard
+> runs end to end — a Lithuanian prompt becomes a cart line at the right price with the finished
+> picture on it — and all server-side text rendering is deleted.
+> **Start here: Phase 8b — the print queue.**
+
+> **⚠ Before anything else, a conversation Ruslan asked for. He did not ask for the rejection
+> apology and wants to decide it himself** (2026-08-03, end of session).
 >
-> **The wizard track is finished** (D-043 → D-045) and **Phase 8 has started**: the review queue
-> is built, §10 layer 3 is a real screen, and `aicake-approval` orders can finally be worked
-> (D-046). **Start here: Phase 8b — the print queue.**
+> What was built from `PLAN.md` §10 without asking him: rejecting in the review queue writes a
+> **customer-visible order note** — which WooCommerce emails — carrying the manager's typed
+> reason and the sentence „Grąžinsime pinigus." The refund itself is *not* automatic (D-046).
+>
+> **Nothing has reached a real customer**: the plugin is testbed-only and the only rejections so
+> far were test orders.
+>
+> Three things to settle: whether a rejection notifies the customer at all, what it says, and
+> whether refunding should ever be automatic. §10 assumes all three; he has agreed to none of
+> them. **Do not build further on this until that talk happens.**
+>
+> Ruslan is also printing and checking formats tomorrow — corrections to geometry come from that
+> (D-039, D-040), not from arithmetic.
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
