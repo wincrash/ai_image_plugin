@@ -612,6 +612,13 @@ Two things done deliberately server-side:
 - **The generation aspect comes from the format, not from the client.** They are not independent
   (§3.2), and a posted aspect that disagrees produces a wrongly cropped generation at our expense.
 
+**Parked idea, Ruslan's, not scheduled:** show a **live diagram of the sheet beside the size
+choice**, so the customer sees the layout rather than reading a count. He accepted the current
+view for now and wants to think about it. Worth knowing when it comes up: the machinery already
+exists — `Admin/FormatsPage::diagram()` draws exactly this from `SheetLayout::plan()`, so the
+work is moving it to the frontend, not inventing it. It must keep deriving from `SheetLayout`
+rather than shipping fixed pictures (D-038), or the preview and the print drift apart.
+
 **Step 4 next:** generation inside the wizard, then the D-033 text editor and the proof step. The
 AI flag must be derived server-side in `CartIntegration` from whether the design really has a
 generated image — a posted flag about whether money was spent cannot be trusted.
