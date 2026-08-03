@@ -116,6 +116,19 @@ Phases 1–5 need no WooCommerce interaction and are testable from WP-CLI.
 ## 7. Useful commands
 
 ```bash
+# The pure-PHP tests: Mm, SheetLayout, LtNormaliser, font coverage
+docker compose exec wordpress php wp-content/plugins/ai-cake-topper/tests/run.php
+```
+
+```bash
+# The REST layer over real HTTP, logged out AND logged in. Run this after
+# touching anything in src/Rest/, Frontend/Generator.php or the throttle —
+# it is the only check that authenticates, and D-025 is what happens without
+# one. Deploy first; it tests the testbed, not the working copy.
+bash tools/rest-check.sh
+```
+
+```bash
 # Watch PHP errors as they happen
 docker compose logs -f wordpress
 ```

@@ -380,7 +380,8 @@ C:\AI_IMAGE\
 ├── docs\api-evaluation.md   Phase 0 plan
 ├── infra\                   testbed Docker config — applied
 ├── tools\sync.ps1           C:\AI_IMAGE  ->  Z:\
-└── plugin\                  (empty — created in Phase 1)
+├── tools\rest-check.sh      REST over real HTTP, logged out and logged in
+└── plugin\                  the plugin itself
 ```
 
 ## Next actions
@@ -428,10 +429,10 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- The REST layer has no automated test that runs **logged in**. That gap is what let D-025 live
-  through two phases, and nothing stops it recurring — `tests/run.php` is pure-PHP and cannot
-  hold a cookie. The practical answer is a curl script against the testbed using the `testuser`
-  account, not a new test framework.
+- `tools/rest-check.sh` now covers the REST layer over real HTTP, **logged out and logged in** —
+  12 assertions, the gap that let D-025 live through two phases. It was falsified before being
+  trusted: reintroducing the bug turns 5 of them red. Run it after touching `src/Rest/`,
+  `Frontend/Generator.php` or the throttle. It tests the *deployed* copy, so sync first.
 
 ## Open items, not blocking
 
