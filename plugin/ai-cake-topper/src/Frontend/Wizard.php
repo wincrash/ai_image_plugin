@@ -403,6 +403,9 @@ class Wizard {
 					'textFailed' => __( 'Nepavyko išsaugoti užrašo. Bandykite dar kartą.', 'ai-cake-topper' ),
 					'tooManyColours' => __( 'Per daug spalvų. Galima rinktis iki %d.', 'ai-cake-topper' ),
 					'colour'     => __( 'Spalva', 'ai-cake-topper' ),
+					'suggesting' => __( 'Kuriame dizainą…', 'ai-cake-topper' ),
+					'suggestNone' => __( 'Šįkart pasiūlymo nepavyko sugalvoti. Sukurkite užrašą patys arba bandykite dar kartą.', 'ai-cake-topper' ),
+					'suggestNeedsText' => __( 'Pirma parašykite užrašą, tada pasiūlysime dizainą.', 'ai-cake-topper' ),
 					'safeZone'   => __( 'Užrašas turi tilpti apskritime — pagal juodą liniją karpysite.', 'ai-cake-topper' ),
 					/*
 					 * Rotating text, because 5–15 s of a bare spinner reads as

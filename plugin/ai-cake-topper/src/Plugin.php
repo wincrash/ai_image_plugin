@@ -26,6 +26,7 @@ use AiCake\Moderation\Blocklist;
 use AiCake\Moderation\Moderator;
 use AiCake\Moderation\Sanitiser;
 use AiCake\Pipeline\FulfilPipeline;
+use AiCake\Pipeline\LayoutSuggester;
 use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
@@ -40,6 +41,7 @@ use AiCake\Queue\Scheduler;
 use AiCake\Rest\FileEndpoint;
 use AiCake\Rest\GenerateEndpoint;
 use AiCake\Rest\JobStatusEndpoint;
+use AiCake\Rest\LayoutEndpoint;
 use AiCake\Rest\RestController;
 use AiCake\Rest\TextLayerEndpoint;
 use AiCake\Rest\SessionEndpoint;
@@ -214,6 +216,13 @@ class Plugin {
 				new LayerInspector( $this->logger ),
 				$this->storage,
 				$this->logger
+			),
+			new LayoutEndpoint(
+				$this->designs,
+				$this->identity,
+				$this->moderator,
+				new LayoutSuggester( $this->http, $this->settings, $this->logger ),
+				$this->fonts
 			)
 		);
 	}

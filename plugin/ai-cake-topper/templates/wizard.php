@@ -222,6 +222,18 @@ defined( 'ABSPATH' ) || exit;
 					<button type="button" class="button aicake-add-line" data-role="add-line">
 						<?php esc_html_e( 'Pridėti eilutę', 'ai-cake-topper' ); ?>
 					</button>
+
+					<?php
+					/*
+					 * D-041. The model proposes a layout and the canvas draws
+					 * it; everything stays draggable afterwards. Optional by
+					 * design — the editor works with this button unpressed and
+					 * with the text API down.
+					 */
+					?>
+					<button type="button" class="button aicake-suggest" data-role="suggest">
+						<?php esc_html_e( 'Pasiūlyk dizainą', 'ai-cake-topper' ); ?>
+					</button>
 				</p>
 
 				<?php

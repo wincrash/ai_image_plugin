@@ -89,6 +89,7 @@ require_once __DIR__ . '/GdEngineTest.php';
 require_once __DIR__ . '/FormatCatalogueTest.php';
 require_once __DIR__ . '/LayerInspectorTest.php';
 require_once __DIR__ . '/EditorLayoutTest.php';
+require_once __DIR__ . '/LayoutSuggesterTest.php';
 
 $suites = array(
 	new MmTest(),
@@ -99,6 +100,7 @@ $suites = array(
 	new GdEngineTest(),
 	new LayerInspectorTest(),
 	new EditorLayoutTest(),
+	new LayoutSuggesterTest(),
 );
 
 foreach ( $suites as $suite ) {

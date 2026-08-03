@@ -742,9 +742,32 @@ face (D-042). **The font list is still the four bundled DejaVu faces** — Rusla
 build the picker first and pick the decorative set separately. That is D-023, and it is now the
 most visible open item in the wizard.
 
-**Not yet done in step 3:** D-041's „Pasiūlyk dizainą" button. Everything it needs now exists —
-the canvas draws, `constrain()` clamps sizes by real measurement, and the palette is derived from
-what is drawn. See D-041.
+**D-041's „Pasiūlyk dizainą" button is built.** Proven against the live Gemini API: „Su
+gimtadieniu Ąžuolas 5 metai" comes back as three lines with the name largest, uppercased, white
+on a black outline, all inside the circle.
+
+| File | What it does |
+|---|---|
+| `Pipeline/LayoutSuggester.php` | Calls `gemini-3.1-flash-lite`, then clamps everything it says |
+| `Rest/LayoutEndpoint.php` | `POST /layout` — ownership, moderation, cooldown |
+| `assets/js/editor.js` | `applySuggestion()` and `arrange()` |
+| `tests/LayoutSuggesterTest.php` | 16 assertions over a stubbed `HttpClient`, no network |
+
+Three things worth knowing:
+
+- **The model returns ratios, never pixels**, and its sizes are hints. One suggestion is then
+  usable on a 4 cm cupcake and a 20 cm topper alike, and a model that never sees a pixel figure
+  cannot return one that disagrees with the server's geometry.
+- **Every word the customer typed must survive, and no others.** Case and line splits are the
+  model's to change; the words are not. A suggestion that invents or drops one is discarded
+  rather than corrected — moderation ran against what was typed, and a name missing off a
+  birthday cake is not worth salvaging a layout for.
+- **Spacing is solved where the metrics are.** On a round piece, "move it up so it stops
+  overlapping" and "make it fit across the circle" are the same problem: a line further from the
+  centre has a shorter chord to fit in. Solving them separately produced text pushed off centre
+  for clearance and then clamped straight back on top of the line below. `arrange()` stacks and
+  shrinks together, and runs only when the customer asks for an arrangement — re-flowing on every
+  change would undo dragging, and dragging is the point.
 
 **Still to delete:** all server-side text rendering — `TextRenderer`, arc text, auto-fit,
 wrapping, the cmap gate, `TextSpec`. D-033 says delete nothing until the browser side works. It
@@ -819,9 +842,9 @@ bash tools/rest-check.sh
 Add `text-check` to the loop above; `layer-check.php` is a diagnostic, not a gate, and takes a
 design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 454 assertions:** `tests/run.php` is now 300
-  (was 220 — `LayerInspectorTest` and `EditorLayoutTest`), and `tools/text-check.php` adds 24.
-  The older list, for reference: `tests/run.php` (220 pure-PHP),
+- **Seven suites, all committed and all green — 473 assertions:** `tests/run.php` is now 318
+  (was 220 — `LayerInspectorTest`, `EditorLayoutTest` and `LayoutSuggesterTest`), and
+  `tools/text-check.php` adds 25. The older list, for reference: `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
   a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
   (18, printable proofs — also writes them), `tools/wizard-check.php` (28, steps 1–2). All but the first test the *deployed* copy, so sync

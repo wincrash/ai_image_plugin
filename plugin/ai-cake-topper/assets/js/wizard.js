@@ -315,6 +315,7 @@
 		picker: root.querySelector( '[data-role="piece-picker"]' ),
 		lines: root.querySelector( '[data-role="lines"]' ),
 		addLine: root.querySelector( '[data-role="add-line"]' ),
+		suggest: root.querySelector( '[data-role="suggest"]' ),
 		fontPicker: root.querySelector( '[data-role="fontpicker"]' ),
 		fontButton: root.querySelector( '[data-role="font-button"]' ),
 		fontList: root.querySelector( '[data-role="font-list"]' ),
@@ -774,6 +775,61 @@
 			if ( editor ) {
 				editor.addLine( '' );
 			}
+		} );
+	}
+
+	if ( step3.suggest ) {
+		step3.suggest.addEventListener( 'click', function () {
+			if ( ! editor || ! state.design ) {
+				return;
+			}
+
+			if ( ! editor.hasText() ) {
+				// There is nothing to lay out. Say so rather than sending an
+				// empty request and reporting that it produced nothing.
+				if ( step3.error ) {
+					step3.error.textContent = config.i18n.suggestNeedsText;
+					step3.error.hidden = false;
+				}
+
+				return;
+			}
+
+			step3.suggest.disabled = true;
+
+			if ( step3.hint ) {
+				step3.hint.textContent = config.i18n.suggesting;
+			}
+
+			editor.suggest( state.design ).then( function ( suggestion ) {
+				if ( ! editor.applySuggestion( suggestion ) && step3.hint ) {
+					// A 200 with no lines is the documented "nothing useful"
+					// answer, not a failure worth alarming anyone about.
+					step3.hint.textContent = config.i18n.suggestNone;
+
+					return;
+				}
+
+				if ( step3.hint ) { step3.hint.textContent = ''; }
+				if ( step3.error ) { step3.error.hidden = true; }
+
+				// The suggestion sets font and outline, so the controls that
+				// show them have to catch up.
+				if ( step3.outline ) { step3.outline.checked = editor.state().outline; }
+				if ( step3.outlineColour ) { step3.outlineColour.value = editor.state().outlineColour; }
+
+				step3.fontHandle = editor.state().font;
+				renderFontChoices();
+			} ).catch( function ( error ) {
+				if ( step3.error ) {
+					step3.error.textContent = error.message || config.i18n.suggestNone;
+					step3.error.hidden = false;
+				}
+
+				if ( step3.hint ) { step3.hint.textContent = ''; }
+			} ).finally( function () {
+				step3.suggest.disabled = false;
+			} );
 		} );
 	}
 

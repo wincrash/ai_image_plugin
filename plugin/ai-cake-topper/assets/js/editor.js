@@ -275,6 +275,81 @@
 			line.dy = Math.max( -limitY, Math.min( limitY, line.dy ) );
 		}
 
+		/**
+		 * Stack a set of lines into a piece, shrinking whatever will not fit.
+		 *
+		 * Spacing and size cannot be solved separately on a round piece, which
+		 * is the whole difficulty. A line placed away from the centre has less
+		 * width available — the chord is shorter — so "move it up so it stops
+		 * overlapping" and "make it fit across the circle" are the same
+		 * problem. Separating them produced a suggestion where a wide line was
+		 * pushed off centre for clearance and then clamped straight back onto
+		 * the line below, because at that height it was too wide to be
+		 * anywhere else.
+		 *
+		 * So this stacks the lines in reading order, centres the block, and
+		 * shrinks any line whose measured width exceeds the chord available at
+		 * the height it landed at — then does the whole thing again, because
+		 * shrinking one line moves every line after it.
+		 *
+		 * **Only run when the customer asks for an arrangement** — a
+		 * suggestion, not an edit. Re-flowing on every change would undo
+		 * dragging, and being able to drag is the point (D-041).
+		 *
+		 * @param {Array}  lines The lines, mutated in place.
+		 * @param {Object} piece Their piece.
+		 */
+		function arrange( lines, piece ) {
+			if ( ! lines.length ) {
+				return;
+			}
+
+			var radius = piece.limit_w / 2;
+			var floor  = piece.limit_h * MIN_RATIO;
+
+			for ( var pass = 0; pass < 40; pass++ ) {
+				var boxes = lines.map( measure );
+				var total = 0;
+
+				boxes.forEach( function ( box ) {
+					total += box.h;
+				} );
+
+				var y     = -total / 2;
+				var fits  = true;
+
+				for ( var i = 0; i < lines.length; i++ ) {
+					var box = boxes[ i ];
+
+					lines[ i ].dx = 0;
+					lines[ i ].dy = y + ( box.h / 2 );
+					y += box.h;
+
+					var available;
+
+					if ( state.layout.round ) {
+						// The half-width available at this line's furthest
+						// extent from the centre, not at its baseline — a
+						// corner is what leaves the circle first.
+						var reach = Math.abs( lines[ i ].dy ) + ( box.h / 2 );
+
+						available = reach >= radius ? 0 : Math.sqrt( ( radius * radius ) - ( reach * reach ) );
+					} else {
+						available = piece.limit_w / 2;
+					}
+
+					if ( box.w / 2 > available && lines[ i ].size > floor ) {
+						lines[ i ].size = Math.max( floor, lines[ i ].size * 0.94 );
+						fits = false;
+					}
+				}
+
+				if ( fits ) {
+					return;
+				}
+			}
+		}
+
 		function constrainAll() {
 			if ( ! state.layout ) {
 				return;
@@ -721,6 +796,96 @@
 			selectPiece: function ( index ) {
 				state.selected = index;
 				changed();
+			},
+
+			/**
+			 * Load a model's proposal onto the canvas (D-041).
+			 *
+			 * The model returns ratios, never pixels, and they are multiplied
+			 * out here against the piece the server derived. Sizes are hints:
+			 * `constrain()` runs immediately afterwards and shrinks anything
+			 * that does not actually fit, measured with the real font. The
+			 * model has no idea how wide "Ąžuolas" is in DejaVu Serif Bold and
+			 * is not asked to.
+			 *
+			 * It replaces the current lines rather than merging, because the
+			 * proposal is a whole design. Everything stays draggable and
+			 * editable afterwards — that is the point of D-041.
+			 *
+			 * @param {Object} suggestion Clamped server response.
+			 */
+			applySuggestion: function ( suggestion ) {
+				if ( ! suggestion || ! suggestion.lines || ! suggestion.lines.length ) {
+					return false;
+				}
+
+				var piece = state.layout.pieces[ state.selected ];
+				var lines = [];
+
+				suggestion.lines.forEach( function ( line ) {
+					lines.push( {
+						text: String( line.text || '' ),
+						colour: line.colour || '#ffffff',
+						size: Math.round( piece.limit_h * Number( line.size_ratio || 0.14 ) ),
+						dx: 0,
+						dy: Math.round( piece.limit_h * Number( line.dy_ratio || 0 ) )
+					} );
+				} );
+
+				state.lines[ key() ] = lines;
+
+				// The font has to be in place before anything is measured, or
+				// the spacing is worked out against whatever was selected
+				// before and the lines still collide.
+				if ( suggestion.font ) {
+					state.font = suggestion.font;
+				}
+
+				arrange( lines, piece );
+
+				if ( typeof suggestion.outline !== 'undefined' ) {
+					state.outline = !! suggestion.outline;
+				}
+
+				if ( suggestion.outline_colour ) {
+					state.outlineColour = suggestion.outline_colour;
+				}
+
+				changed();
+
+				return true;
+			},
+
+			/**
+			 * Ask the server for a layout.
+			 *
+			 * Failures are swallowed on purpose: the button is optional and the
+			 * editor works without it, so a text API being down must not stand
+			 * between a customer and their cake (D-041).
+			 *
+			 * @param {string} designId The design's public id.
+			 */
+			suggest: function ( designId ) {
+				var headers = { 'Content-Type': 'application/json' };
+
+				if ( config.nonce ) {
+					headers['X-WP-Nonce'] = config.nonce;
+				}
+
+				return window.fetch( config.root + 'layout', {
+					method: 'POST',
+					credentials: 'same-origin',
+					headers: headers,
+					body: JSON.stringify( { design: designId, text: plainText() } )
+				} ).then( function ( response ) {
+					return response.json().then( function ( body ) {
+						if ( ! response.ok ) {
+							throw new Error( body && body.message ? body.message : '' );
+						}
+
+						return body;
+					} );
+				} );
 			},
 
 			/**

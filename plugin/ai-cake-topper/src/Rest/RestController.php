@@ -34,25 +34,30 @@ class RestController {
 
 	private TextLayerEndpoint $text_layer;
 
+	private LayoutEndpoint $layout;
+
 	/**
 	 * @param SessionEndpoint   $session    Session and nonce.
 	 * @param GenerateEndpoint  $generate   Queue a generation.
 	 * @param JobStatusEndpoint $status     Polling.
 	 * @param FileEndpoint      $file       Delivery.
 	 * @param TextLayerEndpoint $text_layer The composed text layer.
+	 * @param LayoutEndpoint    $layout     The D-041 layout suggestion.
 	 */
 	public function __construct(
 		SessionEndpoint $session,
 		GenerateEndpoint $generate,
 		JobStatusEndpoint $status,
 		FileEndpoint $file,
-		TextLayerEndpoint $text_layer
+		TextLayerEndpoint $text_layer,
+		LayoutEndpoint $layout
 	) {
 		$this->session    = $session;
 		$this->generate   = $generate;
 		$this->status     = $status;
 		$this->file       = $file;
 		$this->text_layer = $text_layer;
+		$this->layout     = $layout;
 	}
 
 	/**
@@ -172,6 +177,33 @@ class RestController {
 					),
 					'colours' => array(
 						'required' => true,
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/layout',
+			array(
+				'methods'  => 'POST',
+				'callback' => array( $this->layout, 'handle' ),
+				/*
+				 * Nonced. It spends a fraction of a cent per press rather than
+				 * nothing, and it forwards customer text to a third party --
+				 * neither belongs on an endpoint anyone can call.
+				 */
+				'permission_callback' => array( $this, 'check_nonce' ),
+				'args'                => array(
+					'design' => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'text'   => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_textarea_field',
 					),
 				),
 			)

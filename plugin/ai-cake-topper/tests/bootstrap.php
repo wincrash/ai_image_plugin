@@ -65,6 +65,19 @@ if ( ! function_exists( 'wp_json_encode' ) ) {
 require_once __DIR__ . '/../src/Imaging/LayerInspector.php';
 
 /*
+ * The layout suggester talks to Gemini through the HttpClient seam, which is
+ * exactly what makes it testable with a canned reply and no network. It does
+ * check for a key first, though — a suggester with no key correctly does
+ * nothing, and without this constant every assertion below would pass by
+ * testing that.
+ */
+defined( 'AICAKE_GEMINI_KEY' ) || define( 'AICAKE_GEMINI_KEY', 'test-key-never-sent-anywhere' );
+
+require_once __DIR__ . '/../src/Support/HttpResponse.php';
+require_once __DIR__ . '/../src/Support/HttpClient.php';
+require_once __DIR__ . '/../src/Pipeline/LayoutSuggester.php';
+
+/*
  * FormatCatalogue and PrintSpec are pure arithmetic over Mm and SheetLayout,
  * but they build customer-facing labels, so they reach for `__()`. Stubbing it
  * keeps the catalogue testable without WordPress — and the catalogue is worth
