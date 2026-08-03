@@ -941,8 +941,12 @@ ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec 
 bash tools/rest-check.sh
 ```
 
-Add `text-check` to the loop above; `layer-check.php` is a diagnostic, not a gate, and takes a
-design id (or picks the newest layer).
+`layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
+
+> **A red `rest-check.sh` is the per-IP ceiling before it is a bug.** Three assertions go 429 once
+> a day of browser testing has used the 30. Raising `ip_daily_ceiling` through `Settings::update()`
+> and putting it straight back to 30 turns an ambiguous run into a definite one — done on
+> 2026-08-03, and all 12 then passed.
 
 - **Seven suites, all committed and all green — 534 assertions:** `tests/run.php` 368,
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (58,
