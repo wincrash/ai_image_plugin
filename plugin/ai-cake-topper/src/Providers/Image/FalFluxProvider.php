@@ -18,13 +18,13 @@ use AiCake\Support\Settings;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * fal.ai, the provider PLAN.md §8 picked before anything was measured.
+ * fal.ai, the provider PLAN.md §8 picked before anything was measured, and
+ * now the funded primary (D-030).
  *
- * Written to the interface but **not currently callable**: the account has no
- * credit and fal answers `403 User is locked. Reason: Exhausted balance.`
- * There is no trial tier. Topping the account up turns this on with no code
- * change, and fal alone covers both Suite A and Suite B when Phase 0 is
- * eventually run (D-017, D-018).
+ * Topping the account up turned this on with no code change, which is the
+ * whole point of the interface: 992×992 PNG in 4.7 s on the first real call.
+ * fal alone covers both Suite A and Suite B when Phase 0 is eventually run
+ * (D-017, D-018).
  */
 class FalFluxProvider implements ImageProvider {
 

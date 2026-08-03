@@ -11,9 +11,13 @@
  *   docker exec wordpress-test-wordpress-1 \
  *     wp eval-file /var/lib/aicake/order-check.php --allow-root --path=/var/www/html
  *
- * The image providers are unfunded (D-022), so the master is synthetic —
- * quadrants, a ring at the trim line and an up-marker, which makes a wrong
- * crop, a wrong mask or a wrong rotation visible rather than merely asserted.
+ * The master is synthetic on purpose, and stays that way now that fal is
+ * funded (D-030): quadrants, a ring at the trim line and an up-marker make a
+ * wrong crop, a wrong mask or a wrong rotation *visible* rather than merely
+ * asserted, and it costs nothing to re-run. A real generated master has been
+ * pushed through the same pipeline separately (D-030) — this gate does not
+ * need to spend $0.012 to prove the same geometry twice.
+ *
  * Everything downstream of "an image exists on disk" is the real code path,
  * triggered by the real `woocommerce_order_status_processing` hook.
  *

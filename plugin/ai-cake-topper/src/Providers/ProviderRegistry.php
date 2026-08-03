@@ -32,12 +32,15 @@ defined( 'ABSPATH' ) || exit;
 class ProviderRegistry {
 
 	/**
-	 * Replicate first because it is the only image provider that currently
-	 * runs without credit. Reordering this is a settings change.
+	 * fal first: it is the funded account, and the only one whose access we
+	 * are entitled to rely on. Replicate sits behind it as a fallback rather
+	 * than a dependency — its free tier is undocumented and already withdrew
+	 * once mid-session (D-017, D-022, D-030). Reordering this is a settings
+	 * change.
 	 *
 	 * @var string[]
 	 */
-	private const DEFAULT_IMAGE_ORDER = array( 'replicate', 'fal', 'gemini-image' );
+	private const DEFAULT_IMAGE_ORDER = array( 'fal', 'replicate', 'gemini-image' );
 
 	private Settings $settings;
 

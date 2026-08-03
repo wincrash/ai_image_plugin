@@ -686,4 +686,49 @@ existed in a session transcript is not a verification.
 
 ---
 
-<!-- Next: D-030 -->
+### D-030 · fal is funded, and is now the primary image provider
+**2026-08-03** · closes D-022 · supersedes the ordering in D-017/D-018
+
+Ruslan added credit to fal.ai. Probed through the plugin's own `FalFluxProvider`
+against the live API, not a pricing page: `fal-ai/flux/dev` returned a 992×992
+PNG in 4.7 s at the recorded $0.012. No code change was needed to turn it on,
+which is what the §8.5 interface was for.
+
+`ProviderRegistry::DEFAULT_IMAGE_ORDER` moves from `replicate, fal,
+gemini-image` to **`fal, replicate, gemini-image`**. Two reasons, and only the
+first is about money:
+
+1. **D-017 stands.** Free Replicate access is undocumented, follows no pattern,
+   and already withdrew once mid-session (D-022). It may sit in the chain as a
+   fallback; it may not be the thing production depends on.
+2. **Replicate first was costing a round trip per generation.** It answers
+   `402` now, and `should_fall_through()` correctly walks past it — so every
+   image paid for a wasted call before reaching the provider that works.
+
+**The success path is verified, and Phase 6's gate is met.** It had never been
+seen end to end for the reason above — see D-022. Now, in one `rest-check.sh`
+run: `POST /generate` → 202 → job claimed → fal → master and preview on disk →
+design `done`. Produced and inspected, not merely asserted:
+
+- **master** — 992×992 PNG, flat vector on white, single subject: the house
+  style suffix doing what D-019 tuned it to do.
+- **preview** — 800×800 WebP, circle-masked and watermarked, 20 KB.
+- **print file** — that same real master through `FulfilPipeline` at the 15 cm
+  spec: 1843×1843 at 300 DPI, `Ąž` rendering correctly from the bundled fonts.
+
+Phase 7 was verified against a synthetic master (D-029). It is now verified
+against a real one, so nothing in the chain is fixture-only any more.
+
+**D-019's two tuning items are both confirmed on real output, neither
+blocking.** The drop shadow is still there, and the subject sits low and right
+of centre, which at `PLACE_BOTTOM` puts the greeting across the subject's legs
+rather than under it. Both are prompt-suffix work, not pipeline work.
+
+> **Cost recording stops being conservative here.** The note in `STATE.md`
+> about `ReplicateProvider::estimate_cost()` over-recording list price on free
+> calls no longer applies to the primary provider: fal bills, and $0.012 is
+> what it billed.
+
+---
+
+<!-- Next: D-031 -->

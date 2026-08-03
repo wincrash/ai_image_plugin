@@ -9,16 +9,17 @@
 
 ## Where we are
 
-Phases 1–7 are built, and the chain runs from a paid order all the way to a print file in
-`orders/`. Everything is verified on the testbed, most of it against live APIs.
+Phases 1–7 are built and verified on the testbed, most of it against live APIs. The chain runs
+from a customer's Lithuanian prompt all the way to a 300 DPI print file in `orders/`.
 
-**One link is unverified, and money is the only reason.** A *successful* generation has never
-been seen end to end, because both image providers are out of credit (D-022 — re-probed
-2026-08-03: Replicate `402`, fal `403 Exhausted balance`). The failure path is verified through
-to a terminal `quota` failure; the success path is not. Phase 7 was built and tested against a
-**synthetic master**, which exercises every step after "an image exists on disk".
+**The last unknown is retired (D-030).** fal.ai is funded, and a *successful* generation has now
+been seen end to end: `POST /generate` → 202 → job claimed → fal → master and preview on disk →
+design `done`, inside an ordinary `rest-check.sh` run. That same real master went through
+`FulfilPipeline` to a 1843×1843 print file at the 15 cm spec. Phase 7's synthetic master is no
+longer the only thing the fulfilment chain has been fed.
 
-So: ~$5 at fal.ai closes Phase 6's gate and retires the last unknown.
+**218 committed assertions, all green:** 152 pure-PHP · 12 REST over real HTTP · 54 a real order
+through to print files.
 
 | Phase | Status |
 |---|---|
@@ -28,8 +29,8 @@ So: ~$5 at fal.ai closes Phase 6's gate and retires the last unknown.
 | 3 · Job system | **Done and verified live, both dispatch paths.** |
 | 4 · Imaging | **Done and verified on real print output.** |
 | 5 · Moderation | **Done — all three automatable layers verified.** |
-| 6 · Storefront | **Built, rendering, and verified logged in *and* out.** Awaiting a funded provider for the success path. |
-| 7 · Orders | **Gate met — a test order produces print files.** 54 committed assertions. |
+| 6 · Storefront | **Gate met — a prompt now becomes a preview.** Verified logged in *and* out, success path and failure path (D-030). |
+| 7 · Orders | **Gate met — a test order produces print files**, from a real master as well as a synthetic one. 54 committed assertions. |
 | 8–9 | Not started |
 
 ### Phase 7 — what exists and was verified
@@ -239,11 +240,11 @@ The style suffix is now positive-phrased and produces the actual product — fla
 outlines, white background, single subject. See D-019 for the two tuning items (drop shadow,
 centring), neither blocking.
 
-> **Cost recording is deliberately conservative.** `ReplicateProvider::estimate_cost()` records
-> the **list price** even while these calls are free, because the API gives no way to tell
-> whether a prediction was billed. Over-recording is the safe direction for a spend guard and
-> the figure becomes exactly right the moment credit is added. It does mean the Phase 8 cost
-> dashboard will read high until then.
+> **Cost recording is list price, and that is now correct for the provider that matters.**
+> `estimate_cost()` records list price because neither API says whether a call was billed.
+> Over-recording is the safe direction for a spend guard, and with fal primary and funded
+> (D-030) the recorded $0.012 is what was actually charged. Replicate's figure still reads high
+> for any historical free call.
 
 ### Phase 1 — what exists and was verified running
 
@@ -281,35 +282,36 @@ Two deviations from `PLAN.md`, both deliberate and commented in the code:
 
 **Nothing.** There is a complete free stack and Phase 1 contains nothing provider-specific.
 
-### Provider access — probed directly 2026-08-02
+### Provider access — fal funded and primary, re-probed 2026-08-03
 
 Keys for fal, Google and Replicate are in `.env` and all three authenticate. Every claim below
 was tested against the live API, not read off a pricing page.
 
 | Provider | Verdict |
 |---|---|
-| **Replicate** | **Some models run with no credit.** Free: `flux-dev` (confirmed by a real 1024² generation in 1.4 s), `flux-1.1-pro`, `flux-2-pro`. Blocked: `flux-schnell`, `flux-2-dev`, `flux-1.1-pro-ultra`, `imagen-4-fast`, `nano-banana`, `nano-banana-2`, `real-esrgan`, `recraft-v3`. |
+| **fal.ai** | **Funded and working — the primary (D-030).** `fal-ai/flux/dev` returned 992×992 PNG in 4.7 s at $0.012. |
+| **Replicate** | `402` — the free window closed mid-session (D-022). Kept as a *fallback*, never a dependency (D-017). |
 | **Google — text** | **Free and working.** `gemini-3.1-flash-lite` translates Lithuanian correctly. |
 | **Google — image** | `429 … free_tier_requests, limit: 0`. Explicitly zero on the free tier. |
-| **fal.ai** | `403 User is locked. Reason: Exhausted balance.` Needs a top-up. |
 
-The free stack we build against (D-018):
+The stack we now run on:
 
-| Layer | Development provider | Cost |
+| Layer | Provider | Cost |
 |---|---|---|
-| Image generation | Replicate `black-forest-labs/flux-dev` | free |
+| Image generation | fal `fal-ai/flux/dev` | $0.012 / MP |
 | Translate + moderate | Google `gemini-3.1-flash-lite` | free |
 | Upscale | GD bicubic in PHP | free, and it is the production fallback anyway |
 
 > **Free Replicate access is undocumented and must never be a production dependency** (D-017).
-> The split follows no pattern — the cheapest model is blocked, the top tier is free — and the
-> rate limit is reduced to ~6 predictions/min. Production runs on a funded account.
+> The split followed no pattern — the cheapest model was blocked, the top tier free — and it has
+> since stopped entirely. It sits behind fal in the chain and nothing depends on it.
+
+A 1 MP 1:1 request yields **992×992**, not 1024²: `GenerationRequest::dimensions()` rounds to a
+multiple of 32. Harmless — the 15 cm spec's 2× upscale still clears 1843 px — but it is why
+masters are not the round number you might expect.
 
 `AICAKE_OPENAI_KEY` and `AICAKE_LLM_KEY` are still empty. `AICAKE_REPLICATE_KEY` was added and is
 not yet in `infra/.env.example`.
-
-**When money is wanted later:** top up fal.ai — it is the primary candidate in `PLAN.md` §8 and
-covers Suite A *and* Suite B alone. Whole-phase budget is still under $5.
 
 The testbed is up and the repository is on GitHub.
 
@@ -431,24 +433,25 @@ C:\AI_IMAGE\
 
 ## Next actions
 
-**Image generation is paused until an account is funded** (D-022). Replicate's free access ended
-mid-session — `flux-dev` produced three designs and then began answering `402`. fal.ai is the
-recommendation: primary candidate in `PLAN.md` §8, covers Suite A *and* Suite B, whole Phase 0
-budget still under $5.
+**Nothing is blocked.** fal is funded and the success path is verified (D-030).
 
-**1. Finish verifying Phase 6 end to end.** The polling path, session history strip and preview
-have not been seen working, because generation itself needs a funded provider (D-022). The
-failure path is verified through to `failed / quota`; the success path is not. **Money is the
-only blocker** — every other part of the chain, right through to a print file in `orders/`, is
-now verified with a synthetic master.
-
-**2. Then Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
+**1. Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
 emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
 orders are already piling up in a real, filterable status waiting for it.
 
+**2. Buy a design through the storefront as a customer**, in a browser, as `testuser`. Every
+link in that chain is now verified individually and by script, but the customer's own path —
+type a Lithuanian prompt, watch it poll, pick from the history strip, add to cart, check out —
+has not been walked in one sitting by a person. That is a different kind of check from the 218
+assertions, and it is the one that finds wording and layout problems.
+
 Worth doing soon, none blocking:
 
-- **Fund a provider** (D-022). fal.ai remains the recommendation; under $5 covers Phase 0.
+- **Tune the prompt suffix** against real output (D-019, confirmed on a real print in D-030):
+  the drop shadow is still there, and the subject sits low and right of centre so a
+  `PLACE_BOTTOM` greeting lands across it. Prompt work, not pipeline work.
+- **Watch the spend.** Generation now costs real money — $0.012 per image. `BudgetGuard`'s
+  daily/monthly ceilings have never been exercised against non-zero cost.
 - **Pick the decorative fonts** (D-023). Four are bundled and verified but workmanlike; the
   coverage machinery will vet any candidate and name the exact characters a font is missing.
 - **Confirm production's `memory_limit`** before go-live. Measured peak is 339 MB (D-023).
