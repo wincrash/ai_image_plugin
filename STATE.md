@@ -24,7 +24,7 @@ design `done`, inside an ordinary `rest-check.sh` run. That same real master wen
 `FulfilPipeline` to a 1843×1843 print file at the 15 cm spec. Phase 7's synthetic master is no
 longer the only thing the fulfilment chain has been fed.
 
-**473 committed assertions, all green**, across seven suites — see the full list further down. The
+**477 committed assertions, all green**, across seven suites — see the full list further down. The
 product/pricing model changed substantially on 2026-08-03 (D-035 → D-039): **one AI product
 rather than ten**, geometry on the design rather than the product, and **the plugin prices
 nothing** — WC Fields Factory does.
@@ -539,31 +539,45 @@ exists and what was measured. What follows is what is left.
   a control — the field is currently a *visible radio*, so on a plain product page a customer
   could answer it themselves and pay €1 without AI, or use AI and not pay.
 
-**1b. `FulfilPipeline` must composite the stored text layer. It does not yet, and there is a
-guard in the way that must be removed as part of doing it.**
+**1b is done — the print path composites the layer.** `FulfilPipeline::composite_layer()` lays
+the stored PNG over the imposed canvas, **after imposition, not before**: text baked into a piece
+and then imposed gives every cupcake the same name, which is the whole reason the layer is sheet
+sized. Never scaled — a size mismatch is refused and logged, because stretching it would put text
+across a cut line while still producing a plausible file.
 
-`TextLayer` and `TextSpec` share the `text_payload` column while the editor is being built, and
-**both shapes carry a `text` key**. `Fulfilment::text_spec()` therefore read a layer straight
-into `TextSpec::from_array()` and rendered the *whole* string — every name at once — through the
-old server-side path with every default it never set: bottom placement, white, auto-fit. Twelve
-cupcakes would each have printed all twelve names across the bottom, and the order would have
-looked successful.
+Two bugs found and fixed while doing it, both by reading rather than by a failing test:
 
-Latent rather than live, because a `TextLayer` can only be created by the wizard and the wizard
-cannot reach the cart yet. Found by reading the code while writing this file, not by a test.
+- **`TextLayer` and `TextSpec` share the `text_payload` column and both carry a `text` key**, so
+  `Fulfilment::text_spec()` read a layer straight into `TextSpec::from_array()` and rendered the
+  *whole* string through the old server-side path with every default it never set: bottom,
+  white, auto-fit. Twelve cupcakes would each have printed all twelve names across the bottom,
+  on top of the composited layer, and the order would have looked successful. They are now told
+  apart on `path` — only a layer has one.
+- **`Fulfilment` used `PrintSpec::for_product()`, not `for_design()`.** Under D-035 the format is
+  a wizard choice on the design, so a wizard order printed at whatever geometry the single AI
+  product carried — and the layer would then be measured against a canvas it was never authored
+  for.
 
-**Fixed for now by telling the two apart on `path`** — only a layer has one — and returning null,
-so a print carries no text rather than the wrong text. Wrong, but visibly wrong. **Delete that
-guard when the composite lands.** `TextLayer::from_design()` gives the path, and the layer is
-already exactly `PrintSpec::canvas_px()`, so it composites without scaling.
+`order-check.php` gained the scenario that was missing (58 assertions, was 54): a design with a
+layer, ink asserted at the pixel the layer put it on piece 7 **and absent from piece 0**, which
+is per-piece text proven on a real print file.
 
-> Worth a test either way: `order-check.php` has no case for a design carrying a text layer.
-> That is why this survived — the suites cover the *old* payload shape only.
+> **One of those new assertions was decoration until it was falsified.** "The print is the design
+> format, not the product" originally used product 649 — whose product geometry already *is* a
+> 4.5 cm cupcake sheet, so both code paths agreed and reverting the fix changed nothing. It now
+> uses 646, the 15 cm topper, and reverting turns it red (2481 vs 1843) along with the ink
+> assertion, because the layer then no longer matches the canvas.
 
-**1c. Only then delete the server-side text rendering.** D-033 says delete nothing until the
-browser side works. It now works, so `TextRenderer` (arc text, auto-fit, wrapping, faked
-outlines), the Lithuanian cmap gate and `TextSpec` can go — **but not before 1b**, because
-`FulfilPipeline` still calls the old renderer. Fonts stay for the watermark.
+**1c. Only now delete the server-side text rendering.** D-033 says delete nothing until the
+browser side works; it works and the print path no longer needs it for wizard designs.
+`TextRenderer` (arc text, auto-fit, wrapping, faked outlines), the Lithuanian cmap gate and
+`TextSpec` can go — **but the product-page generator still uses `TextSpec`**, so that has to
+retire or move first. Fonts stay for the watermark.
+
+> **`rest-check.sh` can fail for a boring reason.** The per-IP daily ceiling is 30, and a day of
+> browser testing uses it up — `generate` then returns 429 and three assertions go red. Confirm
+> before debugging: count today's designs per `ip_hash`. Raising `ip_daily_ceiling` through
+> `Settings::update()` and putting it back to 30 turns an ambiguous run into a definite one.
 
 **3. Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
 emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
@@ -858,11 +872,11 @@ bash tools/rest-check.sh
 Add `text-check` to the loop above; `layer-check.php` is a diagnostic, not a gate, and takes a
 design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 473 assertions:** `tests/run.php` is now 318
+- **Seven suites, all committed and all green — 477 assertions:** `tests/run.php` is now 318
   (was 220 — `LayerInspectorTest`, `EditorLayoutTest` and `LayoutSuggesterTest`), and
   `tools/text-check.php` adds 25. The older list, for reference: `tests/run.php` (220 pure-PHP),
-  `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
-  a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
+  `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (58,
+  a real order end to end, now including a D-033 layer), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
   (18, printable proofs — also writes them), `tools/wizard-check.php` (28, steps 1–2). All but the first test the *deployed* copy, so sync
   first. Both `rest-check.sh` and `wcff-check.php` were falsified before being trusted —
   reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of the 18 red.

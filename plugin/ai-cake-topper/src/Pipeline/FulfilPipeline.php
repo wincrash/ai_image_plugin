@@ -11,6 +11,7 @@ namespace AiCake\Pipeline;
 
 use AiCake\Domain\PrintFile;
 use AiCake\Domain\PrintSpec;
+use AiCake\Domain\TextLayer;
 use AiCake\Domain\TextSpec;
 use AiCake\Imaging\GdEngine;
 use AiCake\Imaging\TextRenderer;
@@ -76,12 +77,18 @@ class FulfilPipeline {
 	/**
 	 * Render the file that goes to the printer.
 	 *
-	 * @param string        $master_path Absolute path to the clean generation.
-	 * @param PrintSpec     $spec        Product geometry.
-	 * @param TextSpec|null $text        Text layer, or null for none.
+	 * @param string         $master_path Absolute path to the clean generation.
+	 * @param PrintSpec      $spec        Product geometry.
+	 * @param TextSpec|null  $text        Legacy server-rendered text, or null.
+	 * @param TextLayer|null $layer       D-033 composed layer, or null.
 	 * @return PrintFile|null Null on any failure; the caller retries.
 	 */
-	public function render( string $master_path, PrintSpec $spec, ?TextSpec $text = null ): ?PrintFile {
+	public function render(
+		string $master_path,
+		PrintSpec $spec,
+		?TextSpec $text = null,
+		?TextLayer $layer = null
+	): ?PrintFile {
 		if ( ! is_readable( $master_path ) ) {
 			$this->logger->error( 'Print render aborted: no master on disk.', array( 'path' => $master_path ) );
 
@@ -114,6 +121,8 @@ class FulfilPipeline {
 			return null;
 		}
 
+		$this->composite_layer( $canvas, $layer );
+
 		$png = $this->images->to_png( $canvas, $spec->dpi );
 
 		$result = new PrintFile(
@@ -142,6 +151,60 @@ class FulfilPipeline {
 		);
 
 		return $result;
+	}
+
+	/**
+	 * Draw the customer's composed text over the finished canvas.
+	 *
+	 * **After imposition, not before** (D-033). Text baked into a piece and
+	 * then imposed gives every cupcake the same name; a sheet-sized layer laid
+	 * over the imposed canvas gives twelve cupcakes twelve names, which is the
+	 * whole reason the layer is sheet sized.
+	 *
+	 * Never scaled. The layer is authored at exactly `PrintSpec::canvas_px()`
+	 * and the endpoint refuses anything else, so a mismatch here is not a
+	 * rounding difference to paper over — it means the geometry moved after the
+	 * layer was made, and stretching it would put text across a cut line while
+	 * still producing a plausible-looking file. Refuse, and say so loudly.
+	 *
+	 * @param GdImage        $canvas The flattened print canvas, modified in place.
+	 * @param TextLayer|null $layer  The stored layer, or null.
+	 */
+	private function composite_layer( GdImage $canvas, ?TextLayer $layer ): void {
+		if ( null === $layer || ! $layer->has_bitmap() ) {
+			return;
+		}
+
+		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_get_contents
+		$image = $this->images->from_string( (string) file_get_contents( $layer->path ) );
+
+		if ( null === $image ) {
+			$this->logger->error( 'Text layer would not decode.', array( 'path' => $layer->path ) );
+
+			return;
+		}
+
+		$canvas_w = imagesx( $canvas );
+		$canvas_h = imagesy( $canvas );
+
+		if ( imagesx( $image ) !== $canvas_w || imagesy( $image ) !== $canvas_h ) {
+			$this->logger->error(
+				'Text layer does not match the print canvas and was not composited.',
+				array(
+					'layer'  => imagesx( $image ) . 'x' . imagesy( $image ),
+					'canvas' => $canvas_w . 'x' . $canvas_h,
+				)
+			);
+
+			$this->images->free( $image );
+
+			return;
+		}
+
+		$this->images->paste( $canvas, $image, (int) round( $canvas_w / 2 ), (int) round( $canvas_h / 2 ) );
+		$this->images->free( $image );
+
+		$this->logger->info( 'Text layer composited.', array( 'size' => $canvas_w . 'x' . $canvas_h ) );
 	}
 
 	/**

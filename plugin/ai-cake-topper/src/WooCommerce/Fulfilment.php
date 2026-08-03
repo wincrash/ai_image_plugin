@@ -11,6 +11,7 @@ namespace AiCake\WooCommerce;
 
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\PrintSpec;
+use AiCake\Domain\TextLayer;
 use AiCake\Domain\TextSpec;
 use AiCake\Pipeline\FulfilPipeline;
 use AiCake\Storage\OrderArchive;
@@ -200,11 +201,21 @@ class Fulfilment {
 			return;
 		}
 
-		$spec  = PrintSpec::for_product( (int) $item->get_product_id(), (int) $item->get_variation_id() );
+		/*
+		 * `for_design()`, not `for_product()`. Under D-035 the format is a
+		 * wizard choice recorded on the design, and product meta only answers
+		 * when the design did not — which `for_design()` already handles by
+		 * falling through. Reading the product first meant a wizard design
+		 * printed at whatever geometry the single AI product happened to
+		 * carry, and worse, the text layer would then be measured against a
+		 * canvas it was never authored for.
+		 */
+		$spec  = PrintSpec::for_design( $design );
 		$print = $this->pipeline->render(
 			(string) $design['file_master'],
 			$spec,
-			$this->text_spec( $design )
+			$this->text_spec( $design ),
+			TextLayer::from_design( $design )
 		);
 
 		if ( null === $print ) {
@@ -483,26 +494,18 @@ class Fulfilment {
 		/*
 		 * A D-033 layer, not a TextSpec. The two share this column while the
 		 * browser editor is being built, and they are told apart by `path` —
-		 * only a layer has one.
+		 * only a layer has one. A layer is composited by the pipeline instead;
+		 * see `FulfilPipeline::composite_layer()`.
 		 *
-		 * This guard is load-bearing. Both shapes carry a `text` key, so
-		 * without it a layer falls straight through into
-		 * `TextSpec::from_array()` and the *whole* string renders through the
-		 * old server-side path with every default it never set: bottom
+		 * This discrimination is load-bearing rather than tidy. **Both shapes
+		 * carry a `text` key**, so without it a layer falls straight through
+		 * into `TextSpec::from_array()` and the whole string renders through
+		 * the old server-side path with every default it never set: bottom
 		 * placement, white, auto-fit. Twelve cupcakes would each print all
-		 * twelve names across the bottom, and the order would look successful.
-		 *
-		 * Returning null means the print carries no text at all, which is
-		 * wrong but visibly wrong. Compositing the stored layer is the next
-		 * task; until then nothing may pretend the old renderer understands
-		 * the new payload.
+		 * twelve names across the bottom, on top of the composited layer, and
+		 * the order would look successful.
 		 */
 		if ( isset( $decoded['path'] ) ) {
-			$this->logger->warning(
-				'Design carries a D-033 text layer, which the print path cannot composite yet.',
-				array( 'design' => $design['public_id'] ?? '' )
-			);
-
 			return null;
 		}
 

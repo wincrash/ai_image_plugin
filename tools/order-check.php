@@ -303,6 +303,116 @@ foreach ( $item_ids as $product_id => $item_id ) {
 	aicake_check( "product {$product_id}: left the ephemeral zone", false, str_contains( $print, '/sessions/' ) );
 }
 
+/* ------------------------------------------------- the D-033 text layer */
+
+echo "\nD-033 text layer on the print file\n";
+
+/*
+ * The case the suite was missing, and the reason a real bug survived: every
+ * scenario above uses the *old* TextSpec payload, so nothing exercised what
+ * happens when a design carries a composed layer. Both payload shapes have a
+ * `text` key, and a layer was falling through into the old server-side
+ * renderer.
+ *
+ * This asserts the thing that matters on paper — that ink from the layer lands
+ * at the pixel the layer put it at, on the imposed sheet, without scaling.
+ */
+/*
+ * **Product 646, deliberately.** It is the 15 cm single topper, whose geometry
+ * is a 1843 px square — nothing like the cupcake sheet the design asks for. An
+ * earlier version of this used 649, whose product geometry already *is* a 4.5
+ * cm cupcake sheet, so `for_product()` and `for_design()` agreed and the
+ * assertion below passed either way. It was decoration. Reverting the fix must
+ * turn this red, and with 646 it does.
+ */
+$layer_design  = aicake_design( 646 );
+$layer_spec    = AiCake\Domain\PrintSpec::for_design(
+	array(
+		'format_type' => AiCake\Domain\FormatCatalogue::TYPE_CUPCAKE,
+		'format_mm'   => 45.0,
+	)
+);
+
+list( $canvas_w, $canvas_h ) = $layer_spec->canvas_px();
+
+$layout   = $layer_spec->editor_layout();
+$marked   = $layout['pieces'][7];
+$mark_rgb = array( 0xC6, 0x28, 0x28 );
+
+$layer_image = imagecreatetruecolor( $canvas_w, $canvas_h );
+imagealphablending( $layer_image, false );
+imagesavealpha( $layer_image, true );
+imagefilledrectangle( $layer_image, 0, 0, $canvas_w - 1, $canvas_h - 1, imagecolorallocatealpha( $layer_image, 0, 0, 0, 127 ) );
+
+// A solid block on piece 7 only. Its position is what proves the layer was
+// composited unscaled and unmoved.
+$ink = imagecolorallocatealpha( $layer_image, $mark_rgb[0], $mark_rgb[1], $mark_rgb[2], 0 );
+imagefilledrectangle( $layer_image, $marked['cx'] - 40, $marked['cy'] - 12, $marked['cx'] + 40, $marked['cy'] + 12, $ink );
+
+ob_start();
+imagepng( $layer_image );
+$layer_png = (string) ob_get_clean();
+imagedestroy( $layer_image );
+
+$layer_path = $plugin->storage()->write(
+	$plugin->storage()->session_path( $layer_design['public_id'], 'text.png' ),
+	$layer_png
+);
+
+$plugin->designs()->update(
+	(int) $layer_design['id'],
+	array(
+		'format_type'  => AiCake\Domain\FormatCatalogue::TYPE_CUPCAKE,
+		'format_mm'    => 45.0,
+		'text_payload' => wp_json_encode(
+			array(
+				'text'      => 'Emilija',
+				'colours'   => array( '#c62828' ),
+				'path'      => $layer_path,
+				'width_px'  => $canvas_w,
+				'height_px' => $canvas_h,
+			)
+		),
+	)
+);
+
+list( $layer_order, $layer_items ) = aicake_order( array( 646 => $layer_design ) );
+
+$layer_order->update_status( 'processing' );
+aicake_drain_queue( $layer_order->get_id() );
+
+$layer_print = (string) wc_get_order( $layer_order->get_id() )
+	->get_item( $layer_items[646] )
+	->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT );
+
+aicake_check( 'a design with a layer still produces a print file', true, '' !== $layer_print && is_readable( $layer_print ) );
+
+if ( is_readable( $layer_print ) ) {
+	$printed = imagecreatefrompng( $layer_print );
+
+	aicake_check( 'the print is the design format, not the product', $canvas_w, imagesx( $printed ) );
+
+	$at_mark = imagecolorat( $printed, $marked['cx'], $marked['cy'] );
+
+	$near = abs( ( $at_mark >> 16 & 0xFF ) - $mark_rgb[0] ) < 12
+		&& abs( ( $at_mark >> 8 & 0xFF ) - $mark_rgb[1] ) < 12
+		&& abs( ( $at_mark & 0xFF ) - $mark_rgb[2] ) < 12;
+
+	aicake_check( 'the layer ink lands on the piece it was drawn on', true, $near );
+
+	// And nowhere else: a layer drawn on one cupcake must not appear on the
+	// other twenty-three, which is what per-piece text means (D-033).
+	$elsewhere = imagecolorat( $printed, $layout['pieces'][0]['cx'], $layout['pieces'][0]['cy'] );
+
+	$clean = abs( ( $elsewhere >> 16 & 0xFF ) - $mark_rgb[0] ) > 30
+		|| abs( ( $elsewhere >> 8 & 0xFF ) - $mark_rgb[1] ) > 30
+		|| abs( ( $elsewhere & 0xFF ) - $mark_rgb[2] ) > 30;
+
+	aicake_check( 'and not on the pieces it was not', true, $clean );
+
+	imagedestroy( $printed );
+}
+
 /* ------------------------------------------------------------- geometry */
 
 echo "\ngeometry (§3)\n";
