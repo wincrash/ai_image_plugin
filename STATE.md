@@ -619,9 +619,26 @@ exists — `Admin/FormatsPage::diagram()` draws exactly this from `SheetLayout::
 work is moving it to the frontend, not inventing it. It must keep deriving from `SheetLayout`
 rather than shipping fixed pictures (D-038), or the preview and the print drift apart.
 
-**Step 4 next:** generation inside the wizard, then the D-033 text editor and the proof step. The
-AI flag must be derived server-side in `CartIntegration` from whether the design really has a
-generated image — a posted flag about whether money was spent cannot be trusted.
+**Step 4 done: generation inside the wizard.** Proven with a real fal generation from the wizard,
+not a simulation: prompt → 202 → poll → preview, `remaining` counting down 18 → 17, design
+`2c107f9158798417fab447fd1190ecf2` written with **`format_type=circle`, `format_mm=150.00`,
+`aspect=1:1`, `status=done`, `cost 0.0121`**.
+
+`assets/js/generation.js` now holds the engine — session, D-025's nonce rules, the §6.5 polling
+contract — and both `generator.js` (product page) and `wizard.js` are thin adapters over it. Two
+copies of a back-off schedule drift apart silently and only for some visitors. The product-page
+generator was re-verified after the extraction; its remaining-count text is written solely by the
+engine's session hook, so seeing it proves the adapter still drives the engine.
+
+> **The generation aspect is derived from the format server-side, and it is falsified.** A client
+> posting `aspect: 1:1` for a whole sheet gets `2:3` stored. Proven through the real endpoint
+> using a **blocked** prompt — layer 1 refuses it before anything is queued, so the check costs
+> nothing while §10 still writes the row to inspect. Disabling the derivation on the deployed copy
+> turns that assertion red; restoring it turns it green.
+
+**Step 5 next:** the D-033 text editor, then the proof step. The AI flag must be derived
+server-side in `CartIntegration` from whether the design really has a generated image — a posted
+flag about whether money was spent cannot be trusted, and hiding the field is not a control.
 
 > **Do not polish the frontend against the testbed theme** (Ruslan, 2026-08-03). The testbed runs
 > an older Blocksy child; live has many small modifications, and he does the cosmetics at ship
@@ -670,10 +687,10 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- **Six suites, all committed and all green — 346 assertions:** `tests/run.php` (220 pure-PHP),
+- **Six suites, all committed and all green — 350 assertions:** `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
   a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
-  (18, printable proofs — also writes them), `tools/wizard-check.php` (24, step 1). All but the first test the *deployed* copy, so sync
+  (18, printable proofs — also writes them), `tools/wizard-check.php` (28, steps 1–2). All but the first test the *deployed* copy, so sync
   first. Both `rest-check.sh` and `wcff-check.php` were falsified before being trusted —
   reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of the 18 red.
 

@@ -84,7 +84,10 @@ class Generator {
 		}
 
 		wp_enqueue_style( 'aicake-generator', AICAKE_URL . 'assets/css/generator.css', array(), $this->asset_version( 'assets/css/generator.css' ) );
-		wp_enqueue_script( 'aicake-generator', AICAKE_URL . 'assets/js/generator.js', array(), $this->asset_version( 'assets/js/generator.js' ), true );
+		// Shared with the wizard: session, nonce rules and the §6.5 polling
+		// contract live in one file, so they cannot drift for one of the two.
+		wp_enqueue_script( 'aicake-generation', AICAKE_URL . 'assets/js/generation.js', array(), $this->asset_version( 'assets/js/generation.js' ), true );
+		wp_enqueue_script( 'aicake-generator', AICAKE_URL . 'assets/js/generator.js', array( 'aicake-generation' ), $this->asset_version( 'assets/js/generator.js' ), true );
 
 		wp_localize_script(
 			'aicake-generator',

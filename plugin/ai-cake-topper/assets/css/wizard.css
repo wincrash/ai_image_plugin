@@ -231,6 +231,153 @@
 	color: #6b6b76;
 }
 
+/* --------------------------------------------------------------- step 2 */
+
+/*
+ * Functional only — layout, visible/hidden, disabled. The visual pass happens
+ * against the live theme at ship time, not against this testbed's older copy.
+ */
+
+.aicake-wizard .aicake-prompt {
+	width: 100%;
+	padding: 0.6rem;
+	border: 1px solid var(--aicake-line);
+	border-radius: 0.35rem;
+	font: inherit;
+	resize: vertical;
+}
+
+.aicake-chips {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem;
+	margin-top: 0.6rem;
+}
+
+.aicake-chips__label {
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+.aicake-wizard .aicake-chip {
+	padding: 0.25rem 0.6rem;
+	border: 1px solid var(--aicake-line);
+	border-radius: 1rem;
+	background: transparent;
+	font-size: 0.85rem;
+	cursor: pointer;
+}
+
+.aicake-terms {
+	margin: 0.75rem 0 0;
+	font-size: 0.8rem;
+	color: #6b6b76;
+}
+
+.aicake-status {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin-bottom: 1rem;
+	font-size: 0.9rem;
+}
+
+.aicake-spinner {
+	width: 1rem;
+	height: 1rem;
+	border: 2px solid var(--aicake-line);
+	border-top-color: var(--aicake-accent);
+	border-radius: 50%;
+	animation: aicake-spin 0.8s linear infinite;
+}
+
+@keyframes aicake-spin {
+	to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.aicake-spinner { animation: none; }
+}
+
+.aicake-error {
+	margin-bottom: 1rem;
+	padding: 0.6rem 0.8rem;
+	border-left: 3px solid #d63638;
+	background: #fcf0f1;
+	font-size: 0.9rem;
+}
+
+.aicake-stage {
+	margin-bottom: 1rem;
+}
+
+.aicake-preview {
+	max-width: 20rem;
+	overflow: hidden;
+	border: 1px solid var(--aicake-line);
+}
+
+/* The shape being made, not a square thumbnail (§15). */
+.aicake-preview.is-round {
+	border-radius: 50%;
+}
+
+.aicake-preview img {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.aicake-history {
+	margin-bottom: 1rem;
+}
+
+.aicake-history__label {
+	display: block;
+	margin-bottom: 0.4rem;
+	font-size: 0.85rem;
+	color: #6b6b76;
+}
+
+.aicake-history__strip {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.4rem;
+}
+
+.aicake-wizard .aicake-thumb {
+	width: 4rem;
+	height: 4rem;
+	padding: 0;
+	border: 2px solid transparent;
+	background: none;
+	cursor: pointer;
+}
+
+.aicake-wizard .aicake-thumb.is-selected {
+	border-color: var(--aicake-accent);
+}
+
+.aicake-thumb img {
+	display: block;
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.aicake-remaining {
+	margin-left: 0.4rem;
+	font-size: 0.8rem;
+	opacity: 0.8;
+}
+
+.aicake-summary {
+	margin: 0 0 1rem;
+	font-size: 0.9rem;
+	color: #6b6b76;
+}
+
 .aicake-wizard-error {
 	padding: 0.75rem 1rem;
 	border-left: 3px solid #d63638;

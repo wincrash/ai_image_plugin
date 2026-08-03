@@ -102,10 +102,36 @@ class Wizard {
 		}
 
 		$formats = $this->formats();
+		$chips   = $this->example_prompts();
+		$lead    = (string) $this->settings->get( 'lead_time_note', __( 'Pagaminame per 2–3 darbo dienas.', 'ai-cake-topper' ) );
 
 		include $template;
 
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * Clickable example prompts.
+	 *
+	 * §15: people do not know what to type, and examples raise output quality
+	 * more than any prompt engineering. Shared with the product-page generator
+	 * through the same setting, so tuning them tunes both.
+	 *
+	 * @return string[]
+	 */
+	private function example_prompts(): array {
+		$stored = $this->settings->get( 'example_prompts', null );
+
+		if ( is_array( $stored ) && array() !== $stored ) {
+			return array_map( 'strval', $stored );
+		}
+
+		return array(
+			__( 'linksmas dinozauras su gimtadienio tortu', 'ai-cake-topper' ),
+			__( 'vienaragis su vaivorykšte ir žvaigždutėmis', 'ai-cake-topper' ),
+			__( 'meškiukas su spalvotais balionais', 'ai-cake-topper' ),
+			__( 'gėlių vainikas su rožėmis', 'ai-cake-topper' ),
+		);
 	}
 
 	/**
@@ -238,7 +264,12 @@ class Wizard {
 	 */
 	private function enqueue( WC_Product $product ): void {
 		wp_enqueue_style( 'aicake-wizard', AICAKE_URL . 'assets/css/wizard.css', array(), $this->asset_version( 'assets/css/wizard.css' ) );
-		wp_enqueue_script( 'aicake-wizard', AICAKE_URL . 'assets/js/wizard.js', array(), $this->asset_version( 'assets/js/wizard.js' ), true );
+
+		// The engine is a dependency rather than a copy: the §6.5 polling
+		// contract and D-025's nonce rules exist once, for both the wizard and
+		// the product-page generator.
+		wp_enqueue_script( 'aicake-generation', AICAKE_URL . 'assets/js/generation.js', array(), $this->asset_version( 'assets/js/generation.js' ), true );
+		wp_enqueue_script( 'aicake-wizard', AICAKE_URL . 'assets/js/wizard.js', array( 'aicake-generation' ), $this->asset_version( 'assets/js/wizard.js' ), true );
 
 		wp_localize_script(
 			'aicake-wizard',
@@ -261,6 +292,30 @@ class Wizard {
 					'onePiece'   => __( 'Gausite: 1 vnt.', 'ai-cake-topper' ),
 					'pickFormat' => __( 'Pasirinkite, ką gaminsime.', 'ai-cake-topper' ),
 					'pickSize'   => __( 'Pasirinkite dydį.', 'ai-cake-topper' ),
+					'pickDesign' => __( 'Sukurkite piešinį, kad galėtumėte tęsti.', 'ai-cake-topper' ),
+					'remaining'  => __( 'Liko nemokamų bandymų: %d', 'ai-cake-topper' ),
+					'noneLeft'   => __( 'Nemokami bandymai išnaudoti', 'ai-cake-topper' ),
+					'needPrompt' => __( 'Parašykite, ką norite pavaizduoti.', 'ai-cake-topper' ),
+					'failed'     => __( 'Nepavyko sukurti piešinio. Bandykite dar kartą.', 'ai-cake-topper' ),
+					'timeout'    => __( 'Užtruko ilgiau nei įprastai. Bandykite dar kartą.', 'ai-cake-topper' ),
+					'expired'    => __( 'Sesija pasibaigė. Bandykite dar kartą.', 'ai-cake-topper' ),
+					// A printed nonce cannot be refreshed without a page load,
+					// so a logged-in customer is asked to reload rather than
+					// told to retry something that cannot work.
+					'reload'     => __( 'Sesija pasibaigė. Atnaujinkite puslapį.', 'ai-cake-topper' ),
+					'queued'     => __( 'Eilėje: %d', 'ai-cake-topper' ),
+					'reselect'   => __( 'Pasirinkti šį piešinį', 'ai-cake-topper' ),
+					/*
+					 * Rotating text, because 5–15 s of a bare spinner reads as
+					 * broken (§15). The wording tracks the real pipeline
+					 * stages, so it is honest rather than decorative.
+					 */
+					'progress'   => array(
+						__( 'Skaitome jūsų aprašymą…', 'ai-cake-topper' ),
+						__( 'Verčiame ir tikriname…', 'ai-cake-topper' ),
+						__( 'Piešiame…', 'ai-cake-topper' ),
+						__( 'Beveik baigta…', 'ai-cake-topper' ),
+					),
 				),
 			)
 		);

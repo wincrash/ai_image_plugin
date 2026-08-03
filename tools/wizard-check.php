@@ -167,6 +167,47 @@ aicake_check( 'an unlisted size is refused', null, FormatCatalogue::find( Format
 aicake_check( 'a round format generates 1:1', '1:1', FormatCatalogue::spec( FormatCatalogue::TYPE_CIRCLE, 150.0 )->generation_aspect() );
 aicake_check( 'a whole sheet generates 2:3', '2:3', FormatCatalogue::spec( FormatCatalogue::TYPE_SHEET )->generation_aspect() );
 
+/*
+ * And now through the real endpoint, which is where it actually matters.
+ *
+ * A **blocked** prompt is used deliberately: layer 1 refuses it before anything
+ * is queued, so this costs nothing, and §10 still requires the rejection to be
+ * written to the designs table with its prompt — which means the row is there
+ * to inspect. A test that had to spend $0.012 to check a field would be run
+ * once and then quietly dropped.
+ */
+wp_set_current_user( 1 );
+
+$request = new WP_REST_Request( 'POST', '/aicake/v1/generate' );
+$request->set_header( 'X-WP-Nonce', wp_create_nonce( 'wp_rest' ) );
+$request->set_header( 'Content-Type', 'application/json' );
+$request->set_body_params(
+	array(
+		'prompt'      => 'Elsos suknelė',
+		// A client insisting on the wrong aspect for the chosen format. This
+		// is the whole point: they are not independent (§3.2), and a wrongly
+		// cropped generation costs money and looks like a bad model.
+		'aspect'      => '1:1',
+		'format_type' => FormatCatalogue::TYPE_SHEET,
+		'format_mm'   => 0,
+		'product_id'  => $product->get_id(),
+	)
+);
+
+$response = rest_do_request( $request );
+
+aicake_check( 'a blocked prompt is refused', true, $response->is_error() );
+
+global $wpdb;
+
+$row = $wpdb->get_row(
+	"SELECT format_type, format_mm, aspect, status FROM {$wpdb->prefix}aicake_designs ORDER BY id DESC LIMIT 1"
+);
+
+aicake_check( 'the rejection was logged', 'rejected', $row->status ?? '' );
+aicake_check( 'with the format recorded', 'sheet', $row->format_type ?? '' );
+aicake_check( 'and the aspect derived, not the posted one', '2:3', $row->aspect ?? '' );
+
 printf(
 	"\n%d passed, %d failed\n\n",
 	(int) $GLOBALS['aicake_pass'],

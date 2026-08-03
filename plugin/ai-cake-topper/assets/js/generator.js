@@ -1,22 +1,17 @@
 /**
- * The generator.
+ * The generator on a product page.
  *
- * Implements the polling contract from PLAN.md §6.5.
- *
- * Two sources for the nonce, and which one applies is decided server-side
- * (D-025). Anonymous visitors get one from the uncached session endpoint,
- * because their page is cached and a printed nonce would be stale — §7, the
- * single most likely way to ship something that works in testing and 403s for
- * most real customers. Logged-in users get one printed into the page, because
- * their page is never cached and the endpoint, which sends no nonce itself,
- * can only mint them one belonging to user 0.
+ * Everything about talking to the server lives in `generation.js` — session,
+ * nonce rules, the §6.5 polling contract — because the wizard needs exactly the
+ * same behaviour and two copies of a back-off schedule drift apart silently.
+ * What is left here is the binding between that engine and this page's markup.
  */
 ( function () {
 	'use strict';
 
 	var root = document.querySelector( '[data-aicake]' );
 
-	if ( ! root || 'undefined' === typeof window.aicakeConfig ) {
+	if ( ! root || 'undefined' === typeof window.aicakeConfig || 'undefined' === typeof window.AiCakeGeneration ) {
 		return;
 	}
 
@@ -27,7 +22,6 @@
 		prompt: root.querySelector( '.aicake__prompt' ),
 		counter: root.querySelector( '[data-aicake-counter]' ),
 		generate: root.querySelector( '[data-aicake-generate]' ),
-		generateLabel: root.querySelector( '[data-aicake-generate-label]' ),
 		remaining: root.querySelector( '[data-aicake-remaining]' ),
 		status: root.querySelector( '[data-aicake-status]' ),
 		statusText: root.querySelector( '[data-aicake-status-text]' ),
@@ -43,277 +37,47 @@
 		colour: root.querySelector( '#aicake-colour' )
 	};
 
-	var session = null;
-	var polling = null;
-	var history = [];
-	var busy = false;
-
-	/* ---------------------------------------------------------------- utils */
-
 	function show( node, visible ) {
 		if ( node ) { node.hidden = ! visible; }
 	}
 
-	function setError( message ) {
-		if ( ! el.error ) { return; }
-		el.error.textContent = message || '';
-		show( el.error, !! message );
-	}
+	var engine = window.AiCakeGeneration( config, {
+		onBusy: function ( state ) {
+			if ( el.generate ) { el.generate.disabled = state; }
+			show( el.status, state );
+			if ( ! state && el.statusText ) { el.statusText.textContent = ''; }
+		},
+		onStatus: function ( text ) {
+			if ( el.statusText ) { el.statusText.textContent = text; }
+		},
+		onError: function ( message ) {
+			if ( ! el.error ) { return; }
+			el.error.textContent = message || '';
+			show( el.error, !! message );
+		},
+		onSession: function ( session ) {
+			if ( ! el.remaining ) { return; }
 
-	function setBusy( state ) {
-		busy = state;
-		if ( el.generate ) { el.generate.disabled = state; }
-		show( el.status, state );
-		if ( ! state && el.statusText ) { el.statusText.textContent = ''; }
-	}
+			var left = session.remaining_generations;
 
-	/**
-	 * Rotating status text. §15: it takes 5-15s and silence feels broken.
-	 */
-	var messages = config.i18n.progress || [];
-	var messageTimer = null;
-
-	function startMessages() {
-		var index = 0;
-
-		if ( el.statusText && messages.length ) {
-			el.statusText.textContent = messages[ 0 ];
-		}
-
-		messageTimer = window.setInterval( function () {
-			index = ( index + 1 ) % messages.length;
-			if ( el.statusText && messages.length ) {
-				el.statusText.textContent = messages[ index ];
-			}
-		}, 3500 );
-	}
-
-	function stopMessages() {
-		window.clearInterval( messageTimer );
-		messageTimer = null;
-	}
-
-	/**
-	 * The printed nonce wins whenever there is one. It is the only nonce that
-	 * matches a logged-in user's cookie, and it is present from the first
-	 * request — including the session call itself, which is what lets that
-	 * call authenticate and report the right allowance for a logged-in
-	 * customer instead of the anonymous one (§11.3).
-	 */
-	function nonce() {
-		return config.nonce || ( session && session.nonce ) || '';
-	}
-
-	function request( path, options ) {
-		options = options || {};
-
-		var headers = { 'Content-Type': 'application/json' };
-		var token = nonce();
-
-		if ( token ) {
-			headers['X-WP-Nonce'] = token;
-		}
-
-		return window.fetch( config.root + path, {
-			method: options.method || 'GET',
-			credentials: 'same-origin',
-			headers: headers,
-			body: options.body ? JSON.stringify( options.body ) : undefined
-		} ).then( function ( response ) {
-			return response.json().catch( function () {
-				return {};
-			} ).then( function ( data ) {
-				return { ok: response.ok, status: response.status, data: data };
-			} );
-		} );
-	}
-
-	/* -------------------------------------------------------------- session */
-
-	function loadSession() {
-		return request( 'session' ).then( function ( result ) {
-			// A printed nonce that no longer verifies, while the login cookie
-			// still does. Nothing here can mint a replacement — only a page
-			// load can — so stop pretending a retry would help.
-			if ( 403 === result.status && config.nonce ) {
-				setError( config.i18n.reload );
-				return session;
-			}
-
-			if ( ! result.ok ) {
-				return session;
-			}
-
-			// Logged out in another tab. The printed nonce is now the wrong
-			// one and the endpoint's anonymous nonce is the right one.
-			if ( config.nonce && false === result.data.logged_in ) {
-				config.nonce = '';
-			}
-
-			session = result.data;
-			updateRemaining();
-
-			return session;
-		} );
-	}
-
-	function updateRemaining() {
-		if ( ! el.remaining || ! session ) { return; }
-
-		var left = session.remaining_generations;
-
-		if ( 'number' !== typeof left ) {
-			el.remaining.textContent = '';
-			return;
-		}
-
-		el.remaining.textContent = left > 0
-			? config.i18n.remaining.replace( '%d', left )
-			: config.i18n.noneLeft;
-
-		if ( el.generate ) {
-			el.generate.disabled = left <= 0 || busy;
-		}
-	}
-
-	/* ------------------------------------------------------------ generating */
-
-	function textPayload() {
-		if ( ! el.text || ! el.text.value.trim() ) { return null; }
-
-		return {
-			text: el.text.value.trim(),
-			font: el.font ? el.font.value : '',
-			colour: el.colour ? el.colour.value : '#ffffff',
-			placement: el.placement ? el.placement.value : 'bottom'
-		};
-	}
-
-	function generate() {
-		if ( busy ) { return; }
-
-		var prompt = el.prompt ? el.prompt.value.trim() : '';
-
-		if ( ! prompt ) {
-			setError( config.i18n.needPrompt );
-			if ( el.prompt ) { el.prompt.focus(); }
-			return;
-		}
-
-		setError( '' );
-		setBusy( true );
-		startMessages();
-
-		var payload = {
-			prompt: prompt,
-			aspect: spec.aspect || '1:1',
-			product_id: config.productId,
-			variation_id: 0
-		};
-
-		var text = textPayload();
-		if ( text ) { payload.text = text; }
-
-		request( 'generate', { method: 'POST', body: payload } ).then( function ( result ) {
-			if ( ! result.ok ) {
-				stopMessages();
-				setBusy( false );
-
-				// 403 means the nonce went stale while the page sat open.
-				// Fetch a fresh one and let the customer try again rather
-				// than making them reload — unless the dead nonce is the
-				// printed one, which reloading is the only cure for.
-				if ( 403 === result.status ) {
-					loadSession().then( function () {
-						setError( config.nonce ? config.i18n.reload : config.i18n.expired );
-					} );
-					return;
-				}
-
-				setError( result.data.message || config.i18n.failed );
+			if ( 'number' !== typeof left ) {
+				el.remaining.textContent = '';
 				return;
 			}
 
-			poll( result.data.job_id, result.data.poll_after_ms || 1500 );
-		} ).catch( function () {
-			stopMessages();
-			setBusy( false );
-			setError( config.i18n.failed );
-		} );
-	}
+			el.remaining.textContent = left > 0
+				? config.i18n.remaining.replace( '%d', left )
+				: config.i18n.noneLeft;
 
-	/**
-	 * §6.5: poll every 1.5s, back off to 3s after 15s, give up at 90s.
-	 */
-	function poll( jobId, interval ) {
-		var started = Date.now();
-
-		window.clearTimeout( polling );
-
-		function tick() {
-			request( 'job/' + encodeURIComponent( jobId ) ).then( function ( result ) {
-				var elapsed = Date.now() - started;
-
-				if ( ! result.ok ) {
-					finish( config.i18n.failed );
-					return;
-				}
-
-				var status = result.data.status;
-
-				if ( 'done' === status ) {
-					succeed( result.data );
-					return;
-				}
-
-				if ( 'failed' === status || 'rejected' === status ) {
-					finish( result.data.error || config.i18n.failed );
-					return;
-				}
-
-				if ( elapsed > 90000 ) {
-					finish( config.i18n.timeout );
-					return;
-				}
-
-				if ( 'number' === typeof result.data.queue_position && result.data.queue_position > 1 && el.statusText ) {
-					stopMessages();
-					el.statusText.textContent = config.i18n.queued.replace( '%d', result.data.queue_position );
-				}
-
-				polling = window.setTimeout( tick, elapsed > 15000 ? 3000 : interval );
-			} ).catch( function () {
-				finish( config.i18n.failed );
-			} );
-		}
-
-		polling = window.setTimeout( tick, interval );
-	}
-
-	function finish( message ) {
-		stopMessages();
-		setBusy( false );
-		setError( message );
-		loadSession();
-	}
-
-	function succeed( data ) {
-		stopMessages();
-		setBusy( false );
-		setError( '' );
-
-		select( {
-			id: data.public_id,
-			url: data.preview_url
-		} );
-
-		if ( ! history.some( function ( item ) { return item.id === data.public_id; } ) ) {
-			history.push( { id: data.public_id, url: data.preview_url } );
+			if ( el.generate ) {
+				el.generate.disabled = left <= 0 || engine.isBusy();
+			}
+		},
+		onSuccess: function ( design ) {
+			select( design );
 			renderHistory();
 		}
-
-		loadSession();
-	}
+	} );
 
 	/* --------------------------------------------------------------- choosing */
 
@@ -330,6 +94,8 @@
 
 	function renderHistory() {
 		if ( ! el.strip ) { return; }
+
+		var history = engine.history();
 
 		show( el.history, history.length > 1 );
 		el.strip.textContent = '';
@@ -357,6 +123,44 @@
 
 	/* ---------------------------------------------------------------- wiring */
 
+	function textPayload() {
+		if ( ! el.text || ! el.text.value.trim() ) { return null; }
+
+		return {
+			text: el.text.value.trim(),
+			font: el.font ? el.font.value : '',
+			colour: el.colour ? el.colour.value : '#ffffff',
+			placement: el.placement ? el.placement.value : 'bottom'
+		};
+	}
+
+	function generate() {
+		var prompt = el.prompt ? el.prompt.value.trim() : '';
+
+		if ( ! prompt ) {
+			if ( el.error ) {
+				el.error.textContent = config.i18n.needPrompt;
+				show( el.error, true );
+			}
+
+			if ( el.prompt ) { el.prompt.focus(); }
+
+			return;
+		}
+
+		var payload = {
+			prompt: prompt,
+			aspect: spec.aspect || '1:1',
+			product_id: config.productId,
+			variation_id: 0
+		};
+
+		var text = textPayload();
+		if ( text ) { payload.text = text; }
+
+		engine.generate( payload );
+	}
+
 	if ( el.prompt && el.counter ) {
 		var count = function () {
 			var length = el.prompt.value.length;
@@ -383,5 +187,5 @@
 
 	// The session call also sets the cookie, so the throttle identity exists
 	// before the first generation rather than being created by it (§7).
-	loadSession();
+	engine.loadSession();
 }() );
