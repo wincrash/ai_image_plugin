@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AiCake\Rest;
 
 use AiCake\Domain\DesignRepository;
+use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
 use AiCake\Queue\Dispatcher;
@@ -153,6 +154,23 @@ class JobStatusEndpoint {
 			$body['preview_url'] = rest_url( 'aicake/v1/file/' . $design['public_id'] . '/preview' );
 			$body['design_id']   = (int) $design['id'];
 			$body['public_id']   = (string) $design['public_id'];
+
+			/*
+			 * The format this design was actually generated for, so the editor
+			 * draws against the design's canvas rather than against whatever
+			 * step 1 happens to be showing now. Those diverge the moment someone
+			 * generates, goes back and picks another size, and the text layer
+			 * is then authored at a canvas the server refuses on save.
+			 *
+			 * A design with no format — the product-page generator sends none —
+			 * simply omits the key. There is no editor on that path.
+			 */
+			if ( '' !== (string) ( $design['format_type'] ?? '' ) ) {
+				$body['layout_key'] = FormatCatalogue::layout_key(
+					(string) $design['format_type'],
+					(float) $design['format_mm']
+				);
+			}
 		}
 
 		if ( Job::STATUS_REJECTED === $job->status ) {

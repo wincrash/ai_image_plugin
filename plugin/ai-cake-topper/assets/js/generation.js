@@ -235,7 +235,19 @@
 			setBusy( false );
 			call( 'onError', '' );
 
-			var design = { id: data.public_id, url: data.preview_url };
+			/*
+			 * `layoutKey` is carried, not read. This file knows nothing about
+			 * formats — it is the wizard that looks a layout up by it — but the
+			 * key has to travel with the design it belongs to, because that
+			 * pairing is the whole point: the editor must draw against the
+			 * canvas this design was generated for, not against whatever step 1
+			 * is showing by the time someone reaches step 3.
+			 */
+			var design = {
+				id: data.public_id,
+				url: data.preview_url,
+				layoutKey: data.layout_key || ''
+			};
 
 			if ( ! history.some( function ( item ) { return item.id === design.id; } ) ) {
 				history.push( design );

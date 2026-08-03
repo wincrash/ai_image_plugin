@@ -46,6 +46,7 @@
 		var canvas  = null;
 		var ctx     = null;
 		var preview = null;
+		var bound   = false;
 
 		var state = {
 			layout: null,
@@ -694,6 +695,15 @@
 			 * @param {Object}            layout     Server-derived geometry.
 			 * @param {string}            previewUrl The watermarked preview.
 			 */
+			/**
+			 * Point the editor at a design.
+			 *
+			 * Callable more than once, because generating a second picture has
+			 * to replace the first one under the text. The listeners are bound
+			 * once and only once: they close over `canvas`, so re-binding would
+			 * run each handler twice per pointer event and drag everything at
+			 * double speed.
+			 */
 			mount: function ( element, layout, previewUrl ) {
 				canvas = element;
 				ctx = canvas.getContext( '2d' );
@@ -702,12 +712,16 @@
 				state.selected = 0;
 				state.lines = {};
 
-				canvas.addEventListener( 'pointerdown', onDown );
-				canvas.addEventListener( 'pointermove', onMove );
-				canvas.addEventListener( 'pointerup', onUp );
-				canvas.addEventListener( 'pointercancel', onUp );
+				if ( ! bound ) {
+					bound = true;
 
-				window.addEventListener( 'resize', render );
+					canvas.addEventListener( 'pointerdown', onDown );
+					canvas.addEventListener( 'pointermove', onMove );
+					canvas.addEventListener( 'pointerup', onUp );
+					canvas.addEventListener( 'pointercancel', onUp );
+
+					window.addEventListener( 'resize', render );
+				}
 
 				if ( previewUrl ) {
 					preview = new window.Image();

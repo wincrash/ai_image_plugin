@@ -1572,4 +1572,97 @@ already open on exactly that.
 
 ---
 
-<!-- Next: D-043 -->
+---
+
+### D-043 · The design decides the canvas, and changing the format costs the picture
+**2026-08-03** · Claude, from a bug Ruslan reported · amends D-033, D-035
+
+Fixes „Užrašo dydis netinka." — an error Ruslan hit often enough to report, on
+a wizard that had otherwise been verified working.
+
+#### What was wrong
+
+Two places decided what canvas the text was drawn on, and they were allowed to
+disagree.
+
+`TextLayerEndpoint` measures an uploaded layer against
+`PrintSpec::for_design( $design )` — the format recorded on the design row. The
+browser editor drew against `config.layouts[ state.type + '|' + state.mm ]` —
+the format currently selected at step 1. Nothing cleared the generated design
+when that selection changed, so generating a ⌀4.5 cm cupcake sheet, going back
+and choosing a 15 cm circle had the editor drawing 1843² of text for a design
+the server measured at 2481 × 3331. Every save was refused, correctly, with a
+message the customer could do nothing about.
+
+**Diagnosed by measurement before being fixed.** STATE.md listed two candidate
+causes and said to tell them apart first. A query over the designs table settled
+it: every wizard design (product 684) carries a format — `circle 200`,
+`cupcake 60`, `cupcake 45`, `circle 150` — and the 108 rows with NULL format are
+all products 646/649, the product-page generator and the check scripts, which
+legitimately send none. So the NULL-format path was not what Ruslan was hitting,
+and the format-change path was.
+
+#### The rule
+
+**The design is the authority on its own geometry, at every layer.** D-033 says
+the client must never compute piece positions; the same argument says it must
+not choose the canvas either — anything the browser decides for itself is a
+second opinion that can only ever disagree with the server's.
+
+So a finished job now reports the format it was generated for, and the editor
+looks its layout up by that:
+
+- `FormatCatalogue::layout_key()` builds the key, in **one** place. The two ends
+  are not formatted alike — the catalogue holds `45.0`, a design row returns
+  `45.00` from a DECIMAL column — and concatenating independently at each end
+  makes those two different layouts, neither of which resolves.
+- `JobStatusEndpoint` sends `layout_key` with the preview URL. A design with no
+  format omits it rather than guessing from the product.
+- `wizard.js` reads it and never derives one.
+
+#### Changing the format after generating throws the picture away
+
+Deliberately, and the customer is told plainly. The generation *aspect* is
+derived from the format (§3.2), so an image made for a cupcake is genuinely the
+wrong shape for an A4 sheet — no amount of redrawing fixes it, and keeping it is
+what produced the error. Flipping to another format and straight back keeps the
+design, because nothing has actually changed.
+
+The history strip is filtered to the selected format for the same reason:
+re-selecting an old thumbnail would reintroduce the same disagreement by another
+route.
+
+#### What was not done
+
+**The size check was not relaxed.** It is the thing standing between a layer and
+being composited at the wrong scale, and a layer stretched to fit would put text
+across a cut line while still producing a plausible print file.
+
+#### Falsified, twice
+
+- Keying `Wizard::layouts()` independently of `layout_key()` turns **3 of the 35**
+  wizard-check assertions red — proving the check detects the two ends drifting,
+  which is the actual failure mode.
+- Removing the `layout_key` emission turns **1** red.
+
+Also verified in a real browser on a real fal generation: `designLayout` arrives
+as `cupcake|45`, the editor draws 2481 × 3331 rather than the circle's 1843²,
+the layer saves and reaches step 4 — and switching to a circle afterwards clears
+the design, hides the preview, disables "Toliau" and says why.
+
+#### Two smaller things fixed in passing
+
+- **`editor.mount()` is now callable more than once.** Generating a second
+  picture left the editor showing the first, because the mount was guarded by a
+  one-shot flag. The pointer listeners are bound once regardless — re-binding
+  would run every handler twice per event.
+- **`format_type` / `format_mm` are declared route args.** They worked
+  undeclared, since `get_param()` reads unregistered body params, but an
+  undeclared arg is in no schema. Note `floatval` cannot be a
+  `sanitize_callback`: WP calls sanitisers with three arguments and an internal
+  function refuses them in PHP 8. `absint` and `sanitize_key` get away with it
+  only because they are userland.
+
+---
+
+<!-- Next: D-044 -->

@@ -208,6 +208,88 @@ aicake_check( 'the rejection was logged', 'rejected', $row->status ?? '' );
 aicake_check( 'with the format recorded', 'sheet', $row->format_type ?? '' );
 aicake_check( 'and the aspect derived, not the posted one', '2:3', $row->aspect ?? '' );
 
+echo "\nThe design tells the editor which canvas to draw\n";
+
+/*
+ * „Užrašo dydis netinka." came from these two parting company: the editor
+ * chose its layout from the step-1 selection while the server measured the
+ * saved bitmap against the design row. Change the format after generating and
+ * every save failed.
+ *
+ * So the finished-job response now names the layout, and the browser looks that
+ * up instead of deriving one. Checked through the real endpoint, because the
+ * field being *emitted* is the new part — the geometry itself is covered by
+ * `EditorLayoutTest` for all sixteen formats.
+ */
+$layouts = $wizard->layouts();
+$key     = FormatCatalogue::layout_key( FormatCatalogue::TYPE_CUPCAKE, 45.0 );
+
+aicake_check( 'the wizard ships a layout under that key', true, isset( $layouts[ $key ] ) );
+
+$designs   = $plugin->designs();
+$jobs      = $plugin->jobs();
+$design_id = $designs->create(
+	array(
+		'session_key'  => 'wizard-check',
+		'user_id'      => 1,
+		'prompt_raw'   => 'wizard-check layout key',
+		'aspect'       => '1:1',
+		'product_id'   => $product->get_id(),
+		'format_type'  => FormatCatalogue::TYPE_CUPCAKE,
+		'format_mm'    => 45.0,
+		'status'       => AiCake\Domain\DesignRepository::STATUS_DONE,
+		// Only its emptiness is read — `body()` builds the URL from public_id.
+		'file_preview' => 'wizard-check.webp',
+	)
+);
+
+$job_id = $jobs->create( $design_id );
+$jobs->mark_done( $job_id );
+
+$request  = new WP_REST_Request( 'GET', '/aicake/v1/job/' . $job_id );
+$response = rest_do_request( $request );
+$body     = $response->get_data();
+
+aicake_check( 'a finished job reports done', 'done', $body['status'] ?? '' );
+aicake_check( 'and names the layout the design was made for', $key, $body['layout_key'] ?? '' );
+
+/*
+ * The pairing that matters: the layout that key selects has the canvas the
+ * text-layer endpoint will measure the saved bitmap against. Asserted against
+ * `PrintSpec` rather than a typed pair of numbers, so a geometry change moves
+ * both or turns this red.
+ */
+$stored = $designs->find( $design_id );
+$canvas = AiCake\Domain\PrintSpec::for_design( $stored )->canvas_px();
+
+aicake_check( 'the editor canvas is the print canvas (w)', $canvas[0], $layouts[ $key ]['canvas']['w'] ?? 0 );
+aicake_check( 'the editor canvas is the print canvas (h)', $canvas[1], $layouts[ $key ]['canvas']['h'] ?? 0 );
+
+/*
+ * And a design with no format omits the key rather than inventing one. The
+ * product-page generator sends no format and has no editor; a key guessed from
+ * the product would point the editor at a canvas nobody chose.
+ */
+$plain_id = $designs->create(
+	array(
+		'session_key'  => 'wizard-check',
+		'user_id'      => 1,
+		'prompt_raw'   => 'wizard-check no format',
+		'aspect'       => '1:1',
+		'product_id'   => $product->get_id(),
+		'status'       => AiCake\Domain\DesignRepository::STATUS_DONE,
+		'file_preview' => 'wizard-check.webp',
+	)
+);
+
+$plain_job = $jobs->create( $plain_id );
+$jobs->mark_done( $plain_job );
+
+$plain_body = rest_do_request( new WP_REST_Request( 'GET', '/aicake/v1/job/' . $plain_job ) )->get_data();
+
+aicake_check( 'an unformatted design reports done', 'done', $plain_body['status'] ?? '' );
+aicake_check( 'and names no layout at all', false, array_key_exists( 'layout_key', $plain_body ) );
+
 printf(
 	"\n%d passed, %d failed\n\n",
 	(int) $GLOBALS['aicake_pass'],

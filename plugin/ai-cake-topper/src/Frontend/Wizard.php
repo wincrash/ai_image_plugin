@@ -216,7 +216,7 @@ class Wizard {
 				continue;
 			}
 
-			$layouts[ $type . '|' . $mm ] = $spec->editor_layout();
+			$layouts[ FormatCatalogue::layout_key( $type, $mm ) ] = $spec->editor_layout();
 		}
 
 		return $layouts;
@@ -380,6 +380,15 @@ class Wizard {
 					'pickFormat' => __( 'Pasirinkite, ką gaminsime.', 'ai-cake-topper' ),
 					'pickSize'   => __( 'Pasirinkite dydį.', 'ai-cake-topper' ),
 					'pickDesign' => __( 'Sukurkite piešinį, kad galėtumėte tęsti.', 'ai-cake-topper' ),
+					/*
+					 * Said plainly, because it costs the customer a generation.
+					 * The picture really is the wrong shape for the new format
+					 * — the aspect is derived from it (§3.2) — so pretending
+					 * otherwise would print a bad crop rather than save them a
+					 * click.
+					 */
+					'formatChanged' => __( 'Pakeitus formatą, piešinį reikia sukurti iš naujo — jis buvo sukurtas kitos formos lapui.', 'ai-cake-topper' ),
+					'formatGone' => __( 'Šio piešinio formato nebesiūlome. Grįžkite atgal ir pasirinkite kitą dydį.', 'ai-cake-topper' ),
 					'remaining'  => __( 'Liko nemokamų bandymų: %d', 'ai-cake-topper' ),
 					'noneLeft'   => __( 'Nemokami bandymai išnaudoti', 'ai-cake-topper' ),
 					'needPrompt' => __( 'Parašykite, ką norite pavaizduoti.', 'ai-cake-topper' ),

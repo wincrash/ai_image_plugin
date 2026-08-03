@@ -114,6 +114,31 @@ class RestController {
 						'type'              => 'integer',
 						'sanitize_callback' => 'absint',
 					),
+					/*
+					 * The wizard's format. These worked undeclared, because
+					 * get_param() reads unregistered body params too — but an
+					 * undeclared arg is sanitised by nobody and appears in no
+					 * schema, and this pair decides both the generation aspect
+					 * and the print geometry. `FormatCatalogue::find()` is
+					 * still the thing that validates them; this is the layer
+					 * that says they exist.
+					 */
+					'format_type'  => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_key',
+					),
+					/*
+					 * No sanitize_callback, deliberately: declaring the type is
+					 * what casts it, and `floatval` cannot be used here at all
+					 * — WP calls a sanitiser with three arguments, which an
+					 * internal function refuses in PHP 8. `absint` above gets
+					 * away with it only because it is userland.
+					 */
+					'format_mm'    => array(
+						'type'    => 'number',
+						'default' => 0,
+					),
 				),
 			)
 		);

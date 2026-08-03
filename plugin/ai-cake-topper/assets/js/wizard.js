@@ -41,8 +41,24 @@
 		 * posted flag about whether money was spent cannot be trusted.
 		 */
 		ai: 'ne',
-		design: null
+		design: null,
+		/*
+		 * The format the chosen design was generated for, which is not always
+		 * the format selected above — see `invalidateDesign()`.
+		 */
+		designLayout: null
 	};
+
+	/**
+	 * The layout key for what step 1 currently has selected.
+	 *
+	 * Spelled to match `FormatCatalogue::layout_key()`, which is what built the
+	 * keys in `config.layouts` and what the server sends back with a finished
+	 * design.
+	 */
+	function selectedKey() {
+		return state.type + '|' + state.mm;
+	}
 
 	/* ------------------------------------------------------------ sheets */
 
@@ -232,6 +248,7 @@
 
 	function chooseDesign( design ) {
 		state.design = design.id;
+		state.designLayout = design.layoutKey || '';
 
 		/*
 		 * A generated image is what makes the surcharge apply, so the running
@@ -247,12 +264,62 @@
 		update();
 	}
 
+	/**
+	 * Forget the generated design, because it no longer matches the format.
+	 *
+	 * A design belongs to the format it was generated for, in two ways that
+	 * both bite. The generation *aspect* is derived from the format (§3.2), so
+	 * a picture made for a cupcake is genuinely the wrong shape for an A4
+	 * sheet — no amount of redrawing fixes that. And the text layer is authored
+	 * against the design's print canvas, which the server re-derives on save;
+	 * generating at ⌀4.5 cm, going back and choosing ⌀15 cm produced an editor
+	 * drawing 1843² of text for a design measured at 2481 × 3331, and the save
+	 * failed with „Užrašo dydis netinka."
+	 *
+	 * Keeping the picture and hoping is what caused that error. So the choice
+	 * here is deliberate: changing the format costs the generation.
+	 */
+	function invalidateDesign() {
+		// Flipping to another format and straight back changes nothing, and
+		// should not throw away an image someone paid for.
+		if ( ! state.design || state.designLayout === selectedKey() ) {
+			return;
+		}
+
+		state.design = null;
+		state.designLayout = null;
+		state.ai = 'ne';
+		mountedFor = null;
+
+		if ( step2.design ) { step2.design.value = ''; }
+		if ( step2.preview ) { step2.preview.removeAttribute( 'src' ); }
+
+		reveal( step2.stage, false );
+		renderHistory();
+
+		if ( step3.error ) { step3.error.hidden = true; }
+
+		// Said on step 2, which is where they are going next and where the
+		// missing preview would otherwise be unexplained.
+		setError( config.i18n.formatChanged );
+	}
+
 	function renderHistory() {
 		if ( ! step2.strip || ! engine ) {
 			return;
 		}
 
-		var items = engine.history();
+		/*
+		 * Only the designs made for the format now selected. The engine keeps
+		 * every generation of the session, and after a format change the older
+		 * ones are for a different shape — offering them back would let someone
+		 * re-select a cupcake design while step 1 quotes an A4 sheet, which is
+		 * the same disagreement `invalidateDesign()` exists to prevent, arrived
+		 * at by clicking a thumbnail instead.
+		 */
+		var items = engine.history().filter( function ( item ) {
+			return item.layoutKey === selectedKey();
+		} );
 
 		reveal( step2.history, items.length > 1 );
 		step2.strip.textContent = '';
@@ -343,31 +410,68 @@
 		}
 	} ) : null;
 
-	var editorMounted = false;
+	/**
+	 * Which design the editor is currently mounted for, or null.
+	 */
+	var mountedFor = null;
 
 	/**
-	 * The geometry for the format chosen at step 1.
+	 * The geometry the editor must draw against.
 	 *
 	 * Looked up, never derived. D-033 is explicit that the client must not
 	 * compute piece positions — text would land across a gutter and still look
 	 * right on screen.
+	 *
+	 * **And looked up by the design, not by the step-1 selection.** The same
+	 * argument says the client must not choose the *canvas* either: the server
+	 * re-derives it from the design row on save, so anything else here is a
+	 * second opinion that can only ever disagree. `invalidateDesign()` keeps
+	 * the two from parting company; this reads from the design because that is
+	 * the authority, not because both are needed.
 	 */
 	function currentLayout() {
-		return config.layouts ? config.layouts[ state.type + '|' + state.mm ] : null;
+		if ( ! state.designLayout || ! config.layouts ) {
+			return null;
+		}
+
+		return config.layouts[ state.designLayout ] || null;
 	}
 
 	function mountEditor() {
-		if ( ! editor || ! step3.canvas || editorMounted ) {
+		if ( ! editor || ! step3.canvas || ! state.design ) {
 			return;
 		}
 
 		var layout = currentLayout();
 
-		if ( ! layout || ! state.design ) {
+		if ( ! layout ) {
+			/*
+			 * A design whose format the catalogue no longer offers — a size can
+			 * legitimately be withdrawn from sale. Rare, but an empty step 3
+			 * reads as a page that failed to load, and the customer would sit
+			 * waiting for a canvas that is never coming.
+			 */
+			if ( step3.error ) {
+				step3.error.textContent = config.i18n.formatGone;
+				step3.error.hidden = false;
+			}
+
 			return;
 		}
 
-		editorMounted = true;
+		// Remount when the design changes, or generating a second picture
+		// leaves the editor showing the first one.
+		if ( mountedFor === state.design ) {
+			return;
+		}
+
+		mountedFor = state.design;
+
+		// The editor starts empty on a remount, so the cached control rows are
+		// describing lines that no longer exist. Without this the old text
+		// inputs stay on screen — with their old values — over a blank canvas,
+		// because the signature they are cached by happens to be unchanged.
+		lastControls = null;
 
 		editor.mount( step3.canvas, layout, step2.preview ? step2.preview.src : '' ).then( function () {
 			// One empty line to start. An editor with no rows looks like it has
@@ -726,12 +830,14 @@
 		input.addEventListener( 'change', function () {
 			state.type = input.value;
 			renderSizes( state.type );
+			invalidateDesign();
 			update();
 		} );
 	} );
 
 	sizeInput.addEventListener( 'change', function () {
 		state.mm = parseFloat( sizeInput.value );
+		invalidateDesign();
 		update();
 	} );
 

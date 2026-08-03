@@ -158,6 +158,23 @@ final class FormatCatalogue {
 	}
 
 	/**
+	 * The key a format is known by in the browser.
+	 *
+	 * The wizard ships every layout precomputed (D-033) and the editor looks its
+	 * own up by this string, so both ends have to spell it the same way. Built
+	 * here rather than concatenated at each end, because the two sources are not
+	 * formatted alike: the catalogue holds `45.0` while a design's `format_mm`
+	 * comes back from a DECIMAL column as `45.00`. Casting to float first is
+	 * what makes those one key instead of two.
+	 *
+	 * @param string $type        One of the TYPE_ constants.
+	 * @param float  $diameter_mm Trim diameter; zero for a whole sheet.
+	 */
+	public static function layout_key( string $type, float $diameter_mm = 0.0 ): string {
+		return $type . '|' . $diameter_mm;
+	}
+
+	/**
 	 * The print spec for a chosen format.
 	 *
 	 * @param string $type        One of the TYPE_ constants.

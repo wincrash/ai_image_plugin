@@ -9,7 +9,8 @@ Phase 0 deferred to a later calibration step (D-018).
 > suggestion button, and the print path composites the text layer.**
 >
 > **Start here: Ruslan reported problems with „Pasiūlyk dizainą" and the session reset before
-> he said what they were. Ask him first.** Triage notes are at the top of "Next actions".
+> he said what they were. Ask him first.** Triage notes are in "Next actions". The *other* bug
+> he reported — „Užrašo dydis netinka." — is fixed (D-043).
 > After that: step 4, the proof, and the cart hand-off.
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
@@ -520,48 +521,40 @@ C:\AI_IMAGE\
 
 **Nothing is blocked.** fal is funded and the success path is verified (D-030).
 
-### ⚠ Open bug, diagnosed not fixed: „Užrašo dydis netinka." on saving the text
+### ✅ Fixed: „Užrašo dydis netinka." on saving the text — D-043
 
-**Ruslan, 2026-08-03: this error appears often.** It comes from `TextLayerEndpoint`, not from the
-suggestion button — the exported layer's dimensions do not equal
-`PrintSpec::for_design( $design )->canvas_px()`.
+**Ruslan reported it; it is fixed, falsified and verified in a browser.**
 
-**Measured on the testbed, so the mechanism is not in doubt:**
+Diagnosed before being fixed, which mattered: STATE.md listed two candidate causes and a query
+over the designs table ruled one out. **Every wizard design (product 684) carries a format** —
+`circle 200`, `cupcake 60`, `cupcake 45`, `circle 150`. The 108 NULL-format rows are all products
+646/649, the product-page generator and the check scripts, which legitimately send none. So the
+cause was the second one: the format changed at step 1 after the design was generated, and
+nothing cleared the design.
 
-| | |
-|---|---|
-| Cupcake ⌀45 canvas | **2481 × 3331** |
-| Product `ai-paveikslelis` (id 684) | **no `_aicake_*` meta at all** |
-| So the fallback geometry is | the `PrintSpec` default, round 150 mm → **1843 × 1843** |
+The rule now, and it is the D-033 argument applied one level up: **the design is the authority on
+its own geometry.** `FormatCatalogue::layout_key()` builds the key in one place,
+`JobStatusEndpoint` sends `layout_key` with the preview, and `wizard.js` looks the layout up by
+it rather than deriving one from the step-1 selection. Changing the format now clears the design
+and says so — the generation aspect comes from the format (§3.2), so the picture really is the
+wrong shape.
 
-Any design whose canvas resolves differently from the format the editor drew against produces
-exactly this error. Two ways in, and **they need telling apart before fixing** — check the
-design row's `format_type` for a failing case:
+**The size check was not relaxed.** It is what stands between a layer and being composited at the
+wrong scale.
 
-1. **`format_type` is NULL → falls back to the product → 1843².** Designs are demonstrably being
-   written with NULL format; most recent NULL rows are from `rest-check.sh` and the *product
-   page* generator, which legitimately send no format. If a **wizard** design is NULL, the fault
-   is in `GenerateEndpoint`/`FormatCatalogue::find()`.
-   > Note `format_type` / `format_mm` are **not declared in the `/generate` route args**. They
-   > still arrive — `get_param()` reads unregistered body params — but that is worth tidying, and
-   > worth ruling out first.
-2. **The format was changed at step 1 after the design was generated.** *This is my main
-   suspect and it is easy to hit while exploring.* `wizard.js` never clears `state.design` when
-   `state.type` or `state.mm` change, so: generate at cupcake ⌀45 → Back → pick circle ⌀15 →
-   step 3 → the editor draws against `layouts['circle|150']` (1843²) while the design is still
-   cupcake (2481 × 3331). Save fails.
+Falsified: keying `Wizard::layouts()` independently turns **3 of the 35** wizard-check assertions
+red; removing the `layout_key` emission turns 1 red. In a real browser on a real fal generation:
+`designLayout` arrives as `cupcake|45`, the editor draws 2481 × 3331 instead of 1843², the layer
+saves and reaches step 4, and switching to a circle afterwards clears the design and disables
+„Toliau".
 
-**The fix is not to relax the size check** — it is the thing standing between a layer and being
-composited at the wrong scale. Two parts:
+Two smaller things fixed with it: `editor.mount()` is callable more than once (a second
+generation used to leave the first picture on the canvas), and `format_type`/`format_mm` are now
+declared `/generate` route args.
 
-- **The editor's canvas must come from the design, not from the current step-1 selection.** D-033
-  says the client must never compute piece positions; the same argument says it must not choose
-  the canvas either. Return the design's `format_type`/`format_mm` (or the layout key) alongside
-  the preview, and have `currentLayout()` read that.
-- **Changing the format after generating must invalidate the design.** This is not only about the
-  layer: the generation *aspect* is derived from the format (1:1 vs 2:3, §3.2), so an image made
-  for a cupcake is genuinely the wrong shape for an A4 sheet. Either clear `state.design` and
-  make them generate again, or refuse the change. Silently keeping it is what produced this.
+> **`floatval` cannot be a `sanitize_callback`.** WP calls sanitisers with three arguments and an
+> internal function refuses them in PHP 8 — `absint` and `sanitize_key` survive only because they
+> are userland. The declared `type` is what casts. Caught by `wizard-check.php`, as a fatal.
 
 ### ⚠ Also open, reported but not diagnosed: „Pasiūlyk dizainą" misbehaves
 
@@ -951,14 +944,15 @@ bash tools/rest-check.sh
 Add `text-check` to the loop above; `layer-check.php` is a diagnostic, not a gate, and takes a
 design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 477 assertions:** `tests/run.php` is now 318
-  (was 220 — `LayerInspectorTest`, `EditorLayoutTest` and `LayoutSuggesterTest`), and
-  `tools/text-check.php` adds 25. The older list, for reference: `tests/run.php` (220 pure-PHP),
+- **Seven suites, all committed and all green — 534 assertions:** `tests/run.php` 368,
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (58,
-  a real order end to end, now including a D-033 layer), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
-  (18, printable proofs — also writes them), `tools/wizard-check.php` (28, steps 1–2). All but the first test the *deployed* copy, so sync
-  first. Both `rest-check.sh` and `wcff-check.php` were falsified before being trusted —
-  reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of the 18 red.
+  a real order end to end, including a D-033 layer), `tools/wcff-check.php` (18, the money path),
+  `tools/proof-check.php` (18, printable proofs — also writes them), `tools/wizard-check.php`
+  (35, steps 1–2 and the D-043 layout key), `tools/text-check.php` (25). All but the first test
+  the *deployed* copy, so sync first. Three have been falsified rather than merely passed:
+  reintroducing D-025 turns 5 of the 12 red, tampering the AI fee turns 3 of the 18 red, and
+  keying the wizard's layouts independently of `FormatCatalogue::layout_key()` turns 3 of the 35
+  red.
 
 - **The plugin's logging is invisible under WP-CLI**, and so is WooCommerce's own: a
   `wc_get_logger()->warning()` from `wp eval` reaches no file, while the same call over HTTP

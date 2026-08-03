@@ -8,6 +8,7 @@
 declare( strict_types=1 );
 
 use AiCake\Domain\FormatCatalogue;
+use AiCake\Domain\PrintSpec;
 use AiCake\Imaging\SheetLayout;
 use AiCake\Support\Mm;
 
@@ -106,6 +107,80 @@ class EditorLayoutTest extends TestCase {
 
 		$this->assert_same( $expected, $piece['safe_w'], 'the safe box is trim less the safe margin' );
 		$this->assert_true( $piece['safe_w'] < $piece['limit_w'], 'and it is strictly inside the limit' );
+	}
+
+	/**
+	 * The canvas the editor draws on is the canvas the save is measured against.
+	 *
+	 * This is the invariant „Užrašo dydis netinka." breaks. `TextLayerEndpoint`
+	 * compares the uploaded bitmap against `PrintSpec::for_design()`, and the
+	 * editor drew it at whatever `editor_layout()` said — so if those two ever
+	 * resolve differently for the same format, every save fails and the customer
+	 * is told their text is the wrong size with no way to make it the right one.
+	 *
+	 * Asserted for every format on offer, because the pair only has to disagree
+	 * once, and the sizes are added and withdrawn by editing a list.
+	 */
+	public function test_the_editor_canvas_is_the_canvas_the_server_measures(): void {
+		foreach ( FormatCatalogue::offerable() as $option ) {
+			$type = (string) $option['type'];
+			$mm   = (float) $option['diameter_mm'];
+			$key  = FormatCatalogue::layout_key( $type, $mm );
+
+			/*
+			 * The design row as MySQL hands it back: `format_mm` is DECIMAL(6,2),
+			 * so it arrives as the string `45.00` where the catalogue holds the
+			 * float `45.0`. Keyed naively those are two different layouts and the
+			 * editor finds neither.
+			 */
+			$design = array(
+				'format_type' => $type,
+				'format_mm'   => number_format( $mm, 2, '.', '' ),
+				'product_id'  => 0,
+			);
+
+			$this->assert_same(
+				$key,
+				FormatCatalogue::layout_key( (string) $design['format_type'], (float) $design['format_mm'] ),
+				sprintf( '%s: the key survives the database', $key )
+			);
+
+			$layout = FormatCatalogue::spec( $type, $mm )->editor_layout();
+			$canvas = PrintSpec::for_design( $design )->canvas_px();
+
+			$this->assert_same( $canvas[0], $layout['canvas']['w'], sprintf( '%s: canvas width agrees', $key ) );
+			$this->assert_same( $canvas[1], $layout['canvas']['h'], sprintf( '%s: canvas height agrees', $key ) );
+		}
+	}
+
+	/**
+	 * A design that recorded a format never resolves to the default canvas.
+	 *
+	 * The bug this closes: the editor picked its layout from the step-1
+	 * selection while the server picked it from the design row, so generating a
+	 * cupcake sheet and then choosing a 15 cm circle had the browser drawing
+	 * 1843² of text for a design the server measured at 2481 × 3331.
+	 *
+	 * The default is what an unformatted design falls back to, and it must not
+	 * be reachable from a formatted one — that fallback is what made the two
+	 * disagree silently rather than loudly.
+	 */
+	public function test_a_formatted_design_does_not_fall_back(): void {
+		$design = array(
+			'format_type' => FormatCatalogue::TYPE_CUPCAKE,
+			'format_mm'   => '45.00',
+			'product_id'  => 0,
+		);
+
+		$canvas   = PrintSpec::for_design( $design )->canvas_px();
+		$fallback = ( new PrintSpec() )->canvas_px();
+
+		$this->assert_true( $canvas !== $fallback, 'the cupcake sheet is not the default canvas' );
+		$this->assert_same(
+			FormatCatalogue::spec( FormatCatalogue::TYPE_CUPCAKE, 45.0 )->canvas_px(),
+			$canvas,
+			'it is the canvas of the format the design recorded'
+		);
 	}
 
 	/**
