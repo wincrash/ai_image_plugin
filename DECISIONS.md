@@ -817,4 +817,111 @@ Phase 4's 83 assertions and Phase 6's verification because nothing asserts
 
 ---
 
-<!-- Next: D-033 -->
+### D-033 · The text layer moves to the browser, and the print canvas becomes A4
+**2026-08-03** · Ruslan · **agreed direction, not scheduled** · affects `PLAN.md` §3, §9.4, §14, §15
+
+A design conversation, recorded because it is expensive to reconstruct and it
+changes what Phase 8's review queue has to be. **Nothing here is built.**
+
+The trigger: the current text layer offers a font, a colour, a size and five
+fixed placements. On real output that produces text sitting across the artwork
+(D-030, D-032), and it cannot do the thing a cake shop actually wants — twelve
+cupcakes with twelve different names.
+
+#### What was decided
+
+1. **The customer composes text in the browser, over the watermarked preview.**
+   Zero PHP workers touched while editing.
+2. **What crosses the wire is a PNG-32 with a transparent background**, plus
+   the plain text string. The string is not used for rendering — it is there so
+   moderation layers 0 and 1 can still read what was typed, which a bitmap
+   otherwise hides, and so the order record is readable without opening an
+   image.
+3. **The final print canvas is always A4**, every product centred inside it.
+4. **The text layer is exactly the dimensions of the final print file** — the
+   whole sheet, not one piece.
+5. **The server draws a solid black cut line** at the trim diameter.
+6. **The editor prevents text outside the safe zone.** Not a guide — a
+   constraint.
+
+#### Why A4 for everything
+
+Not disk space, and not uniformity for its own sake: **a file that is not page
+sized has to be placed by whoever prints it.** One "fit to page" in a print
+dialog and a 150 mm topper comes out 143 mm. An A4 file printed at 100% is
+correct by construction. That is D-027's failure mode — a file that is right
+and prints at the wrong physical size — reached by a different route.
+
+It also deletes the sheet-versus-single-piece branch from the pipeline.
+
+#### Why the text layer is sheet sized
+
+Per-piece text is impossible if the text is baked into the piece before
+imposition. Sheet-sized layer means the order becomes `impose → composite text`
+rather than `composite text → impose`, and twelve different names on twelve
+cupcakes works from day one. Retrofitting it later would mean re-cutting the
+pipeline.
+
+The client must never compute piece positions itself. `SheetLayout` derives
+them server-side and the editor consumes them, or text lands across a gutter —
+and it would look right in the editor and wrong on the print.
+
+#### Why the customer cuts, and what follows
+
+Ruslan ships the printed A4; **the customer cuts it.** So:
+
+- The cut line is part of the product, not a convenience. Solid black, ~0.3 mm,
+  drawn at trim with artwork continuing 3 mm past it into the bleed — which is
+  what makes a kitchen-scissors cut forgiving in both directions.
+- It is drawn **server-side**. In the customer's layer they could move it,
+  resize it or omit it.
+- It must appear in the preview. A line on the printed sheet that was not in
+  the proof reads as a printing fault.
+- **The 5 mm safe zone stops being a formality.** A hand cut is far less
+  accurate than a trimmed one, so a name 2 mm inside the trim gets clipped.
+  Enforcing it in the editor prevents more complaints than any amount of
+  review-queue attention.
+
+#### What this deletes
+
+Server-side text rendering entirely: arc text, auto-fit, wrapping, faked
+outline strokes, and the Lithuanian cmap coverage gate. With it go the font
+picker, font bundling and licensing for product use, and the browser↔GD parity
+problem. Fonts remain only for the watermark, which draws our own domain name.
+
+Fonts still need Lithuanian coverage **client-side** — `Ąžuolas` rendering as
+tofu boxes is worse baked into a bitmap, because nothing downstream can catch
+it. Curated self-hosted list, not the open Google catalogue (also the GDPR
+answer: an EU shop must not hotlink Google's CDN).
+
+#### The load-bearing new check
+
+**Every non-transparent pixel in the uploaded layer must be close to a colour
+the customer declared.** Antialiasing passes; a photograph or a franchise
+character does not. Without it the endpoint accepts arbitrary artwork and
+layers 0–2 are blind to all of it — which is the entire risk §10 exists to
+manage. This is not optional.
+
+#### Explicitly given up
+
+Reorders and post-order modifications. Ruslan's call: he is the operator, he
+sees every final image, and an occasional reprint at a different size is ten
+minutes in GIMP a few times a year. Building generality for it costs more than
+it saves. This also closes §14's v1.5 idea of ganging single toppers from
+different orders onto one sheet.
+
+#### Unresolved, and now load-bearing
+
+**`PLAN.md` contradicts itself about A4.** The §3 table gives the A4 SKU as
+216 × 303 mm (paper + bleed, 2552 × 3579 px); §3.4 says usable area is
+200 × 287 mm and that *"imposition maths uses the usable area, never the paper
+size."* Both cannot be right — a printer that cannot reach the sheet edge
+cannot produce a full-bleed 210 × 297.
+
+The usable area wins, because it is the one that physically prints. Which makes
+**the printer's real usable area a number every product now depends on**, not
+just sheets. It is still a placeholder. Measure it before any of this is built.
+
+---
+
+<!-- Next: D-034 -->

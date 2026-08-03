@@ -507,7 +507,13 @@ Housekeeping, not blocking:
   high confidence, three ways to check. Do not push the client to upload things to the live shop.
 - Cupcake diameter assumed 4.5 cm → 24 per A4. Confirm against what is actually sold; 5 cm
   yields 20 and the SKU name must match.
-- Printer make/model unknown → usable print area defaults to 200 × 287 mm.
+- **Printer usable area is a placeholder (200 × 287 mm) and D-033 makes it load-bearing.**
+  Under that design every product is centred on one A4 canvas, so this number sizes *everything*,
+  not just sheets. It is a five-minute measurement and getting it wrong ruins whole sheets.
+- **`PLAN.md` contradicts itself about A4** (D-033). The §3 table gives the A4 SKU as
+  216 × 303 mm; §3.4 says usable area is 200 × 287 and that imposition must use the usable area,
+  never the paper size. A printer that cannot reach the sheet edge cannot print full-bleed
+  210 × 297. Resolve in favour of the usable area when the number above is measured.
 - Icing sheet is slightly shorter than A4; exact dimensions to be corrected late.
 - VMVT food-business registration — almost certainly already held, since the shop already sells
   edible decorations. Allergen declaration from the sheet supplier is the genuinely new item.
