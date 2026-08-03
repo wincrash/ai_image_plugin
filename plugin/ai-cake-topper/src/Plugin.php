@@ -286,7 +286,7 @@ class Plugin {
 			) )->register();
 
 			( new BlocklistPage( $this->moderator ) )->register();
-			( new FormatsPage() )->register();
+			( new FormatsPage( $this->images, $this->fonts ) )->register();
 
 			if ( class_exists( 'WooCommerce' ) ) {
 				( new OrderScreen( $this->designs, $this->fulfilment ) )->register();

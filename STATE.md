@@ -569,6 +569,22 @@ Three sessions' worth of design discussion, agreed in principle, **no code writt
 Verified on the testbed: the admin page renders all 16 formats, none unfit, counts matching §3.5
 exactly — A4, ⌀20…15 cm yield 1, ⌀14…11 cm yield 2, ⌀10 cm yields 4, cupcakes 35 / 24 / 20 / 12.
 
+**Printable proofs, for the physical check D-039 makes the authority.**
+`Imaging/ProofSheet.php` renders any format as a **full A4 PNG at 300 DPI with the resolution
+declared in the file**, so printing at 100% is correct by construction — a proof that lied about
+its own size would be measured, believed, and used to sign off wrong geometry (D-027).
+
+| | |
+|---|---|
+| One at a time | „Download A4 PNG" on each card, `admin_post` + nonce (D-028, not a bare link) |
+| All sixteen | `tools/proof-check.php` → `Z:\ruslan\wordpress-test\aicake-files\proofs\` |
+
+The sheet draws the trim line solid black at 0.3 mm — the line the customer cuts (D-033) — the
+bleed ring in grey, and the **15 mm dead strip hatched** rather than silently subtracted, with
+the caption inside it so it can never land on a product. Two of the sixteen were looked at, not
+just asserted: the 24-up shows its outer bleed rings clipping at the sheet edge, which is the
+`bleed_clipped` advisory made visible.
+
 > **`order-check.php`'s sheet assertion is now derived, not typed.** It was `array( 2363, 3390 )`
 > — right for the assumed 200 × 287 and wrong the moment D-039 corrected it. A frozen number
 > there goes red for the right reason and then gets "fixed" by pasting in whatever the code
@@ -618,12 +634,12 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- **Four suites, all committed and all green — 304 assertions:** `tests/run.php` (220 pure-PHP),
+- **Five suites, all committed and all green — 322 assertions:** `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
-  a real order end to end), `tools/wcff-check.php` (18, the money path). The last three test the
-  *deployed* copy, so sync first. Both `rest-check.sh` and `wcff-check.php` were falsified before
-  being trusted — reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of
-  the 18 red.
+  a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
+  (18, printable proofs — also writes them). All but the first test the *deployed* copy, so sync
+  first. Both `rest-check.sh` and `wcff-check.php` were falsified before being trusted —
+  reintroducing D-025 turns 5 of the 12 red, and tampering the AI fee turns 3 of the 18 red.
 
 - **The plugin's logging is invisible under WP-CLI**, and so is WooCommerce's own: a
   `wc_get_logger()->warning()` from `wp eval` reaches no file, while the same call over HTTP

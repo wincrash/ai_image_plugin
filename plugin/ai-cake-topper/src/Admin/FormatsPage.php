@@ -11,6 +11,9 @@ namespace AiCake\Admin;
 
 use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\PrintSpec;
+use AiCake\Imaging\FontCatalogue;
+use AiCake\Imaging\GdEngine;
+use AiCake\Imaging\ProofSheet;
 use AiCake\Imaging\SheetLayout;
 use AiCake\Support\Mm;
 
@@ -34,11 +37,92 @@ class FormatsPage {
 
 	public const SLUG = 'aicake-formats';
 
+	public const ACTION = 'aicake_format_proof';
+
+	private ProofSheet $proofs;
+
+	/**
+	 * @param GdEngine      $images Imaging.
+	 * @param FontCatalogue $fonts  Bundled fonts.
+	 */
+	public function __construct( GdEngine $images, FontCatalogue $fonts ) {
+		$this->proofs = new ProofSheet( $images, $fonts );
+	}
+
 	/**
 	 * Register hooks.
 	 */
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
+		add_action( 'admin_post_' . self::ACTION, array( $this, 'download' ) );
+	}
+
+	/**
+	 * Send one format as a printable A4 PNG.
+	 *
+	 * `admin_post` rather than a plain link to a file, and the nonce is not
+	 * decoration: D-028 was exactly this — an admin download reached by a bare
+	 * link, where the browser sends cookies and no nonce, so the shop manager
+	 * arrives as user 0 and the capability check fails. It 404'd every time.
+	 */
+	public function download(): void {
+		if ( ! current_user_can( 'manage_woocommerce' ) ) {
+			wp_die( esc_html__( 'You are not allowed to do this.', 'ai-cake-topper' ), '', array( 'response' => 403 ) );
+		}
+
+		check_admin_referer( self::ACTION );
+
+		$type     = isset( $_GET['type'] ) ? sanitize_key( wp_unslash( $_GET['type'] ) ) : '';
+		$diameter = isset( $_GET['mm'] ) ? (float) wp_unslash( $_GET['mm'] ) : 0.0;
+
+		$usable_w = SheetLayout::USABLE_WIDTH_MM;
+		$usable_h = SheetLayout::USABLE_HEIGHT_MM;
+
+		/*
+		 * Through the catalogue, never straight from the query string. A
+		 * hand-edited `mm` would otherwise render a proof of a size that is
+		 * not for sale, which is worse than useless: it would be measured,
+		 * approved, and then unavailable.
+		 */
+		$option = FormatCatalogue::find( $type, $diameter, $usable_w, $usable_h );
+
+		if ( null === $option ) {
+			wp_die( esc_html__( 'That is not a format we offer.', 'ai-cake-topper' ), '', array( 'response' => 404 ) );
+		}
+
+		$png = $this->proofs->render( $option, $usable_w, $usable_h );
+
+		if ( null === $png ) {
+			wp_die( esc_html__( 'Could not render the proof sheet.', 'ai-cake-topper' ), '', array( 'response' => 500 ) );
+		}
+
+		nocache_headers();
+		header( 'Content-Type: image/png' );
+		header( 'Content-Length: ' . strlen( $png ) );
+		header( 'Content-Disposition: attachment; filename="' . $this->proofs->filename( $option ) . '"' );
+
+		echo $png; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- binary PNG.
+
+		exit;
+	}
+
+	/**
+	 * The nonce-carrying download URL for one format.
+	 *
+	 * @param array<string, mixed> $option Catalogue entry.
+	 */
+	private function download_url( array $option ): string {
+		return wp_nonce_url(
+			add_query_arg(
+				array(
+					'action' => self::ACTION,
+					'type'   => (string) $option['type'],
+					'mm'     => (string) $option['diameter_mm'],
+				),
+				admin_url( 'admin-post.php' )
+			),
+			self::ACTION
+		);
 	}
 
 	/**
@@ -150,7 +234,13 @@ class FormatsPage {
 				'<p class="warn">%s</p>',
 				esc_html__( 'Does not fit — not offered to customers.', 'ai-cake-topper' )
 			);
-		} elseif ( ! empty( $option['bleed_clipped'] ) ) {
+
+			echo '</div>';
+
+			return;
+		}
+
+		if ( ! empty( $option['bleed_clipped'] ) ) {
 			/*
 			 * Advisory, not a fault. The trim line is inside the usable area,
 			 * which is what decides whether a piece can be cut at its stated
@@ -163,6 +253,12 @@ class FormatsPage {
 				esc_html__( 'Outer pieces lose some bleed at the sheet edge.', 'ai-cake-topper' )
 			);
 		}
+
+		printf(
+			'<p><a class="button button-secondary" href="%s">%s</a></p>',
+			esc_url( $this->download_url( $option ) ),
+			esc_html__( 'Download A4 PNG', 'ai-cake-topper' )
+		);
 
 		echo '</div>';
 	}
