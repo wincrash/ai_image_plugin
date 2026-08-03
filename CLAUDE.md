@@ -9,6 +9,7 @@ Guidance for Claude Code working in this repository.
 | `STATE.md` | **Where the project actually is.** Current phase, blockers, next actions, verified environment facts. |
 | `WORKFLOW.md` | How we work — environments, the sync loop, conventions, commands. |
 | `PLAN.md` | The design. 23 sections, authoritative. |
+| `docs/pipeline.md` | **The built system** — what runs where, what costs money, what is local PHP. |
 | `DECISIONS.md` | Why things are the way they are. Append-only. |
 | `docs/api-evaluation.md` | Phase 0 plan. |
 

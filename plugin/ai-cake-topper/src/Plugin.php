@@ -137,7 +137,7 @@ class Plugin {
 		$this->images      = new GdEngine( $this->logger );
 		$this->fonts       = new FontCatalogue( $this->logger );
 		$this->text        = new TextRenderer( $this->fonts, $this->logger );
-		$this->watermarker = new Watermarker( $this->fonts, $this->logger );
+		$this->watermarker = new Watermarker( $this->fonts, $this->logger, $this->settings );
 
 		$this->moderator = new Moderator(
 			new Sanitiser(),

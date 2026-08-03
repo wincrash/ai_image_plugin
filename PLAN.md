@@ -733,7 +733,9 @@ Mitigations, all worth doing:
 Composited into the pixels, server-side, on the **derivative only**. The clean master is never
 served under any URL.
 
-- Diagonal tiled text across the whole image at ~25% opacity, not a corner logo.
+- Diagonal tiled text across the whole image, not a corner logo. **~42% opacity, dark ink with
+  a light halo** — the original 25% white was measured against nothing and vanished into the
+  white background the house style produces (D-032). Tunable via `watermark_opacity`.
 - Preview served at ~800 px max edge — big enough to judge, too small to print.
 - Serve as WebP (smaller, and one more small obstacle to casual reuse).
 - Also apply the shape mask to the preview so the customer sees a circle, not a square.

@@ -780,4 +780,41 @@ order lands in `aicake-approval`. Verified.
 
 ---
 
-<!-- Next: D-032 -->
+### D-032 · The watermark was white on white, and so barely a watermark
+**2026-08-03** · corrects `PLAN.md` §9.3 · Ruslan, on seeing a real preview
+
+§9.3 specified "~25% opacity" and the implementation drew a white mark with a
+faint dark shadow behind it. That number was written before any image existed
+to test it against.
+
+The house style suffix deliberately produces **flat vector art on a white
+background**. So the primary pass — white at 25% — was landing on white and
+disappearing. What little you could see was the shadow, drawn *fainter* still.
+The preview was close to unprotected, which matters: §9.3's threat model is
+not a determined attacker, it is a customer who realises they could just save
+the picture.
+
+Three changes:
+
+1. **Dark ink with a light halo, not white with a dark shadow.** The dark pass
+   now carries the mark, so it reads on the artwork we actually generate; the
+   halo keeps it legible if a customer gets a dark subject.
+2. **Opacity 0.25 → 0.42**, exposed as `watermark_opacity` and clamped to
+   0.1–0.75. A mark nobody can see through is a preview nobody can use, so the
+   ceiling matters as much as the floor.
+3. **Denser and larger** — type at 1/14 of the short edge rather than 1/18,
+   tiles at 1.35/1.5 rather than 1.6/1.8. The halo offset is now proportional
+   to type size rather than a fixed 2 px, which had been vanishing at preview
+   scale.
+
+Judged on real output, not on the constant: regenerated from an existing fal
+master, the mark is unmistakably present and the artwork is still judgeable.
+
+**The general lesson is the one from D-019 and D-027.** A number in `PLAN.md`
+that was never checked against a rendered image is a guess. This one survived
+Phase 4's 83 assertions and Phase 6's verification because nothing asserts
+"can a human see this" — it took looking at a picture.
+
+---
+
+<!-- Next: D-033 -->
