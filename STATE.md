@@ -1,7 +1,11 @@
 # Project state
 
 **Updated:** 2026-08-03
-**Phase:** 7 — orders and fulfilment. Phase 0 deferred to a later calibration step (D-018).
+**Phase:** Phases 1–7 built. **Actively building the D-035…D-039 wizard track**, not Phase 8.
+Phase 0 deferred to a later calibration step (D-018).
+
+> **A reset session picking this up:** read D-033 → D-040 in `DECISIONS.md` first, then
+> "Being built now" below. The next task is **wizard step 3, the D-033 text editor.**
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -18,8 +22,10 @@ design `done`, inside an ordinary `rest-check.sh` run. That same real master wen
 `FulfilPipeline` to a 1843×1843 print file at the 15 cm spec. Phase 7's synthetic master is no
 longer the only thing the fulfilment chain has been fed.
 
-**218 committed assertions, all green:** 152 pure-PHP · 12 REST over real HTTP · 54 a real order
-through to print files.
+**350 committed assertions, all green**, across six suites — see the full list further down. The
+product/pricing model changed substantially on 2026-08-03 (D-035 → D-039): **one AI product
+rather than ten**, geometry on the design rather than the product, and **the plugin prices
+nothing** — WC Fields Factory does.
 
 > **Run `tools/order-check.php` as `-u www-data`, never `--allow-root`** (D-031). Run as root it
 > leaves `orders/YYYY/MM` root-owned, and every subsequent real order then fails with „Nepavyko
@@ -509,13 +515,39 @@ C:\AI_IMAGE\
 
 **Nothing is blocked.** fal is funded and the success path is verified (D-030).
 
-**1. Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
-emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
-orders are already piling up in a real, filterable status waiting for it.
+**1. Wizard step 3 — the D-033 text editor.** This is the agreed next task (Ruslan,
+2026-08-03, end of session). Read D-033 in full before starting; the short version:
 
-**2. Keep buying designs through the storefront as a customer.** The first real customer order
-(D-031) found a bug none of the 218 assertions could, because the assertions ran with privileges
-the real code does not have. That is a different kind of check and it is worth repeating.
+- The customer composes text **in the browser**, over the watermarked preview. No PHP worker is
+  touched while editing.
+- What crosses the wire is a **PNG-32 with a transparent background, plus the plain string** —
+  the string is not used for rendering, it exists so moderation layers 0 and 1 can still read
+  what was typed, and so the order record is readable without opening an image.
+- The layer is **the size of the whole print file**, not one piece, so twelve cupcakes can carry
+  twelve different names. `SheetLayout` supplies piece positions server-side; the client must
+  never compute them or text lands across a gutter and looks right in the editor.
+- **The editor prevents text outside the safe zone** — a constraint, not a guide.
+- **The load-bearing new check:** every non-transparent pixel in an uploaded layer must be close
+  to a colour the customer declared. Antialiasing passes; a photograph or a franchise character
+  does not. Without it the endpoint accepts arbitrary artwork and layers 0–2 are blind to it.
+  **Not optional.**
+
+This also deletes all server-side text rendering — arc text, auto-fit, wrapping, the Lithuanian
+cmap gate — but delete nothing until the browser side works.
+
+**2. Then step 4, the proof**, and the cart hand-off. At the cart, **derive the AI flag
+server-side** in `CartIntegration` from whether the design really has a generated image, and
+overwrite whatever was posted. A posted flag about whether money was spent cannot be trusted, and
+hiding the Fields Factory field is presentation, not a control.
+
+**3. Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
+emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
+orders are already piling up in a real, filterable status waiting for it. Not started, and now
+behind the wizard track.
+
+**4. Keep buying designs through the storefront as a customer.** The first real customer order
+(D-031) found a bug none of the assertions could, because they ran with privileges the real code
+does not have. That is a different kind of check and it is worth repeating.
 
 **3. Revisit abuse protection with Ruslan — a design conversation, not a task.** Raised
 2026-08-03; he wants to go through it properly rather than accept the §11 defaults. What exists
@@ -687,6 +719,18 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
+**Re-verify everything in two commands** (from `C:\AI_IMAGE`, after `tools\sync.ps1`). The
+`*-check.php` files must also be copied to `Z:\ruslan\wordpress-test\aicake-files\` — `sync.ps1`
+deploys the plugin only, which has caught me out twice:
+
+```bash
+ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
+```
+
+```bash
+bash tools/rest-check.sh
+```
+
 - **Six suites, all committed and all green — 350 assertions:** `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
   a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
