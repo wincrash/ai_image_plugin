@@ -32,22 +32,27 @@ class RestController {
 
 	private FileEndpoint $file;
 
+	private TextLayerEndpoint $text_layer;
+
 	/**
-	 * @param SessionEndpoint   $session  Session and nonce.
-	 * @param GenerateEndpoint  $generate Queue a generation.
-	 * @param JobStatusEndpoint $status   Polling.
-	 * @param FileEndpoint      $file     Delivery.
+	 * @param SessionEndpoint   $session    Session and nonce.
+	 * @param GenerateEndpoint  $generate   Queue a generation.
+	 * @param JobStatusEndpoint $status     Polling.
+	 * @param FileEndpoint      $file       Delivery.
+	 * @param TextLayerEndpoint $text_layer The composed text layer.
 	 */
 	public function __construct(
 		SessionEndpoint $session,
 		GenerateEndpoint $generate,
 		JobStatusEndpoint $status,
-		FileEndpoint $file
+		FileEndpoint $file,
+		TextLayerEndpoint $text_layer
 	) {
-		$this->session  = $session;
-		$this->generate = $generate;
-		$this->status   = $status;
-		$this->file     = $file;
+		$this->session    = $session;
+		$this->generate   = $generate;
+		$this->status     = $status;
+		$this->file       = $file;
+		$this->text_layer = $text_layer;
 	}
 
 	/**
@@ -125,6 +130,48 @@ class RestController {
 					'id' => array(
 						'required'          => true,
 						'sanitize_callback' => 'absint',
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/text-layer',
+			array(
+				'methods'  => 'POST',
+				'callback' => array( $this->text_layer, 'handle' ),
+				/*
+				 * Nonced like /generate. It spends no money, but it writes a
+				 * file and runs a full-canvas pixel scan, and it is the entry
+				 * point for customer-supplied artwork (D-033) — the last thing
+				 * that should be callable cross-origin.
+				 */
+				'permission_callback' => array( $this, 'check_nonce' ),
+				'args'                => array(
+					'design'  => array(
+						'required'          => true,
+						'type'              => 'string',
+						'sanitize_callback' => 'sanitize_text_field',
+					),
+					'text'    => array(
+						'type'              => 'string',
+						'default'           => '',
+						'sanitize_callback' => 'sanitize_textarea_field',
+					),
+					/*
+					 * No sanitize_callback on either of these. The image is
+					 * base64 that sanitisation would silently corrupt, and the
+					 * palette is validated by LayerInspector — which has to be
+					 * the only judge of what a valid palette is, or two places
+					 * disagree and the check becomes advisory.
+					 */
+					'layer'   => array(
+						'required' => true,
+						'type'     => 'string',
+					),
+					'colours' => array(
+						'required' => true,
 					),
 				),
 			)

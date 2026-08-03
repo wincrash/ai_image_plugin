@@ -350,6 +350,96 @@ class PrintSpec {
 	}
 
 	/**
+	 * The dimensions of the finished print file.
+	 *
+	 * The same branch `FulfilPipeline` takes — an imposed sheet for a multi-up
+	 * round format, a single bled piece otherwise. It is pulled out here because
+	 * D-033's text layer is *exactly* the size of the print file, so the browser
+	 * needs this number and the two must never be derived separately. A layer
+	 * that disagrees with the canvas composites at the wrong scale and every
+	 * name lands off its piece.
+	 *
+	 * D-033 also decides the print canvas eventually becomes A4 for everything.
+	 * When that lands, this method changes and the editor follows it for free.
+	 *
+	 * @return array{0:int, 1:int}
+	 */
+	public function canvas_px(): array {
+		if ( $this->is_sheet() && $this->is_round() ) {
+			$plan = $this->sheet_plan();
+
+			return array( (int) $plan['sheet_w_px'], (int) $plan['sheet_h_px'] );
+		}
+
+		return $this->target_px();
+	}
+
+	/**
+	 * Where every piece sits on the canvas, for the browser text editor.
+	 *
+	 * D-033: "The client must never compute piece positions itself. SheetLayout
+	 * derives them server-side and the editor consumes them, or text lands
+	 * across a gutter — and it would look right in the editor and wrong on the
+	 * print."
+	 *
+	 * Coordinates are print-file pixels. The editor scales them to whatever it
+	 * displays at; it does not re-derive them.
+	 *
+	 * `safe_w` / `safe_h` are the box text may occupy — trim less the safe
+	 * margin, and less the bleed, because the bleed is cut away entirely. The
+	 * editor enforces it as a constraint rather than drawing it as a guide
+	 * (D-033), since the customer cuts by hand and a name 2 mm inside the trim
+	 * gets clipped.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function editor_layout(): array {
+		list( $canvas_w, $canvas_h ) = $this->canvas_px();
+		list( $trim_w_mm, $trim_h_mm ) = $this->trim_mm();
+
+		$trim_w = Mm::to_px( $trim_w_mm, $this->dpi );
+		$trim_h = Mm::to_px( $trim_h_mm, $this->dpi );
+		$safe   = Mm::to_px( $this->safe_mm, $this->dpi );
+
+		if ( $this->is_sheet() && $this->is_round() ) {
+			$plan    = $this->sheet_plan();
+			$centres = $plan['centres_px'];
+		} else {
+			// A single piece fills its own canvas, so its centre is the middle
+			// of it — bleed included, which is why this is not trim/2.
+			$centres = array(
+				array(
+					'x' => (int) round( $canvas_w / 2 ),
+					'y' => (int) round( $canvas_h / 2 ),
+				),
+			);
+		}
+
+		$pieces = array();
+
+		foreach ( $centres as $centre ) {
+			$pieces[] = array(
+				'cx'     => (int) $centre['x'],
+				'cy'     => (int) $centre['y'],
+				'w'      => $trim_w,
+				'h'      => $trim_h,
+				'safe_w' => max( 0, $trim_w - ( 2 * $safe ) ),
+				'safe_h' => max( 0, $trim_h - ( 2 * $safe ) ),
+			);
+		}
+
+		return array(
+			'canvas' => array(
+				'w' => $canvas_w,
+				'h' => $canvas_h,
+			),
+			'dpi'    => $this->dpi,
+			'round'  => $this->is_round(),
+			'pieces' => $pieces,
+		);
+	}
+
+	/**
 	 * The safe zone as a percentage inset, for drawing the guide in CSS.
 	 */
 	public function safe_percentage(): float {

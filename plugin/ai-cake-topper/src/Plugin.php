@@ -19,6 +19,7 @@ use AiCake\Frontend\Generator;
 use AiCake\Frontend\Wizard;
 use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\GdEngine;
+use AiCake\Imaging\LayerInspector;
 use AiCake\Imaging\TextRenderer;
 use AiCake\Imaging\Watermarker;
 use AiCake\Moderation\Blocklist;
@@ -40,6 +41,7 @@ use AiCake\Rest\FileEndpoint;
 use AiCake\Rest\GenerateEndpoint;
 use AiCake\Rest\JobStatusEndpoint;
 use AiCake\Rest\RestController;
+use AiCake\Rest\TextLayerEndpoint;
 use AiCake\Rest\SessionEndpoint;
 use AiCake\Storage\OrderArchive;
 use AiCake\Storage\PrivateStorage;
@@ -203,7 +205,16 @@ class Plugin {
 				$this->moderator
 			),
 			new JobStatusEndpoint( $this->jobs, $this->designs, $this->runner, $this->dispatcher, $this->identity ),
-			new FileEndpoint( $this->designs, $this->identity, $this->settings )
+			new FileEndpoint( $this->designs, $this->identity, $this->settings ),
+			new TextLayerEndpoint(
+				$this->designs,
+				$this->identity,
+				$this->moderator,
+				$this->images,
+				new LayerInspector( $this->logger ),
+				$this->storage,
+				$this->logger
+			)
 		);
 	}
 
