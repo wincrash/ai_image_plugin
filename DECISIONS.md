@@ -1418,4 +1418,91 @@ offered for sale, but nothing depends on it now.
 
 ---
 
-<!-- Next: D-041 -->
+### D-041 · An LLM lays the text out, the browser draws it, the customer moves it
+**2026-08-03** · Ruslan proposed, agreed after discussion · **folds into wizard
+step 3** · extends D-033, does not replace it
+
+Ruslan brought a feature spec and a working Python prototype: an LLM acts as
+"design director" for text on a circular product, returning structured JSON —
+font, colour palette, decorative rings, and a list of lines each with a size, a
+placement and a stroke — which a graphics engine then renders. The prototype
+called Gemini and rendered with Pillow.
+
+**The idea is kept. The rendering half is not.**
+
+#### What was decided
+
+1. **The LLM produces a layout, not a picture.** Its JSON is the design
+   proposal: which lines, what sizes, what colours, which placements.
+2. **The browser draws it on canvas**, inside the D-033 editor — not PHP, not
+   GD, not a server round trip per change.
+3. **The customer can then move, resize and retype everything.** This was the
+   question the whole design turned on, and Ruslan's answer was yes. It settles
+   the architecture: a layout the customer edits has to live where the editing
+   happens.
+4. **Downstream is unchanged.** What crosses the wire is still D-033's PNG-32
+   with a transparent background plus the plain string. The suggestion feature
+   is invisible to `GenerateEndpoint`, the pipeline and the order record.
+5. **The suggestion is optional.** The editor must work fully with the text API
+   down or the customer ignoring it. It is a button, not a step.
+
+#### Why not render it server-side, which is what the spec proposed
+
+Four reasons, in order of weight:
+
+1. **It reinstates precisely what D-033 deletes** — arc text, auto-fit,
+   wrapping, faked outline strokes, the Lithuanian cmap gate, font bundling and
+   its licensing — and it reinstates them in **GD**, which has neither arc text
+   nor stroked text natively. Production has no Imagick and no Python; the
+   prototype's Pillow does not transfer. The LLM half is the cheap half. The
+   renderer is the expensive half and it lands on the wrong engine.
+2. **The LLM cannot measure text.** `optimal_font_size_pt` is a guess from a
+   font *name*. Whether a string at 42 pt fits an arc of radius 350 is
+   arithmetic the renderer knows exactly. The prototype shows the seam: it
+   takes the model's size, then measures the width to centre the line, and
+   never checks that the result fits. Once the measuring code exists the
+   model's number is redundant — so **its sizes are hints, clamped by real
+   measurement**, never authority.
+3. **It does not do what D-033 exists to do.** `top_arc / center_flat /
+   bottom_arc` on one circle is the five-fixed-placements model with better
+   defaults. It has no account of a sheet-sized layer carrying twelve different
+   names on twelve cupcakes.
+4. **Worker cost.** A synchronous text-API call is 500–2000 ms of a PHP worker
+   per layout — constraint #2 exactly. It would have to go through the Phase 3
+   queue, and then "make that smaller, see it" costs a poll cycle instead of a
+   canvas repaint.
+
+#### What the spec gets right, and what it costs us
+
+The one real argument for server rendering: if the server draws from a
+constrained JSON, no arbitrary bitmap ever arrives, and **D-033's colour
+proximity check becomes unnecessary**. Choosing the browser keeps that check
+mandatory. That is the price of this decision and it is worth paying — the
+check is one pass over the pixels, whereas the server renderer is arc text in
+GD forever.
+
+The JSON schema itself survives close to verbatim and is the useful part of the
+spec. It is a contract between the model and the canvas, so it can be tightened
+freely without touching PHP.
+
+#### Consequences
+
+- **One API call per suggestion, not per edit.** Cost is negligible against
+  $0.012 an image, but it is another provider in the customer path with an
+  outage mode — hence the optionality above.
+- **Pin the model to what this project has verified: `gemini-3.1-flash-lite`**
+  (free, working, used for translate and moderate). The prototype's
+  `gemini-3.6-flash` is unverified here.
+- **Lithuanian, twice.** An `uppercase` instruction must go through
+  `mb_strtoupper` / locale-aware JS, never `strtoupper`; and the fonts offered
+  in the editor need Lithuanian coverage client-side, because `Ąžuolas` as tofu
+  boxes baked into a bitmap is invisible to everything downstream (D-033).
+- **Moderation is unaffected.** The plain string still crosses the wire and
+  layers 0 and 1 still read it. A model-suggested line is customer text as far
+  as §10 is concerned.
+- D-023's open item — the decorative fonts are workmanlike — now matters more,
+  because the model will be naming them.
+
+---
+
+<!-- Next: D-042 -->

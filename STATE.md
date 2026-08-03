@@ -4,8 +4,9 @@
 **Phase:** Phases 1–7 built. **Actively building the D-035…D-039 wizard track**, not Phase 8.
 Phase 0 deferred to a later calibration step (D-018).
 
-> **A reset session picking this up:** read D-033 → D-040 in `DECISIONS.md` first, then
-> "Being built now" below. The next task is **wizard step 3, the D-033 text editor.**
+> **A reset session picking this up:** read D-033 → D-041 in `DECISIONS.md` first, then
+> "Being built now" below. The next task is **wizard step 3, the D-033 text editor —
+> now including D-041's AI layout suggestion.**
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -535,6 +536,14 @@ C:\AI_IMAGE\
 This also deletes all server-side text rendering — arc text, auto-fit, wrapping, the Lithuanian
 cmap gate — but delete nothing until the browser side works.
 
+**Inside step 3, D-041: a „Pasiūlyk dizainą" button.** `gemini-3.1-flash-lite` returns a layout
+as JSON — lines, sizes, colours, placements — and **the canvas draws it; the customer then moves
+and edits everything.** The model's font sizes are hints, clamped by real measurement, never
+authority. It is a button, not a step: the editor must work fully with the API down. Nothing
+downstream changes — the wire still carries the transparent PNG-32 plus the plain string, so
+moderation still reads what was typed. Read D-041 for why the rendering does **not** go
+server-side, which is what the original spec proposed.
+
 **2. Then step 4, the proof**, and the cart hand-off. At the cart, **derive the AI flag
 server-side** in `CartIntegration` from whether the design really has a generated image, and
 overwrite whatever was posted. A posted flag about whether money was spent cannot be trusted, and
@@ -695,6 +704,8 @@ Worth doing soon, none blocking:
   daily/monthly ceilings have never been exercised against non-zero cost.
 - **Pick the decorative fonts** (D-023). Four are bundled and verified but workmanlike; the
   coverage machinery will vet any candidate and name the exact characters a font is missing.
+  **D-041 raises the stakes** — the layout model names fonts, so the offered list is what it
+  picks from, and each needs Lithuanian coverage checked client-side.
 - **Confirm production's `memory_limit`** before go-live. Measured peak is 339 MB (D-023).
 - **Grow the blocklist from real rejections** once traffic exists — that is what the rejection
   log is for, and the admin screen now edits the list without a deploy.
