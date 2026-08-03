@@ -191,6 +191,8 @@ class DesignRepository {
 			'file_master',
 			'file_preview',
 			'file_print',
+			'order_id',
+			'order_item_id',
 			'cost_usd',
 			'error_code',
 			'error_message',

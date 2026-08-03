@@ -22,7 +22,7 @@ class Installer {
 	 * Bumped whenever the SQL below changes. Separate from the plugin version
 	 * so a plugin release with no schema change costs nothing on upgrade.
 	 */
-	public const SCHEMA_VERSION = 1;
+	public const SCHEMA_VERSION = 2;
 
 	public const SCHEMA_OPTION = 'aicake_schema_version';
 
@@ -105,6 +105,12 @@ class Installer {
 		 * purpose: dbDelta cannot compare a JSON column against its own
 		 * definition, so it emits an ALTER on every single page load. MariaDB
 		 * aliases JSON to LONGTEXT anyway, so nothing is actually lost.
+		 *
+		 * `order_id` / `order_item_id` duplicate a link that also lives in
+		 * order item meta, and they earn it: retention (§12.5) must never
+		 * delete a design belonging to an order, and answering "does an order
+		 * reference this design?" from the WooCommerce side means a query per
+		 * candidate row every time the cleanup job runs.
 		 */
 		$sql = array();
 
@@ -129,6 +135,8 @@ class Installer {
 			file_master VARCHAR(255) DEFAULT NULL,
 			file_preview VARCHAR(255) DEFAULT NULL,
 			file_print VARCHAR(255) DEFAULT NULL,
+			order_id BIGINT UNSIGNED DEFAULT NULL,
+			order_item_id BIGINT UNSIGNED DEFAULT NULL,
 			cost_usd DECIMAL(10,5) NOT NULL DEFAULT 0,
 			error_code VARCHAR(40) DEFAULT NULL,
 			error_message TEXT DEFAULT NULL,
@@ -140,7 +148,8 @@ class Installer {
 			KEY session_created (session_key, created_at),
 			KEY user_created (user_id, created_at),
 			KEY status_created (status, created_at),
-			KEY created_cost (created_at, cost_usd)
+			KEY created_cost (created_at, cost_usd),
+			KEY order_id (order_id)
 		) {$charset};";
 
 		$sql[] = "CREATE TABLE {$jobs} (

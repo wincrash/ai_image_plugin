@@ -129,6 +129,16 @@ bash tools/rest-check.sh
 ```
 
 ```bash
+# Phase 7's gate: a real order through to print files, the sidecar, the
+# failure path and reorder. Copy it where the container can see it, then run.
+cp tools/order-check.php Z:/ruslan/wordpress-test/aicake-files/ && ssh ruslan@ruslan-server 'docker exec wordpress-test-wordpress-1 wp eval-file /var/lib/aicake/order-check.php --allow-root --path=/var/www/html'
+```
+
+> **WordPress-bound verification gets committed** (D-029). Phase 3 and Phase 5 were verified
+> from scratch files that no longer exist, so their numbers cannot be reproduced. If a check is
+> worth running once it goes in `tools/`.
+
+```bash
 # Watch PHP errors as they happen
 docker compose logs -f wordpress
 ```

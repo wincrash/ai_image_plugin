@@ -55,12 +55,24 @@ class PrivateStorage {
 	 * Deliberately human-readable: browse to orders/2026/08/10432/ and the
 	 * files are there, named obviously, with no database lookup needed.
 	 *
-	 * @param int    $order_id WooCommerce order id.
-	 * @param int    $item_id  Order item id.
-	 * @param string $suffix   e.g. 'print.png'.
+	 * The month comes from the **order**, not from now. A render that is
+	 * retried after a month boundary — which is exactly what happens when a
+	 * failure is noticed on the 1st — would otherwise scatter one order's
+	 * files across two folders, and the folder is the thing a human browses.
+	 *
+	 * A suffix beginning with a dot is an extension on the item itself, so the
+	 * sidecar lands as `item-57.json` rather than `item-57-.json` (§12.2).
+	 *
+	 * @param int      $order_id   WooCommerce order id.
+	 * @param int      $item_id    Order item id.
+	 * @param string   $suffix     e.g. 'print.png', or '.json'.
+	 * @param int|null $created_ts Order creation time, defaults to now.
 	 */
-	public function order_path( int $order_id, int $item_id, string $suffix ): string {
-		return $this->settings->storage_dir() . '/orders/' . gmdate( 'Y/m' ) . '/' . $order_id . '/item-' . $item_id . '-' . $suffix;
+	public function order_path( int $order_id, int $item_id, string $suffix, ?int $created_ts = null ): string {
+		$month     = gmdate( 'Y/m', $created_ts ?? time() );
+		$separator = str_starts_with( $suffix, '.' ) ? '' : '-';
+
+		return $this->settings->storage_dir() . '/orders/' . $month . '/' . $order_id . '/item-' . $item_id . $separator . $suffix;
 	}
 
 	/**

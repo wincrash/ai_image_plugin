@@ -608,4 +608,82 @@ audience twice — there is now a `testuser` / `customer` account for the other 
 
 ---
 
-<!-- Next: D-027 -->
+### D-027 · Every print file the plugin has ever made declared two resolutions
+**2026-08-03** · corrects `PLAN.md` §9.1 · found during Phase 7
+
+`GdEngine::inject_phys()` inserted a `pHYs` chunk after IHDR without checking
+whether one was already there. It always was: this GD build — **the same
+`bundled (2.1.0 compatible)` build production reports** — writes its own `pHYs`
+declaring the image's default 96 DPI.
+
+So every print file carried two contradictory resolutions. It was malformed
+PNG, libpng warned about it on every read, and a decoder that takes the last
+chunk rather than the first saw **96 DPI on a file meant to be 300** — which is
+precisely the four-times-too-large print that §9.1 added the chunk to prevent,
+hiding inside the fix for it.
+
+`read_dpi()` reported 300 and every Phase 4 assertion passed, because it did a
+`strpos()` for `pHYs` and found ours first. Both methods now walk the chunk
+list properly: `inject_phys()` strips existing chunks before inserting, and
+`read_dpi()` cannot match the four type bytes occurring inside compressed pixel
+data.
+
+**What actually found it was a libpng warning on stderr** while making a
+thumbnail to look at — not an assertion. The lesson is the one from D-026 in a
+different key: the check that would have caught this is cheap and now exists
+(`GdEngineTest`, five cases, including that there is never more than one
+chunk), but nothing prompted anyone to write it, because the end-to-end result
+looked right.
+
+---
+
+### D-028 · A cookie without a nonce is user 0, wherever it happens
+**2026-08-03** · extends D-025 · found during Phase 7
+
+The admin order screen offers "Spausdinimo failas" as a plain `<a href>` to
+`/aicake/v1/file/{id}/print`, gated on `manage_woocommerce`. Measured against
+the live testbed as a real `shop_manager`:
+
+```
+GET /file/{id}/print                    → 404
+GET /file/{id}/print?_wpnonce=<wp_rest> → 200  image/png
+```
+
+Same mechanism as D-025: WordPress's REST cookie check only authenticates when
+a valid nonce is present, so without one the shop manager is user 0 and the
+capability test fails. A link and an `<img src>` cannot send an `X-WP-Nonce`
+header, so the nonce goes in the query string. Both URLs on that screen now
+carry one.
+
+The download button would have 404'd every single time while looking perfectly
+correct in the markup — and the markup is what an assertion would have checked.
+
+**Generalising, because this is now twice:** any of our REST endpoints reached
+by cookie alone is anonymous. That covers ordinary links, image tags, form
+posts and anything a browser issues without our JavaScript. The rule is that
+the caller supplies a nonce or the endpoint must not depend on who is asking.
+
+---
+
+### D-029 · Phase 7's verification is committed, unlike Phase 3's and Phase 5's
+**2026-08-03** · corrects `WORKFLOW.md` §7
+
+Phase 3 claimed 17 end-to-end checks and Phase 5 claimed 39 stack assertions.
+Neither script is in the repository — they were run from scratch files and
+deleted. Those numbers are now unrepeatable claims about code that has changed
+several times since.
+
+Phase 7's gate is `tools/order-check.php`: 54 assertions covering statuses,
+storage layout, the real `woocommerce_order_status_processing` trigger,
+geometry, the sidecar, idempotency, the failure path through to
+`aicake-failed`, recovery via the retry, and reorder. It runs against the
+deployed testbed with `wp eval-file` and exits non-zero on failure.
+
+Together with `tools/rest-check.sh` (D-026) that is the pattern going forward:
+**anything WordPress-bound that gets verified gets committed as a script.**
+`tests/run.php` stays for the pure-PHP units. A verification that only ever
+existed in a session transcript is not a verification.
+
+---
+
+<!-- Next: D-030 -->

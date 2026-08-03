@@ -177,6 +177,37 @@ class GdEngine {
 	}
 
 	/**
+	 * Composite one image onto another, centred on a point.
+	 *
+	 * Imposition (§3.5) is the only caller: N copies of one topper onto a sheet.
+	 * The centre, not the corner, is the anchor because that is what
+	 * `SheetLayout` computes — a grid of circle centres — and converting to
+	 * corners at every call site is where an off-by-half-a-diameter creeps in.
+	 *
+	 * Alpha blending is turned **on** for the destination during the copy, so a
+	 * masked circle's transparent corners let the sheet show through instead of
+	 * punching holes in it. It is restored afterwards, because `to_png()`
+	 * expects to be able to save the alpha channel.
+	 *
+	 * @param GdImage $canvas   Destination, modified in place.
+	 * @param GdImage $piece    Source.
+	 * @param int     $centre_x Where the centre of the piece lands.
+	 * @param int     $centre_y Where the centre of the piece lands.
+	 */
+	public function paste( GdImage $canvas, GdImage $piece, int $centre_x, int $centre_y ): void {
+		$width  = imagesx( $piece );
+		$height = imagesy( $piece );
+
+		$x = $centre_x - (int) round( $width / 2 );
+		$y = $centre_y - (int) round( $height / 2 );
+
+		imagealphablending( $canvas, true );
+		imagecopy( $canvas, $piece, $x, $y, 0, 0, $width, $height );
+		imagealphablending( $canvas, false );
+		imagesavealpha( $canvas, true );
+	}
+
+	/**
 	 * Make everything outside the inscribed circle transparent.
 	 *
 	 * The naive implementation tests every pixel: 5.9 M iterations of PHP for
@@ -367,9 +398,17 @@ class GdEngine {
 	/**
 	 * Write the physical resolution into the PNG.
 	 *
-	 * GD does not record DPI, so a print file would arrive at the printer
-	 * claiming 72 DPI and be scaled to something like four times its intended
-	 * size. The `pHYs` chunk fixes that, and it is about thirty lines (§9.1).
+	 * GD does not let you set a meaningful DPI, so a print file would arrive at
+	 * the printer claiming 72 or 96 DPI and be scaled to something like four
+	 * times its intended size. The `pHYs` chunk fixes that (§9.1).
+	 *
+	 * Any existing `pHYs` is **removed first**, and that is not tidiness. Recent
+	 * libgd writes its own chunk declaring the image's default 96 DPI, so
+	 * appending ours produced a PNG with two contradictory resolutions —
+	 * malformed, warned about by libpng, and read as 96 by any decoder that
+	 * takes the last chunk rather than the first. That is precisely the
+	 * wrong-size print this method exists to prevent, hiding inside the fix
+	 * for it.
 	 *
 	 * @param string $png PNG bytes.
 	 * @param int    $dpi Resolution.
@@ -380,6 +419,8 @@ class GdEngine {
 		if ( 0 !== strpos( $png, $signature ) ) {
 			return $png;
 		}
+
+		$png = $this->without_chunk( $png, 'pHYs' );
 
 		// Pixels per metre, which is the only unit the chunk supports.
 		$ppm = (int) round( $dpi / 0.0254 );
@@ -402,21 +443,104 @@ class GdEngine {
 	}
 
 	/**
+	 * The payload of the first chunk of a given type, or null.
+	 *
+	 * Walks the chunk list for the same reason `without_chunk()` does: a
+	 * `strpos` for the type can land inside compressed image data and report a
+	 * resolution read out of pixel noise.
+	 *
+	 * @param string $png  PNG bytes.
+	 * @param string $type Four-character chunk type.
+	 */
+	private function chunk_data( string $png, string $type ): ?string {
+		$length = strlen( $png );
+		$offset = 8;
+
+		while ( $offset + 8 <= $length ) {
+			$header = unpack( 'Nsize', substr( $png, $offset, 4 ) );
+
+			if ( ! is_array( $header ) ) {
+				return null;
+			}
+
+			$size  = (int) $header['size'];
+			$total = 12 + $size;
+			$found = substr( $png, $offset + 4, 4 );
+
+			if ( $total < 12 || $offset + $total > $length ) {
+				return null;
+			}
+
+			if ( $found === $type ) {
+				return substr( $png, $offset + 8, $size );
+			}
+
+			if ( 'IEND' === $found ) {
+				return null;
+			}
+
+			$offset += $total;
+		}
+
+		return null;
+	}
+
+	/**
+	 * A PNG with every chunk of one type removed.
+	 *
+	 * Walks the chunk list rather than searching for the type as a substring:
+	 * the four type bytes can occur inside compressed image data, and a
+	 * `str_replace` over a PNG is a corrupted file waiting to happen.
+	 *
+	 * @param string $png  PNG bytes.
+	 * @param string $type Four-character chunk type.
+	 */
+	private function without_chunk( string $png, string $type ): string {
+		$length = strlen( $png );
+		$offset = 8; // Past the signature.
+		$out    = substr( $png, 0, $offset );
+
+		while ( $offset + 8 <= $length ) {
+			$header = unpack( 'Nsize', substr( $png, $offset, 4 ) );
+
+			if ( ! is_array( $header ) ) {
+				break;
+			}
+
+			// 4 length + 4 type + data + 4 CRC.
+			$total = 12 + (int) $header['size'];
+			$found = substr( $png, $offset + 4, 4 );
+
+			// Truncated or nonsense length: stop parsing and keep the tail
+			// verbatim rather than inventing a repair.
+			if ( $total < 12 || $offset + $total > $length ) {
+				break;
+			}
+
+			if ( $found !== $type ) {
+				$out .= substr( $png, $offset, $total );
+			}
+
+			$offset += $total;
+
+			if ( 'IEND' === $found ) {
+				break;
+			}
+		}
+
+		return $out . substr( $png, $offset );
+	}
+
+	/**
 	 * Read back the DPI a PNG declares. Used by the tests and the admin panel.
 	 *
 	 * @param string $png PNG bytes.
 	 * @return int Reported DPI, or 0 when the chunk is absent.
 	 */
 	public function read_dpi( string $png ): int {
-		$position = strpos( $png, 'pHYs' );
+		$data = $this->chunk_data( $png, 'pHYs' );
 
-		if ( false === $position ) {
-			return 0;
-		}
-
-		$data = substr( $png, $position + 4, 9 );
-
-		if ( 9 !== strlen( $data ) ) {
+		if ( null === $data || 9 !== strlen( $data ) ) {
 			return 0;
 		}
 

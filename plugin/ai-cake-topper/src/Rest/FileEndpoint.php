@@ -24,18 +24,26 @@ defined( 'ABSPATH' ) || exit;
  * file reaches a browser. Two rules, both from PLAN.md §12.4 and §16:
  *
  * 1. **The master is never served.** It is the clean, unwatermarked, full-size
- *    generation. Only the preview variant is reachable here, and the mapping
- *    is a hard-coded whitelist rather than a column name taken from the URL.
+ *    generation. The mapping is a hard-coded whitelist rather than a column
+ *    name taken from the URL.
  * 2. **Ownership is verified on every request**, not just the first.
+ *
+ * The `print` variant is the shop's own download (§12.4 point 3) and carries a
+ * capability requirement rather than an ownership one. It is deliberately a
+ * separate entry with its own gate: making `owns()` return true for shop
+ * managers would have been one line, but it would also have handed them the
+ * master the moment a third variant was added.
  */
 class FileEndpoint {
 
 	/**
-	 * Variant name in the URL => column it may read. Deliberately excludes
-	 * file_master and file_print.
+	 * Variant name in the URL => the column it may read and the capability it
+	 * demands ('' meaning ownership is enough). Deliberately excludes
+	 * file_master, which is never servable to anyone.
 	 */
 	private const VARIANTS = array(
-		'preview' => 'file_preview',
+		'preview' => array( 'file_preview', '' ),
+		'print'   => array( 'file_print', 'manage_woocommerce' ),
 	);
 
 	private DesignRepository $designs;
@@ -71,13 +79,25 @@ class FileEndpoint {
 			return $not_found;
 		}
 
-		$design = $this->designs->find_by_public_id( $public_id );
+		list( $column, $capability ) = self::VARIANTS[ $variant ];
 
-		if ( null === $design || ! $this->owns( $design ) ) {
+		// 404 rather than 403 for a missing capability too: a shop's print
+		// files are not something to confirm the existence of.
+		if ( '' !== $capability && ! current_user_can( $capability ) ) {
 			return $not_found;
 		}
 
-		$path = (string) $design[ self::VARIANTS[ $variant ] ];
+		$design = $this->designs->find_by_public_id( $public_id );
+
+		if ( null === $design ) {
+			return $not_found;
+		}
+
+		if ( '' === $capability && ! $this->owns( $design ) ) {
+			return $not_found;
+		}
+
+		$path = (string) $design[ $column ];
 
 		if ( '' === $path || ! is_readable( $path ) || ! $this->inside_storage( $path ) ) {
 			return $not_found;
@@ -90,9 +110,13 @@ class FileEndpoint {
 		// through the REST serialiser to no benefit is how a worker runs out
 		// of memory.
 		if ( ! headers_sent() ) {
+			// A print file is something the shop saves and sends to a printer,
+			// so it downloads. A preview is something the customer looks at.
+			$disposition = 'print' === $variant ? 'attachment' : 'inline';
+
 			header( 'Content-Type: ' . $mime );
 			header( 'Content-Length: ' . (string) filesize( $path ) );
-			header( 'Content-Disposition: inline; filename="' . basename( $path ) . '"' );
+			header( 'Content-Disposition: ' . $disposition . '; filename="' . basename( $path ) . '"' );
 			header( 'X-Content-Type-Options: nosniff' );
 			// Private, not public: this is one customer's design.
 			header( 'Cache-Control: private, max-age=300' );

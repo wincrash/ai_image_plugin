@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AiCake;
 
 use AiCake\Admin\BlocklistPage;
+use AiCake\Admin\OrderScreen;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
@@ -21,6 +22,7 @@ use AiCake\Imaging\Watermarker;
 use AiCake\Moderation\Blocklist;
 use AiCake\Moderation\Moderator;
 use AiCake\Moderation\Sanitiser;
+use AiCake\Pipeline\FulfilPipeline;
 use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\Image\FalFluxProvider;
@@ -37,12 +39,15 @@ use AiCake\Rest\GenerateEndpoint;
 use AiCake\Rest\JobStatusEndpoint;
 use AiCake\Rest\RestController;
 use AiCake\Rest\SessionEndpoint;
+use AiCake\Storage\OrderArchive;
 use AiCake\Storage\PrivateStorage;
 use AiCake\Support\Http;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
 use AiCake\WooCommerce\CartIntegration;
+use AiCake\WooCommerce\Fulfilment;
+use AiCake\WooCommerce\OrderStatuses;
 use AiCake\WooCommerce\ProductFields;
 use AiCake\Throttle\IdentityResolver;
 use AiCake\Throttle\RateLimiter;
@@ -104,6 +109,12 @@ class Plugin {
 
 	private PreviewPipeline $previews;
 
+	private FulfilPipeline $prints;
+
+	private OrderArchive $archive;
+
+	private Fulfilment $fulfilment;
+
 	/**
 	 * Build the object graph. No hooks are registered here.
 	 */
@@ -154,6 +165,17 @@ class Plugin {
 			$this->storage,
 			$this->budget_guard,
 			$this->dispatcher,
+			$this->settings,
+			$this->logger
+		);
+
+		$this->prints  = new FulfilPipeline( $this->images, $this->text, $this->providers, $this->logger );
+		$this->archive = new OrderArchive( $this->storage, $this->designs, $this->logger );
+
+		$this->fulfilment = new Fulfilment(
+			$this->designs,
+			$this->prints,
+			$this->archive,
 			$this->settings,
 			$this->logger
 		);
@@ -238,6 +260,16 @@ class Plugin {
 			( new ProductFields() )->register();
 			( new CartIntegration( $this->designs, $this->identity ) )->register();
 			( new Generator( $this->settings, $this->fonts ) )->register();
+
+			/*
+			 * Statuses and fulfilment are registered on the frontend too. The
+			 * status transition that starts a render is fired by the payment
+			 * gateway's callback, which is not an admin request, and a status
+			 * registered only in wp-admin renders as a blank label everywhere
+			 * else — including in the customer's own order emails.
+			 */
+			( new OrderStatuses() )->register();
+			$this->fulfilment->register();
 		}
 
 		if ( is_admin() ) {
@@ -253,6 +285,10 @@ class Plugin {
 			) )->register();
 
 			( new BlocklistPage( $this->moderator ) )->register();
+
+			if ( class_exists( 'WooCommerce' ) ) {
+				( new OrderScreen( $this->designs, $this->fulfilment ) )->register();
+			}
 		}
 	}
 
@@ -432,5 +468,26 @@ class Plugin {
 	 */
 	public function previews(): PreviewPipeline {
 		return $this->previews;
+	}
+
+	/**
+	 * Master to print file.
+	 */
+	public function prints(): FulfilPipeline {
+		return $this->prints;
+	}
+
+	/**
+	 * The permanent order zone.
+	 */
+	public function archive(): OrderArchive {
+		return $this->archive;
+	}
+
+	/**
+	 * Post-payment rendering.
+	 */
+	public function fulfilment(): Fulfilment {
+		return $this->fulfilment;
 	}
 }

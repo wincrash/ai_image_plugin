@@ -1,7 +1,7 @@
 # Project state
 
-**Updated:** 2026-08-02
-**Phase:** 6 — storefront. Phase 0 deferred to a later calibration step (D-018).
+**Updated:** 2026-08-03
+**Phase:** 7 — orders and fulfilment. Phase 0 deferred to a later calibration step (D-018).
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -23,7 +23,45 @@ path is not.
 | 4 · Imaging | **Done and verified on real print output.** |
 | 5 · Moderation | **Done — all three automatable layers verified.** |
 | 6 · Storefront | **Built, rendering, and verified logged in *and* out.** Awaiting a funded provider for the success path. |
-| 7–9 | Not started |
+| 7 · Orders | **Gate met — a test order produces print files.** 54 committed assertions. |
+| 8–9 | Not started |
+
+### Phase 7 — what exists and was verified
+
+| File | What it does |
+|---|---|
+| `WooCommerce/OrderStatuses.php` | The five statuses, registered HPOS **and** legacy **and** in the dropdown |
+| `WooCommerce/Fulfilment.php` | AS job per line item, idempotency, retries, status flips, reorder |
+| `Pipeline/FulfilPipeline.php` | master → upscale → shape → text at 300 DPI → imposition → flatten → PNG |
+| `Storage/OrderArchive.php` | `sessions/` → `orders/`, DB repoint, the `.json` sidecar |
+| `Domain/PrintFile.php` | The rendered file and what it took to make it |
+| `Admin/OrderScreen.php` | Preview, gated download, retry button |
+| `tools/order-check.php` | **The gate, committed and re-runnable — 54 assertions** |
+
+Produced and inspected, not just asserted, from a real
+`woocommerce_order_status_processing` transition:
+
+- **15 cm topper** — 1843 px square, 300 DPI, 156.0 × 156.0 mm, circle-masked with arc text.
+- **24-up cupcake sheet** — 2363 × 3390 px, 200.1 × 287.0 mm, 4 × 6 evenly gutterred.
+- **The order folder** — `orders/2026/08/<id>/` with `item-N-print.png`, `-master.png`,
+  `-preview.webp` and `item-N.json`, browsable on the SMB share exactly as §12.2 promises.
+
+Also verified: the order reaches `aicake-approval` only when *every* item has a file; a second
+run does not re-render; a missing master retries three times then lands on `aicake-failed` with
+an order note and an admin email (seen in Mailpit); the retry button recovers it and lifts the
+order back out of `failed`; an ordinary sale with no design is left in `processing`; and
+"Order again" carries the design across.
+
+Two bugs found while verifying, both fixed and both the same shape — the end-to-end result
+looked correct:
+
+- **D-027: every print file declared two resolutions.** GD writes its own `pHYs` at 96 DPI and
+  we appended a second at 300. Malformed, and read as 96 by any decoder preferring the last
+  chunk — the exact wrong-size print the chunk exists to prevent. Found from a libpng warning
+  on stderr, not an assertion. Now covered by `GdEngineTest`.
+- **D-028: the admin download button 404'd every time.** A plain link sends cookies and no
+  nonce, so a shop manager is user 0 and the capability check fails. D-025's mechanism in a
+  second place.
 
 ### Phase 6 — where it actually stands
 
@@ -307,7 +345,7 @@ on that server.
 | PHP memory | **512M** (was 128M) |
 | Imagick | **Present** — but see below, we do not build against it |
 | GD | Present |
-| Accounts | `ruslan` (administrator) · `testuser` / `TestPass123` (**customer** — test the storefront as one, D-026) |
+| Accounts | `ruslan` (administrator) · `testuser` / `TestPass123` (**customer**, D-026) · `testmanager` / `TestPass123` (**shop_manager**, D-028) |
 | Mailpit | `http://100.127.55.45:8025` |
 | DB | `wp_user` / `wp_password` / `wordpress` |
 | Other plugins | WooPayments, PayPal, MailPoet, Unisend, Jetpack, Pinterest, Google Listings & Ads, WooCommerce POS |
@@ -375,12 +413,13 @@ C:\AI_IMAGE\
 ├── PLAN.md                  the design (23 sections)
 ├── WORKFLOW.md              how we work
 ├── STATE.md                 this file
-├── DECISIONS.md             append-only decision log (14 entries)
+├── DECISIONS.md             append-only decision log (29 entries)
 ├── idea.md                  original brief, superseded by PLAN.md
 ├── docs\api-evaluation.md   Phase 0 plan
 ├── infra\                   testbed Docker config — applied
 ├── tools\sync.ps1           C:\AI_IMAGE  ->  Z:\
 ├── tools\rest-check.sh      REST over real HTTP, logged out and logged in
+├── tools\order-check.php    a real order through to print files (Phase 7's gate)
 └── plugin\                  the plugin itself
 ```
 
@@ -393,12 +432,13 @@ budget still under $5.
 
 **1. Finish verifying Phase 6 end to end.** The polling path, session history strip and preview
 have not been seen working, because generation itself needs a funded provider (D-022). The
-failure path is verified through to `failed / quota`; the success path is not. This is the one
-remaining thing between here and signing off Phase 6, and money is the only blocker.
+failure path is verified through to `failed / quota`; the success path is not. **Money is the
+only blocker** — every other part of the chain, right through to a print file in `orders/`, is
+now verified with a synthetic master.
 
-**2. Then Phase 7 — orders and fulfilment** (§21, §13): custom statuses registered HPOS-correct,
-Action Scheduler fulfilment jobs, idempotency, print file storage, gated download, admin order
-screen. `FulfilPipeline` is the post-payment counterpart to the preview pipeline that now exists.
+**2. Then Phase 8 — operations** (§14): review queue, print queue, cost dashboard, cleanup cron,
+emails. The review queue is the screen §10 layer 3 makes non-negotiable, and `aicake-approval`
+orders are already piling up in a real, filterable status waiting for it.
 
 Worth doing soon, none blocking:
 
@@ -429,10 +469,17 @@ Housekeeping, not blocking:
   is actually made, not before.
 - The house style suffix must be phrased **positively** — a `flux-dev` test proved negative
   instructions are ignored: "no cake or background needed" produced exactly a cake.
-- `tools/rest-check.sh` now covers the REST layer over real HTTP, **logged out and logged in** —
-  12 assertions, the gap that let D-025 live through two phases. It was falsified before being
-  trusted: reintroducing the bug turns 5 of them red. Run it after touching `src/Rest/`,
-  `Frontend/Generator.php` or the throttle. It tests the *deployed* copy, so sync first.
+- **Three suites, all committed and all green:** `tests/run.php` (152 pure-PHP assertions),
+  `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
+  a real order end to end). The last two test the *deployed* copy, so sync first. `rest-check.sh`
+  was falsified before being trusted — reintroducing D-025 turns 5 of its 12 red.
+
+- **The plugin's logging is invisible under WP-CLI**, and so is WooCommerce's own: a
+  `wc_get_logger()->warning()` from `wp eval` reaches no file, while the same call over HTTP
+  lands in `wp-content/uploads/wc-logs/` as expected. Not chased — it did not block anything,
+  because the fulfilment checks verify files and database state rather than log lines. Worth
+  knowing before anyone debugs a fulfilment problem from the command line and concludes nothing
+  ran.
 
 ## Open items, not blocking
 

@@ -446,6 +446,19 @@ The JS prefers a printed nonce whenever one is present, including on the `/sessi
 which is what makes that call authenticate, and therefore what makes `remaining_generations`
 report the logged-in allowance (§11.3) instead of the anonymous one.
 
+### 7.2 The same rule, for everything a browser issues on its own (D-028)
+
+This is not a quirk of `/session`. **Any request to our REST routes carrying only cookies is
+user 0**, which includes every plain link, `<img src>`, form post and redirect — anything the
+browser issues without our JavaScript attaching a header.
+
+It bit a second time on the admin order screen, where the print-file download is an ordinary
+link gated on `manage_woocommerce`: a real shop manager clicking it got 404, because the
+capability check ran against user 0. Those URLs carry `?_wpnonce=` for exactly that reason.
+
+So, for any endpoint reached outside our own `fetch()` calls: **the caller supplies a nonce, or
+the endpoint must not depend on who is asking.**
+
 ---
 
 ## 8. Providers — verified 2026-08-02
@@ -605,7 +618,7 @@ Everything the product needs is achievable in GD:
 | **Arc / curved text** | **Achievable** — per-character placement with per-call rotation (§9.4) | `distortImage(ARC)`, smoother |
 | N-up imposition | `imagecopyresampled` per cell | `compositeImage` |
 | PNG output | `imagepng` | — |
-| DPI metadata | Inject the `pHYs` chunk into the PNG bytes (~30 lines) | `setImageResolution` |
+| DPI metadata | **Replace** the `pHYs` chunk in the PNG bytes — GD writes its own at 96 DPI, so inserting a second one is malformed and reads as 96 (D-027) | `setImageResolution` |
 | WebP preview | `imagewebp` (present in effectively all modern builds) | — |
 | CMYK soft proof | **Not possible without ICC** — see §9.5 | `profileImage` with an ICC profile |
 
