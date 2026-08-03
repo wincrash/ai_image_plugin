@@ -6,8 +6,11 @@ Phase 0 deferred to a later calibration step (D-018).
 
 > **A reset session picking this up:** read D-033 → D-042 in `DECISIONS.md` first, then
 > "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
-> suggestion button. The next task is step 4, the proof, and the cart hand-off** — see
-> "Next actions".
+> suggestion button, and the print path composites the text layer.**
+>
+> **Start here: Ruslan reported problems with „Pasiūlyk dizainą" and the session reset before
+> he said what they were. Ask him first.** Triage notes are at the top of "Next actions".
+> After that: step 4, the proof, and the cart hand-off.
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -516,6 +519,82 @@ C:\AI_IMAGE\
 ## Next actions
 
 **Nothing is blocked.** fal is funded and the success path is verified (D-030).
+
+### ⚠ Open bug, diagnosed not fixed: „Užrašo dydis netinka." on saving the text
+
+**Ruslan, 2026-08-03: this error appears often.** It comes from `TextLayerEndpoint`, not from the
+suggestion button — the exported layer's dimensions do not equal
+`PrintSpec::for_design( $design )->canvas_px()`.
+
+**Measured on the testbed, so the mechanism is not in doubt:**
+
+| | |
+|---|---|
+| Cupcake ⌀45 canvas | **2481 × 3331** |
+| Product `ai-paveikslelis` (id 684) | **no `_aicake_*` meta at all** |
+| So the fallback geometry is | the `PrintSpec` default, round 150 mm → **1843 × 1843** |
+
+Any design whose canvas resolves differently from the format the editor drew against produces
+exactly this error. Two ways in, and **they need telling apart before fixing** — check the
+design row's `format_type` for a failing case:
+
+1. **`format_type` is NULL → falls back to the product → 1843².** Designs are demonstrably being
+   written with NULL format; most recent NULL rows are from `rest-check.sh` and the *product
+   page* generator, which legitimately send no format. If a **wizard** design is NULL, the fault
+   is in `GenerateEndpoint`/`FormatCatalogue::find()`.
+   > Note `format_type` / `format_mm` are **not declared in the `/generate` route args**. They
+   > still arrive — `get_param()` reads unregistered body params — but that is worth tidying, and
+   > worth ruling out first.
+2. **The format was changed at step 1 after the design was generated.** *This is my main
+   suspect and it is easy to hit while exploring.* `wizard.js` never clears `state.design` when
+   `state.type` or `state.mm` change, so: generate at cupcake ⌀45 → Back → pick circle ⌀15 →
+   step 3 → the editor draws against `layouts['circle|150']` (1843²) while the design is still
+   cupcake (2481 × 3331). Save fails.
+
+**The fix is not to relax the size check** — it is the thing standing between a layer and being
+composited at the wrong scale. Two parts:
+
+- **The editor's canvas must come from the design, not from the current step-1 selection.** D-033
+  says the client must never compute piece positions; the same argument says it must not choose
+  the canvas either. Return the design's `format_type`/`format_mm` (or the layout key) alongside
+  the preview, and have `currentLayout()` read that.
+- **Changing the format after generating must invalidate the design.** This is not only about the
+  layer: the generation *aspect* is derived from the format (1:1 vs 2:3, §3.2), so an image made
+  for a cupcake is genuinely the wrong shape for an A4 sheet. Either clear `state.design` and
+  make them generate again, or refuse the change. Silently keeping it is what produced this.
+
+### ⚠ Also open, reported but not diagnosed: „Pasiūlyk dizainą" misbehaves
+
+**Ruslan, 2026-08-03, end of session: "some problems with Pasiūlyti dizainą".** No detail was
+captured before the session reset — **ask him what he saw before assuming any of the below.**
+It worked when built (a real call returned three sensible lines), so this is a regression, an
+intermittent path, or a usability problem rather than a dead feature.
+
+Triage in this order, cheapest first:
+
+1. **Read the log.** A discarded suggestion is recorded deliberately, with both strings:
+   `Layout suggestion changed the text and was discarded {"typed":…,"suggested":…}`. If that line
+   is frequent, the word-preservation check in `LayoutSuggester::clamp()` is the cause and the
+   customer just sees „Šįkart pasiūlymo nepavyko sugalvoti". **Most likely candidate.** Logs are
+   in `wp-content/uploads/wc-logs/` over HTTP — *not* under WP-CLI, where plugin logging is
+   invisible (see the note further down).
+2. **Temperature is 0.9**, chosen so pressing twice offers something different. That also means
+   the model sometimes returns a split that fails the word check where a colder one would not.
+   The fix is not simply to lower it — the check is doing its job — but the *rate* matters.
+3. **The cooldown is 3 s** (`LayoutEndpoint::MIN_INTERVAL`). Two quick presses give a 429 and
+   „Palaukite akimirką", which reads as broken rather than as throttling.
+4. **Every failure is deliberately quiet** — an unconfigured key, a refused call and a useless
+   answer all return 200 with no lines (D-041). Good for customers, poor for diagnosis: the
+   browser cannot tell those apart. Consider a distinguishing field for logged-in admins.
+5. **`arrange()` runs only on a suggestion**, not on manual edits. If the complaint is about
+   overlap *after* editing, that is why, and it is by design — re-flowing on every change would
+   undo dragging.
+
+What is known good: the endpoint, the clamp and the word check have 16 unit assertions over a
+stubbed `HttpClient` (`tests/LayoutSuggesterTest.php`), and none of them need the network. If
+those pass, the fault is in the live call, the prompt, or the browser side — not in the clamp.
+
+---
 
 **Steps 1–3 of the wizard are done** (D-033, D-041, D-042) — see "Being built now" for what
 exists and what was measured. What follows is what is left.
