@@ -514,18 +514,26 @@ Housekeeping, not blocking:
   216 × 303 mm; §3.4 says usable area is 200 × 287 and that imposition must use the usable area,
   never the paper size. A printer that cannot reach the sheet edge cannot print full-bleed
   210 × 297. Resolve in favour of the usable area when the number above is measured.
-- **The icing sheet is narrower than A4 — roughly 10–15 mm on the right must be left empty**
-  (Ruslan, 2026-08-03; approximate, needs measuring). This makes the usable region
-  **asymmetric**: it is offset left, not centred on the page. Content must therefore be centred
-  in the *usable region*, not on the sheet — centring on A4 would put artwork on the bare strip
-  and look correct in every preview. The canvas itself stays A4 page size so it still prints at
-  100% (D-033).
-  Still needed: the sheet's real width × height; whether it sits flush to the left edge; and
-  which "right" — as the image is viewed, or as the sheet feeds. If the tray feeds it rotated the
-  empty strip lands on the opposite side and every sheet is ruined.
-  Consequence to watch: usable width ~200 → ~190 mm may drop cupcakes per row from 4 to 3, i.e.
-  18 per sheet rather than 24 — and the SKU is named "24 vnt". `SheetLayout` derives the count
-  rather than trusting it, and the product screen already raises ⚠ on a mismatch, so this
-  surfaces in admin rather than in a print run.
+- **The icing sheet is shorter than A4 along the feed direction — roughly 10–15 mm at the
+  trailing end carries no icing** (Ruslan, 2026-08-03; approximate, needs measuring). Viewed
+  landscape it is the right-hand end; the printer starts at the left and runs out of icing before
+  the paper ends. In portrait terms that is the **bottom**, i.e. the long (297 mm) edge — *not*
+  the 210 mm edge.
+
+  **The existing 200 × 287 placeholder is close to right**, and decomposes neatly: 210 − 10 for
+  printer margins on the short edge, 297 − 10 for the icing shortfall on the long one. Sheets
+  rendered so far are probably about right.
+
+  **24-up is unaffected.** Six rows of ⌀45 mm need 270 mm against ~284 available, so 4 × 6 = 24
+  still fits and the "24 vnt" SKU name stands.
+
+  What matters under D-033: the loss is at **one end**, not split between both, so content must
+  be centred in the usable region offset toward the leading edge — not centred on the page.
+  Centring vertically on A4 would push the bottom row onto bare backing and look correct in every
+  preview.
+
+  Still to confirm against a real printed sheet: that the bare strip lands at the *trailing* edge
+  of the finished image. If the driver rotates 180° for the feed path the offset goes the wrong
+  way, and it is invisible until it is printed.
 - VMVT food-business registration — almost certainly already held, since the shop already sells
   edible decorations. Allergen declaration from the sheet supplier is the genuinely new item.
