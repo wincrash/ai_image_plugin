@@ -448,6 +448,14 @@ orders are already piling up in a real, filterable status waiting for it.
 (D-031) found a bug none of the 218 assertions could, because the assertions ran with privileges
 the real code does not have. That is a different kind of check and it is worth repeating.
 
+**3. Revisit abuse protection with Ruslan — a design conversation, not a task.** Raised
+2026-08-03; he wants to go through it properly rather than accept the §11 defaults. What exists
+today and is verified working: 5 free generations per session / 20 logged in, per-IP ceiling
+30/day, minimum 3 s between requests, global concurrency cap, and the budget guard's daily and
+monthly USD ceilings. §8.6's conclusion is the frame for that talk — **the dominant cost risk is
+not per-call price, it is an unthrottled endpoint being hammered.** Now that generation costs
+real money ($0.012 an image), the numbers deserve a decision rather than a default.
+
 Worth doing soon, none blocking:
 
 - **Tune the prompt suffix** against real output (D-019, confirmed on a real print in D-030):
