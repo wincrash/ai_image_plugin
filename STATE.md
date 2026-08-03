@@ -653,6 +653,34 @@ Two things done deliberately server-side:
 - **The generation aspect comes from the format, not from the client.** They are not independent
   (§3.2), and a posted aspect that disagrees produces a wrongly cropped generation at our expense.
 
+**Parked idea, Ruslan's, 2026-08-03, not scheduled: the customer uploads their own photo,**
+crops a circle out of it interactively, and gets cupcakes — with the D-033 editor on top for
+text. Possibly a separate product, possibly a branch inside this wizard; undecided.
+
+Worth knowing when it comes up:
+
+- **Most of it exists.** `SheetLayout`, `FulfilPipeline`, the order archive and the text editor
+  are all source-agnostic. What is new is an upload endpoint and a crop UI, and the crop UI is
+  the editor's canvas machinery again.
+- **The browser must send the crop rectangle, not the cropped image.** Cropping client-side
+  either throws away resolution or ships a multi-megabyte base64 blob. The server crops from the
+  original.
+- **Downscale on receipt and discard the original.** Peak memory is already 339 MB (D-023) and
+  production's limit is still unverified. A 12 MP phone photo is ~48 MB decoded in GD before any
+  canvas is allocated.
+- **It makes Phase 8's review queue a prerequisite, not a nice-to-have.** A photo product is
+  arbitrary customer bitmaps by design — the exact thing `LayerInspector` exists to refuse for
+  text — and moderation layers 0–2 are blind to it because there is no prompt to read. §10 layer
+  3 (a human sees it) becomes the only control. Ruslan reviews every image anyway, which is what
+  makes it viable, but it reorders Phase 8 ahead of it.
+- **It needs a rights confirmation at upload.** Liability moves to the customer, which is normal
+  for photo toppers, but only if they are asked.
+- **Pricing needs no new mechanism.** The €1 AI fee is already derived server-side from whether
+  a design really has a generated image, so a photo design simply does not attract it.
+
+Related: Ruslan also expects the **no-AI path** (text only, no generated image) to become its own
+product eventually. Same mechanism, and also not scheduled.
+
 **Parked idea, Ruslan's, not scheduled:** show a **live diagram of the sheet beside the size
 choice**, so the customer sees the layout rather than reading a count. He accepted the current
 view for now and wants to think about it. Worth knowing when it comes up: the machinery already
