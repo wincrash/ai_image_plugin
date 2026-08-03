@@ -8,9 +8,9 @@ Phase 0 deferred to a later calibration step (D-018).
 > "Being built now" below. **Wizard steps 1–3 are built and verified, including the D-041
 > suggestion button, and the print path composites the text layer.**
 >
-> **The wizard track is finished.** A Lithuanian prompt becomes a cart line with the right price
-> and the finished picture on it (D-043 → D-045). All server-side text rendering is deleted.
-> **Start here: Phase 8 — operations (§14). The review queue first.**
+> **The wizard track is finished** (D-043 → D-045) and **Phase 8 has started**: the review queue
+> is built, §10 layer 3 is a real screen, and `aicake-approval` orders can finally be worked
+> (D-046). **Start here: Phase 8b — the print queue.**
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
 
@@ -679,8 +679,8 @@ convenience until volume exists.
 
 | | What it is | Why now |
 |---|---|---|
-| **a. Review queue** | Large image, prompt in LT *and* EN, moderation verdict and which layer flagged it, customer, approve / reject-with-reason, keyboard shortcuts | **The only one that is non-negotiable.** §10 layer 3 is a human looking at the picture, and layers 0–2 cannot see what an image actually contains. `aicake-approval` orders are already piling up in a real, filterable status with no screen to work them. Ruslan reviews every image anyway, so this is his actual daily tool |
-| **b. Print queue** | Every approved, unprinted file; batch download as ZIP; mark as printed | The second daily tool. Today the files are browsable on the share, which works and does not scale past a few orders a day |
+| **a. Review queue** | **DONE — D-046.** Print file shown large, prompt in LT *and* EN, verdict + layer, customer, approve / reject-with-reason, J/K/A/R | §10 layer 3 is now a screen. Menu carries a waiting count; oldest first; a decision is final; rejection tells the customer and **does not refund** — that stays in WooCommerce's own form |
+| **b. Print queue** | Every approved, unprinted file; batch download as ZIP; mark as printed | **Next.** The second daily tool, and `aicake-approved` now actually fills up because the review queue moves orders into it. Today the files are browsable on the share, which works and does not scale past a few orders a day |
 | **c. Cost dashboard** | Spend by day / provider / model, generation→purchase conversion, most-rejected prompts | All of it already sits in `aicake_designs`; no new tracking. Matters more now that generation costs real money ($0.012) and `BudgetGuard`'s ceilings have never fired against non-zero cost |
 | **d. Cleanup cron** | §12.5 retention — delete unpurchased designs after N days, never one attached to an order | Storage grows with every generation, purchased or not. `order_id` on the design row exists precisely so this can be answered without a query per candidate |
 | **e. Emails** | Order-status mails carrying the design | Partly free already: the proof (D-045) is the image they should carry, and WCFF puts the sheet type and AI answer on the order itself |
@@ -974,7 +974,7 @@ Housekeeping, not blocking:
 deploys the plugin only, which has caught me out twice:
 
 ```bash
-ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check text-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
+ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check text-check review-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
 ```
 
 ```bash
@@ -983,17 +983,19 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 552 assertions:** `tests/run.php` 368,
+- **Eight suites, all committed and all green — 573 assertions:** `tests/run.php` 368,
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (59,
   a real order end to end, including a D-033 layer), `tools/wcff-check.php` (30, the money path,
   the D-044 hand-off and the D-045 thumbnail), `tools/proof-check.php` (18, printable proofs —
   also writes them), `tools/wizard-check.php` (35, steps 1–2 and the D-043 layout key),
-  `tools/text-check.php` (30, including the D-045 proof).
+  `tools/text-check.php` (30, including the D-045 proof), `tools/review-check.php` (21, the
+  D-046 review queue — both decisions, through `admin_post`, nonce and all).
   All but the first test the *deployed* copy, so sync first. Falsified rather than merely passed:
   reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 30 red
   and restoring the old product-meta gate turns 13 red; keying the wizard's layouts independently
   of `FormatCatalogue::layout_key()` turns 3 of the 35 red; serving the preview instead of the
-  proof turns the thumbnail assertion red.
+  proof turns the thumbnail assertion red; removing the review queue's re-decision guard, or
+  showing the proof instead of the print file, each turn one of the 21 red.
 
 > **A 429 in any check is the throttle, not the thing under test — and there are two of them
 > behind one message.** `aicake_session_limit` is `free_per_user`/`free_per_session`;

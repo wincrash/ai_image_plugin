@@ -1836,4 +1836,85 @@ decision, and the operator has the printer.
 
 ---
 
-<!-- Next: D-046 -->
+---
+
+### D-046 · The review queue, and why it does not issue the refund
+**2026-08-03** · Claude · Phase 8 begins · implements §10 layer 3, §14 point 3
+
+The first Phase 8 screen, and the one §10 calls non-negotiable. Layers 0–2 read
+words; this is **the only layer that sees the image**. A prompt can pass every
+text check and still produce something the shop will not print.
+
+`Admin/ReviewQueue.php`, `templates/admin/review-queue.php`, `assets/js/review.js`,
+`assets/css/review.css`, `tools/review-check.php` (21 assertions).
+
+#### It shows the print file, not the preview
+
+The preview is watermarked and 800 px. The print file is what reaches the
+printer. Reviewing the preview would approve an image nobody actually looked
+at — so the queue prefers `print`, then `proof`, then `preview`.
+
+**And the file has to exist, not merely be recorded.** A column pointing at a
+cleaned-up file renders as an `<img>` that shows nothing: an invisible broken
+image directly beside an Approve button, on the one screen whose entire job is
+looking at the picture. It now says „Failo nėra." instead.
+
+#### Rejection does not move money
+
+§10 says rejection triggers an apology email and a refund. The email is sent —
+as a customer-visible order note carrying the manager's own words, because a
+rejection nobody explained becomes a support conversation. **The refund is not
+issued automatically.**
+
+Refunding is irreversible, it can be partial, and it may need to follow a
+conversation with the customer. So the screen records the decision, tells the
+customer, and points at WooCommerce's own refund form — the tool the shop's
+bookkeeping already expects. `review-check` asserts that no refund was issued,
+so if that ever changes it is said out loud rather than discovered from a bank
+statement.
+
+#### A decision is final
+
+Only an order in `aicake-approval` can be decided. Without that, Back plus one
+click silently re-decides an order that may already have been printed or
+refunded — and the second decision would look exactly as legitimate as the
+first in the order notes. Removing the guard turns that assertion red.
+
+#### Keyboard first
+
+§14 asks for shortcuts because this gets used dozens of times a day. **J** / **K**
+move, **A** approves, **R** rejects. Two details that matter:
+
+- **R with an empty reason focuses the field** rather than sending an
+  unexplained rejection to a customer.
+- **No shortcut fires while a field has focus.** Typing „rožė" into a rejection
+  reason must not approve the order on the „r".
+
+Both proven in the browser: J/K moved between cards, R focused the reason, and
+A approved order #653 and redirected with the confirmation.
+
+#### Oldest first
+
+The customer who has waited longest is served next. A newest-first queue
+quietly strands the awkward ones — which are exactly the ones this screen
+exists for.
+
+> That ordering caught the check out first: the fixture order sat behind the
+> testbed's existing backlog, so `waiting()` legitimately did not contain it.
+> The check now pages past the backlog rather than the screen changing its
+> ordering to suit a test.
+
+#### Two things worth knowing for the rest of Phase 8
+
+- **`wp_die()` under WP-CLI exits the process**, so a check cannot observe a
+  refusal without swapping `wp_die_handler` for one that throws. Without that,
+  the bad-nonce assertion killed the run before it could report anything.
+- **Custom order statuses are not registered under WP-CLI** —
+  `get_post_status_object( 'aicake-approval' )` returns null there — yet
+  `wc_get_orders()` finds them anyway, because HPOS does not validate against
+  registered statuses. Fine here; worth remembering before trusting a
+  status-registration check from the command line.
+
+---
+
+<!-- Next: D-047 -->

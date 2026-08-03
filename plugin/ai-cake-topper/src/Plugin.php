@@ -12,6 +12,7 @@ namespace AiCake;
 use AiCake\Admin\BlocklistPage;
 use AiCake\Admin\FormatsPage;
 use AiCake\Admin\OrderScreen;
+use AiCake\Admin\ReviewQueue;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
@@ -314,6 +315,10 @@ class Plugin {
 
 			if ( class_exists( 'WooCommerce' ) ) {
 				( new OrderScreen( $this->designs, $this->fulfilment ) )->register();
+
+				// §10 layer 3. The only moderation layer that sees the image,
+				// and the screen the shop actually works from every day.
+				( new ReviewQueue( $this->designs, $this->logger ) )->register();
 			}
 		}
 	}

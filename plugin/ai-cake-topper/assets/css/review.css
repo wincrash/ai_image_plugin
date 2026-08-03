@@ -1,0 +1,166 @@
+/*
+ * The review queue.
+ *
+ * Functional layout only — this is wp-admin, which supplies the chrome. What
+ * is here is what makes the screen usable: a big picture (the whole point of
+ * layer 3), the prompt beside it rather than under it, and a visible marker for
+ * which card the keyboard is on.
+ */
+
+.aicake-review__card {
+	margin: 0 0 1.5rem;
+	padding: 1rem;
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-left: 4px solid #c3c4c7;
+	outline: none;
+}
+
+/* Which order the keyboard will act on. Without this, A and R are a gamble. */
+.aicake-review__card.is-current {
+	border-left-color: #2271b1;
+	box-shadow: 0 0 0 1px #2271b1;
+}
+
+.aicake-review__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.75rem;
+	margin-bottom: 0.75rem;
+}
+
+.aicake-review__head h2 {
+	margin: 0;
+	font-size: 1.1rem;
+}
+
+.aicake-review__meta {
+	color: #646970;
+}
+
+.aicake-review__item {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1.25rem;
+	padding: 0.75rem 0;
+	border-top: 1px solid #f0f0f1;
+}
+
+/*
+ * Large, because ten seconds of looking is the entire control (§10 layer 3).
+ * A thumbnail here would approve things nobody could see.
+ */
+.aicake-review__image img {
+	display: block;
+	max-width: 320px;
+	max-height: 420px;
+	width: auto;
+	height: auto;
+	background: #f6f7f7;
+	border: 1px solid #dcdcde;
+}
+
+.aicake-review__detail {
+	flex: 1 1 20rem;
+	min-width: 0;
+}
+
+.aicake-review__format {
+	margin: 0 0 0.5rem;
+	font-weight: 600;
+}
+
+.aicake-review__prompts {
+	margin: 0 0 0.75rem;
+}
+
+.aicake-review__prompts dt {
+	color: #646970;
+	font-size: 0.85em;
+	text-transform: uppercase;
+	letter-spacing: 0.03em;
+}
+
+.aicake-review__prompts dd {
+	margin: 0 0 0.5rem;
+	/* A long prompt must wrap rather than widen the card past the screen. */
+	overflow-wrap: anywhere;
+}
+
+.aicake-verdict {
+	display: inline-block;
+	padding: 0.1rem 0.5rem;
+	border-radius: 2px;
+	font-weight: 600;
+	text-transform: uppercase;
+	font-size: 0.8em;
+	letter-spacing: 0.03em;
+	background: #f0f0f1;
+	color: #3c434a;
+}
+
+/*
+ * `review` is the verdict that exists specifically to reach this screen (§10
+ * layer 2), so it is the one that has to catch the eye.
+ */
+.aicake-verdict--review {
+	background: #f0b849;
+	color: #1d2327;
+}
+
+.aicake-verdict--block {
+	background: #b32d2e;
+	color: #fff;
+}
+
+.aicake-verdict--allow {
+	background: #d5e5d5;
+	color: #1d2327;
+}
+
+.aicake-review__layer,
+.aicake-review__flags,
+.aicake-review__reasons {
+	color: #646970;
+}
+
+.aicake-review__flags {
+	font-weight: 600;
+}
+
+.aicake-review__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75rem;
+	margin-top: 0.75rem;
+	padding-top: 0.75rem;
+	border-top: 1px solid #f0f0f1;
+}
+
+.aicake-review__reason {
+	flex: 1 1 24rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.15rem;
+}
+
+.aicake-review__reason span {
+	color: #646970;
+	font-size: 0.85em;
+}
+
+.aicake-review__reject {
+	color: #b32d2e;
+	border-color: #b32d2e;
+}
+
+.aicake-review__missing {
+	color: #b32d2e;
+}
+
+.aicake-review__empty {
+	padding: 2rem 0;
+	font-size: 1.1rem;
+}
