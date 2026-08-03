@@ -426,9 +426,10 @@ C:\AI_IMAGE\
 ├── PLAN.md                  the design (23 sections)
 ├── WORKFLOW.md              how we work
 ├── STATE.md                 this file
-├── DECISIONS.md             append-only decision log (29 entries)
+├── DECISIONS.md             append-only decision log (34 entries)
 ├── idea.md                  original brief, superseded by PLAN.md
 ├── docs\api-evaluation.md   Phase 0 plan
+├── docs\pipeline.md         the built system: what runs where, what costs money
 ├── infra\                   testbed Docker config — applied
 ├── tools\sync.ps1           C:\AI_IMAGE  ->  Z:\
 ├── tools\rest-check.sh      REST over real HTTP, logged out and logged in
@@ -455,6 +456,22 @@ today and is verified working: 5 free generations per session / 20 logged in, pe
 monthly USD ceilings. §8.6's conclusion is the frame for that talk — **the dominant cost risk is
 not per-call price, it is an unthrottled endpoint being hammered.** Now that generation costs
 real money ($0.012 an image), the numbers deserve a decision rather than a default.
+
+### A design direction exists but is not scheduled — D-033 and D-034
+
+Two sessions' worth of design discussion, agreed in principle, **no code written**:
+
+- **D-033** — the text layer moves to the browser (transparent PNG + the plain string), the
+  print canvas becomes A4 with everything centred in the usable region, and the server draws a
+  **solid black cut line** at trim because the customer cuts the sheet. Deletes all server-side
+  text rendering. Adds one mandatory check: every non-transparent pixel in an uploaded layer must
+  be close to a colour the customer declared, or the endpoint accepts arbitrary artwork and
+  layers 0–2 are blind to it.
+- **D-034** — a multi-stage wizard rather than one crowded product page, **with real WooCommerce
+  products kept underneath it** for SEO, pricing, tax and cart. Presentation-layer change; Phase
+  6 survives almost intact.
+
+Neither is scheduled against Phase 8. Read both before starting either.
 
 Worth doing soon, none blocking:
 
@@ -514,18 +531,22 @@ Housekeeping, not blocking:
   216 × 303 mm; §3.4 says usable area is 200 × 287 and that imposition must use the usable area,
   never the paper size. A printer that cannot reach the sheet edge cannot print full-bleed
   210 × 297. Resolve in favour of the usable area when the number above is measured.
-- **The icing sheet is shorter than A4 along the feed direction — roughly 10–15 mm at the
-  trailing end carries no icing** (Ruslan, 2026-08-03; approximate, needs measuring). Viewed
+- **The icing sheet is shorter than A4 along the feed direction — 15 mm at the trailing end
+  carries no icing** (Ruslan, 2026-08-03; chosen as the working figure). Viewed
   landscape it is the right-hand end; the printer starts at the left and runs out of icing before
   the paper ends. In portrait terms that is the **bottom**, i.e. the long (297 mm) edge — *not*
   the 210 mm edge.
 
-  **The existing 200 × 287 placeholder is close to right**, and decomposes neatly: 210 − 10 for
-  printer margins on the short edge, 297 − 10 for the icing shortfall on the long one. Sheets
-  rendered so far are probably about right.
+  **At 15 mm the long usable dimension is 297 − 15 = 282 mm**, before any printer margin at the
+  leading edge. So the standing 287 placeholder is now slightly *too generous* and should become
+  ~282 (less leading-edge margin) when the printer number is measured. The short edge is
+  unaffected: 210 − printer margins, ~200.
 
-  **24-up is unaffected.** Six rows of ⌀45 mm need 270 mm against ~284 available, so 4 × 6 = 24
-  still fits and the "24 vnt" SKU name stands.
+  **24-up still fits, but the margin is thin.** Six rows of ⌀45 mm trim need 270 mm against
+  ~282 — about 2 mm of gutter per row, with adjacent bleed overlapping, which is normal since
+  you cut between them. `SheetLayout` derives the count rather than trusting it and the product
+  screen raises ⚠ on a mismatch, so this will confirm or contradict itself in admin rather than
+  in a print run. The "24 vnt" SKU name stands unless that check says otherwise.
 
   What matters under D-033: the loss is at **one end**, not split between both, so content must
   be centred in the usable region offset toward the leading edge — not centred on the page.

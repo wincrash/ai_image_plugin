@@ -924,4 +924,78 @@ just sheets. It is still a placeholder. Measure it before any of this is built.
 
 ---
 
-<!-- Next: D-034 -->
+### D-034 · A wizard, but WooCommerce products stay underneath it
+**2026-08-03** · Ruslan proposed · **open — my recommendation, not yet agreed** · follows D-033
+
+Ruslan: fitting product choice, AI generation, a text editor and add-to-cart
+into one WooCommerce product page will be hard. Proposed instead a multi-stage
+wizard — pick the product, generate an image if wanted, add text if wanted,
+confirm, then into the cart. Product *types* become choices inside the wizard,
+including "with AI image" versus "without".
+
+**I agree with the wizard, with one condition: it must not replace the
+products.** Recorded now because the session ended before this was discussed.
+
+#### Why the wizard is right
+
+**The step order is forced by geometry, and Ruslan's ordering is correct.**
+Product type must be chosen *before* generation, because the generation aspect
+ratio depends on it — 1:1 for round toppers, 2:3 for A4 (§3.2, the A4 problem).
+A wizard makes that ordering natural; a single page makes it a hidden
+dependency.
+
+Three more, in descending confidence:
+
+- **The state model already supports it.** A design row with a `public_id` and
+  a session cookie survives navigation, so the design row *is* the wizard state.
+  Nothing new to build for step-to-step persistence.
+- **§7's caching rule already fits.** Cacheable HTML plus `/session` for the
+  nonce is exactly what a multi-step page needs.
+- **It makes the text-only product nearly free** — it is the same wizard with
+  the generation step skipped, rather than a second product template.
+
+#### The condition: do not rebuild the shop inside it
+
+- **Keep real WooCommerce products.** They are what Google indexes, what
+  category pages list, and what carries price, tax and shipping class. The shop
+  has ~265 products; AI items that exist only inside a wizard have no indexable
+  URL and no product schema.
+- **The wizard resolves to a product/variation ID and hands off.** It must never
+  reimplement pricing or variation logic. `CartIntegration` already does
+  validation, ownership and the hand-off — that stays.
+- **One page with client-side steps, not N page loads.** Constraint #2: fewer
+  worker hits, and back/forward stays cheap.
+- **Steps must be addressable** (hash or query param) or the back button
+  infuriates people.
+
+#### What it does not throw away
+
+Phase 6 survives almost intact. `Frontend/Generator.php` and its template become
+a *step* rather than a page section; `ProductFields` still resolves geometry per
+SKU; `CartIntegration` is unchanged. This is a presentation-layer change, not a
+rewrite.
+
+#### Proposed steps
+
+1. **Product and size** → resolves to a real product/variation. Fixes geometry,
+   aspect and price. Show the price here and keep it visible.
+2. **Image** — AI generate (prompt chips, polling, history strip), or a plain
+   background for the text-only path.
+3. **Text** — the D-033 editor. Skippable.
+4. **Proof** — the server-rendered authoritative composite, with the cut line
+   and watermark. This is where the one server render happens, and where the
+   customer approves exactly what they will receive.
+5. **Add to cart** → ordinary WooCommerce checkout.
+
+Step 4 is the one worth insisting on: it is the cheapest defence against "that
+is not what I designed", and it is also where D-033's browser-versus-server
+fidelity gap gets closed.
+
+#### Open
+
+Whether product pages redirect into the wizard or keep embedding the generator
+as they do now. Both work; it is a merchandising call, not a technical one.
+
+---
+
+<!-- Next: D-035 -->
