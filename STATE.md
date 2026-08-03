@@ -361,7 +361,31 @@ on that server.
 | Accounts | `ruslan` (administrator) · `testuser` / `TestPass123` (**customer**, D-026) · `testmanager` / `TestPass123` (**shop_manager**, D-028) |
 | Mailpit | `http://100.127.55.45:8025` |
 | DB | `wp_user` / `wp_password` / `wordpress` |
-| Other plugins | WooPayments, PayPal, MailPoet, Unisend, Jetpack, Pinterest, Google Listings & Ads, WooCommerce POS |
+| Other plugins | **WC Fields Factory 4.1.9** (D-036), WooPayments, PayPal, MailPoet, Jetpack, Pinterest, Reddit, Snapchat, Google Listings & Ads, LithuaniaPost, YITH AJAX nav |
+
+### WC Fields Factory on the testbed — read from the database 2026-08-03
+
+Installed and active at **4.1.9**, matching production. Ruslan created one field group,
+`wccpf` post **#683 "AI_IMAGE"** (`ai_image`), carrying the live sheet types verbatim:
+
+| Field | |
+|---|---|
+| Key | `wccpf_qkKQtVWBjYfI` — **randomly generated** |
+| Type | `radio`, label „Lakšto tipas" |
+| Choices | `Krakmolo lakštas` · `Storas krakmolo lakštas` · `Cukrinis lakštas` |
+| Price rules | Cukrinis **+1.50** „Cukrinio lakšto mokestis" · Storas **+1.00** „Storo krakmolo mokestis" |
+| Flags | `order_meta: yes`, `email_meta: yes`, `visibility: yes`, `cart_editable: no` |
+
+With a €3.50 base that reproduces the live prices exactly: 3.50 / 4.50 / 5.00.
+
+Two facts that matter for the integration:
+
+- **Field keys are random**, so the plugin can never hardcode one. Any WCFF field we depend on
+  has to be resolved at runtime — by label, or by a key stored in settings and set once.
+- **The group is not yet bound to a product.** `wccpf_condition_rules` is
+  `[{"context":"product","logic":"==","endpoint":"-1"}]` — endpoint `-1`, i.e. unset. Ruslan
+  flagged this himself as a later step; it needs the consolidated AI product from D-035 to exist
+  first. Until then the group applies to nothing and no cart test will show a surcharge.
 
 ### Production — capabilities confirmed 2026-08-02
 
