@@ -1187,4 +1187,81 @@ reports it as a regression we caused.
 
 ---
 
-<!-- Next: D-037 -->
+### D-037 · Fit beats placement · text is not charged · three format types
+**2026-08-03** · Ruslan · **agreed** · closes three open items · affects `PLAN.md` §3.4, §3.5, §4.1
+
+Three answers, each of which removes work rather than adding it.
+
+#### 1. The 15 mm is fixed, and placement inside the page does not matter
+
+The bare icing strip is **15 mm at the right safe margin**, taken as settled rather than measured
+further. So:
+
+```
+long axis   297 − 15 (bare icing) − 5 (leading margin)  = 277 mm
+short axis  210 − 5 − 5                                 = 200 mm
+```
+
+More important than the number is the rule Ruslan gave with it:
+
+> **The design must fit the page, and the physical size must be exact.** How it is arranged
+> within the page is not important.
+
+That deletes a whole category of anxiety. §3.4's earlier worry — that content centred on A4
+would push the bottom row onto bare backing, and look right in every preview — stops being a
+correctness bug and becomes a non-issue, because nothing is required to be centred. What *is*
+required is that a 5 cm cupcake measures 5 cm. Size is the invariant; position is not.
+
+**But "must fit" now has teeth, and ⌀20 cm fails it.** The largest circle that fits is
+`min(277, 200) − 2 × 3 mm bleed` = **⌀194 mm**. The §3 table's 20 cm row and the Phase 6
+⌀20 cm product both assume otherwise. Either the side margins are smaller than 5 mm, or bleed is
+dropped for large circles, or the maximum offered is ⌀19 cm. **Flagged to Ruslan; unresolved.**
+
+The 4.0 cm cupcake case also drops from 35 per sheet to **30**, purely from 287 → 277. Worth
+keeping as the worked example of why counts must be derived and never typed.
+
+#### 2. No charge for text
+
+**The wizard is the customisation**, so composing text is part of the product, not an extra.
+The live `Užrašo mokestis` (+1,00 €) does not carry over to the AI product. The AI surcharge is
+the only thing the plugin adds, charged whenever a generated image was used.
+
+Which makes the whole pricing surface, per line: **base + sheet type + AI**. Three numbers, all
+of them Fields Factory's (D-036), none of them ours.
+
+#### 3. Format is three types, not a catalogue of five
+
+D-035 assumed an admin-editable list of fixed formats. Ruslan wants:
+
+| Type | Customer chooses | |
+|---|---|---|
+| **A4 visas lapas** | nothing | the whole usable area |
+| **Vienas apskritimas** | **the diameter, freely** — 20, 19, 15… | ×1 |
+| **Keksiukams** | one **predefined case showing count and diameter** | ×N |
+
+Better than what D-035 proposed, in both directions at once:
+
+- The circle becomes a **bounded continuous input** rather than three SKUs — so "I want 17 cm"
+  is answerable, and there is no list to maintain at all.
+- The cupcake cases are **generated from §3.5**, so "⌀5 cm, 20 vnt" is arithmetic. A count can
+  never disagree with the geometry, which is the misconfiguration the Phase 6 product screen
+  currently raises ⚠ for.
+
+The maximum diameter is derived from the usable area, which is what makes rule 1 enforceable at
+the point of choosing rather than at the point of printing.
+
+**Price still does not vary with format** — every one is one A4 sheet. A ⌀5 cm circle costs the
+same as a ⌀19 cm one because it costs the same to make. That is D-035's premise holding up under
+a much wider range of choices than D-035 imagined.
+
+#### Left open
+
+- ⌀20 cm versus the 194 mm ceiling, above.
+- Whether the cupcake step offers **fewer** pieces than the sheet holds — 12 at ⌀5 cm rather than
+  20. No commercial reason to (same sheet, same price), but D-033 makes per-piece text possible,
+  and someone with 12 guests may want 12 names rather than 20. Not asked yet.
+- The floor on circle diameter. Nothing stops a ⌀20 mm "circle" today.
+
+---
+
+<!-- Next: D-038 -->

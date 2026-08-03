@@ -565,39 +565,24 @@ Housekeeping, not blocking:
 
 - **Confirm GD FreeType on the live host before Phase 4** — see Production above. Not urgent,
   high confidence, three ways to check. Do not push the client to upload things to the live shop.
-- Cupcake diameter assumed 4.5 cm → 24 per A4. Confirm against what is actually sold; 5 cm
-  yields 20 and the SKU name must match.
-- **Printer usable area is a placeholder (200 × 287 mm) and D-033 makes it load-bearing.**
-  Under that design every product is centred on one A4 canvas, so this number sizes *everything*,
-  not just sheets. It is a five-minute measurement and getting it wrong ruins whole sheets.
-- **`PLAN.md` contradicts itself about A4** (D-033). The §3 table gives the A4 SKU as
-  216 × 303 mm; §3.4 says usable area is 200 × 287 and that imposition must use the usable area,
-  never the paper size. A printer that cannot reach the sheet edge cannot print full-bleed
-  210 × 297. Resolve in favour of the usable area when the number above is measured.
-- **The icing sheet is shorter than A4 along the feed direction — 15 mm at the trailing end
-  carries no icing** (Ruslan, 2026-08-03; chosen as the working figure). Viewed
-  landscape it is the right-hand end; the printer starts at the left and runs out of icing before
-  the paper ends. In portrait terms that is the **bottom**, i.e. the long (297 mm) edge — *not*
-  the 210 mm edge.
+- **⌀20 cm may not fit, and this is the one geometry question still open** (D-037). The working
+  usable area gives a largest-possible circle of `min(277, 200) − 2 × 3 mm bleed` = **⌀194 mm**.
+  `PLAN.md` §3's 20 cm row and the Phase 6 ⌀20 cm product both assume otherwise. Either the side
+  margins are under 5 mm, or bleed is dropped for large circles, or the maximum offered becomes
+  ⌀19 cm. Raised with Ruslan, not yet answered.
+- Cupcake diameter assumed 4.5 cm → 24 per A4. Under D-037 this stops mattering as a *product*
+  question — the wizard shows generated (diameter, count) pairs — but it still decides which
+  cases are worth offering.
+- The **floor** on circle diameter is undefined. Nothing stops a ⌀20 mm "circle" today.
+- Whether the cupcake step may offer **fewer** pieces than the sheet holds (12 at ⌀5 cm rather
+  than 20). Same sheet, same price, so no commercial reason — but D-033 makes per-piece text
+  possible and someone with 12 guests may want 12 names. Not asked yet.
 
-  **At 15 mm the long usable dimension is 297 − 15 = 282 mm**, before any printer margin at the
-  leading edge. So the standing 287 placeholder is now slightly *too generous* and should become
-  ~282 (less leading-edge margin) when the printer number is measured. The short edge is
-  unaffected: 210 − printer margins, ~200.
-
-  **24-up still fits, but the margin is thin.** Six rows of ⌀45 mm trim need 270 mm against
-  ~282 — about 2 mm of gutter per row, with adjacent bleed overlapping, which is normal since
-  you cut between them. `SheetLayout` derives the count rather than trusting it and the product
-  screen raises ⚠ on a mismatch, so this will confirm or contradict itself in admin rather than
-  in a print run. The "24 vnt" SKU name stands unless that check says otherwise.
-
-  What matters under D-033: the loss is at **one end**, not split between both, so content must
-  be centred in the usable region offset toward the leading edge — not centred on the page.
-  Centring vertically on A4 would push the bottom row onto bare backing and look correct in every
-  preview.
-
-  Still to confirm against a real printed sheet: that the bare strip lands at the *trailing* edge
-  of the finished image. If the driver rotates 180° for the feed path the offset goes the wrong
-  way, and it is invisible until it is printed.
+**Settled 2026-08-03 by D-037, previously open here:** the 15 mm bare-icing strip is fixed at the
+right safe margin; the usable area is **277 × 200 mm** with all four margins as admin settings;
+`PLAN.md`'s A4 self-contradiction resolves in favour of the usable area; and **placement inside
+the page does not matter** — the design must fit and the physical size must be exact, nothing is
+required to be centred. That last one also retires the "does the bare strip land at the trailing
+edge?" worry, which only mattered when content had to be offset deliberately.
 - VMVT food-business registration — almost certainly already held, since the shop already sells
   edible decorations. Allergen declaration from the sheet supplier is the genuinely new item.
