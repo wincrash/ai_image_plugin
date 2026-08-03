@@ -77,22 +77,35 @@ class EditorLayoutTest extends TestCase {
 	}
 
 	/**
-	 * The piece box is the trim size, and the safe box is inside it.
+	 * The three boxes, and which one the editor actually obeys.
 	 *
-	 * D-033 makes the safe zone a constraint rather than a guide, so these are
-	 * the numbers that decide where the editor stops letting text go.
+	 * D-042 moved the editor's limit out to the trim line. `limit_*` is a
+	 * separate field rather than an alias for `w` precisely so that moving it
+	 * again moves the editor and `tools/layer-check.php` together — if this
+	 * test ever reads `w` directly it stops protecting that.
 	 */
-	public function test_the_safe_box_is_inset_from_trim(): void {
+	public function test_the_editor_limit_is_the_trim_line(): void {
 		$spec   = FormatCatalogue::spec( FormatCatalogue::TYPE_CIRCLE, 150.0 );
 		$layout = $spec->editor_layout();
 		$piece  = $layout['pieces'][0];
 
 		$this->assert_same( Mm::to_px( 150.0 ), $piece['w'], 'the piece box is the trim diameter' );
+		$this->assert_same( $piece['w'], $piece['limit_w'], 'and the editor limit is the trim line (D-042)' );
+		$this->assert_same( $piece['h'], $piece['limit_h'], 'on both axes' );
+	}
+
+	/**
+	 * The safe box still exists, and is still smaller. Advisory now, but it is
+	 * what `layer-check` reports clearance against.
+	 */
+	public function test_the_safe_box_is_still_reported(): void {
+		$spec   = FormatCatalogue::spec( FormatCatalogue::TYPE_CIRCLE, 150.0 );
+		$piece  = $spec->editor_layout()['pieces'][0];
 
 		$expected = Mm::to_px( 150.0 ) - ( 2 * Mm::to_px( Mm::SAFE_MM ) );
 
 		$this->assert_same( $expected, $piece['safe_w'], 'the safe box is trim less the safe margin' );
-		$this->assert_true( $piece['safe_w'] < $piece['w'], 'and it is strictly smaller' );
+		$this->assert_true( $piece['safe_w'] < $piece['limit_w'], 'and it is strictly inside the limit' );
 	}
 
 	/**

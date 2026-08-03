@@ -90,15 +90,22 @@ foreach ( $layout['pieces'] as $i => $piece ) {
 	$ink  = 0;
 
 	/*
-	 * How far the worst inked pixel pushes past the safe boundary, in pixels.
+	 * How far the worst inked pixel pushes past the editor's limit, in pixels.
 	 * Negative is clearance.
 	 *
+	 * Measured against `limit_*` — the trim line since D-042 — because that is
+	 * what the editor constrains to. Auditing against a different boundary than
+	 * the one being enforced makes this report noise. The safe margin is
+	 * reported alongside as advisory, since text at the trim line is text a
+	 * wandering cut can catch.
+	 *
 	 * A round piece is measured radially, not as a bounding box: a corner can
-	 * sit inside the box and outside the circle, which is precisely where a
-	 * hand cut removes it. A rectangular piece has two different safe
-	 * dimensions and each axis is checked against its own.
+	 * sit inside the box and outside the circle, which is precisely where the
+	 * cut removes it. A rectangular piece has two dimensions and each axis is
+	 * checked against its own.
 	 */
 	$overshoot = -INF;
+	$past_safe = -INF;
 
 	for ( $y = max( 0, $piece['cy'] - $half ); $y <= min( imagesy( $image ) - 1, $piece['cy'] + $half ); $y++ ) {
 		for ( $x = max( 0, $piece['cx'] - $half ); $x <= min( imagesx( $image ) - 1, $piece['cx'] + $half ); $x++ ) {
@@ -111,11 +118,15 @@ foreach ( $layout['pieces'] as $i => $piece ) {
 			$dx = $x - $piece['cx'];
 			$dy = $y - $piece['cy'];
 
-			$past = $layout['round']
-				? sqrt( ( $dx * $dx ) + ( $dy * $dy ) ) - ( $piece['safe_w'] / 2 )
-				: max( abs( $dx ) - ( $piece['safe_w'] / 2 ), abs( $dy ) - ( $piece['safe_h'] / 2 ) );
+			if ( $layout['round'] ) {
+				$radius = sqrt( ( $dx * $dx ) + ( $dy * $dy ) );
 
-			$overshoot = max( $overshoot, $past );
+				$overshoot = max( $overshoot, $radius - ( $piece['limit_w'] / 2 ) );
+				$past_safe = max( $past_safe, $radius - ( $piece['safe_w'] / 2 ) );
+			} else {
+				$overshoot = max( $overshoot, max( abs( $dx ) - ( $piece['limit_w'] / 2 ), abs( $dy ) - ( $piece['limit_h'] / 2 ) ) );
+				$past_safe = max( $past_safe, max( abs( $dx ) - ( $piece['safe_w'] / 2 ), abs( $dy ) - ( $piece['safe_h'] / 2 ) ) );
+			}
 		}
 	}
 
@@ -132,16 +143,16 @@ foreach ( $layout['pieces'] as $i => $piece ) {
 	}
 
 	printf(
-		"  piece %-3d ink %-8d past the safe edge by %+8.1f px  %+6.2f mm   %s\n",
+		"  piece %-3d ink %-8d past the cut line by %+7.2f mm   past the 5 mm safe margin by %+6.2f mm   %s\n",
 		$i,
 		$ink,
-		$overshoot,
 		$overshoot / Mm::px_per_mm( $spec->dpi ),
-		$inside ? 'inside' : 'OUTSIDE THE SAFE ZONE'
+		$past_safe / Mm::px_per_mm( $spec->dpi ),
+		$inside ? 'inside' : 'OVER THE CUT LINE'
 	);
 }
 
 printf( "\nPieces carrying text: %s\n", array() === $inked ? 'none' : implode( ', ', $inked ) );
-printf( "%d piece(s) outside the safe zone.\n", $failures );
+printf( "%d piece(s) over the cut line.\n", $failures );
 
 exit( $failures > 0 ? 1 : 0 );

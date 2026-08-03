@@ -695,9 +695,9 @@ Measured, not assumed:
 
 - **The inspector costs 0.44 s and 40 MB** over a full 8.3 M-pixel A4 layer at 300 DPI, accept
   and worst-case reject alike. Once per design, so constraint #2 holds.
-- **The safe zone is a constraint, not a guide.** Piece 0's text was dragged +900 px and grown
-  ten times; the exported layer has its furthest pixel at 198.5 px against a 206 px safe radius.
-  It was clamped to the boundary, not left where it was put.
+- **The limit is a constraint, not a guide — and it is the cut line now (D-042).** Text dragged
+  900 px downward comes back clamped **1.17 mm inside the trim circle**, and 3.91 mm past where
+  the old 5 mm safe margin would have stopped it. Round pieces clamp radially, not per axis.
 - **The layer is exactly the print canvas** — 2481 × 3331 for a 4.5 cm cupcake sheet, matching
   `PrintSpec::canvas_px()`, which is also what `FulfilPipeline` builds.
 - **The plain string survives** as „Ąžuolas Eglė Rūta", so layers 0 and 1 still read what was
@@ -708,6 +708,11 @@ Measured, not assumed:
 > ramp, so *greyscale* art satisfies the colour rule. `MAX_COVERAGE` is what closes it, and the
 > falsification shows the two halves are independent: disabling the colour test leaves "a picture
 > is refused" green, because density catches it alone.
+
+Colours are a real picker and fonts a visual listbox showing the customer's own text in each
+face (D-042). **The font list is still the four bundled DejaVu faces** — Ruslan's call was to
+build the picker first and pick the decorative set separately. That is D-023, and it is now the
+most visible open item in the wizard.
 
 **Not yet done in step 3:** D-041's „Pasiūlyk dizainą" button. Everything it needs now exists —
 the canvas draws, `constrain()` clamps sizes by real measurement, and the palette is derived from

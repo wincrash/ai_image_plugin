@@ -227,7 +227,8 @@ aicake_check( 'a piece per cupcake', 24, count( $layout['pieces'] ) );
 aicake_check( 'matching the imposition', (int) $imposed['per_sheet'], count( $layout['pieces'] ) );
 aicake_check( 'first centre agrees with SheetLayout', (int) $imposed['centres_px'][0]['x'], $layout['pieces'][0]['cx'] );
 aicake_check( 'last centre agrees with SheetLayout', (int) $imposed['centres_px'][23]['y'], $layout['pieces'][23]['cy'] );
-aicake_check( 'the safe box is inside the trim box', true, $layout['pieces'][0]['safe_w'] < $layout['pieces'][0]['w'] );
+aicake_check( 'the editor limit is the cut line (D-042)', $layout['pieces'][0]['w'], $layout['pieces'][0]['limit_w'] );
+aicake_check( 'the safe box is still reported, inside it', true, $layout['pieces'][0]['safe_w'] < $layout['pieces'][0]['limit_w'] );
 
 echo "\nWhat it accepts\n";
 

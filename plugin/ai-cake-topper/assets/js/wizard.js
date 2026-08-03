@@ -315,8 +315,12 @@
 		picker: root.querySelector( '[data-role="piece-picker"]' ),
 		lines: root.querySelector( '[data-role="lines"]' ),
 		addLine: root.querySelector( '[data-role="add-line"]' ),
-		font: root.querySelector( '[data-role="font"]' ),
+		fontPicker: root.querySelector( '[data-role="fontpicker"]' ),
+		fontButton: root.querySelector( '[data-role="font-button"]' ),
+		fontList: root.querySelector( '[data-role="font-list"]' ),
+		fontHandle: config.fonts && config.fonts.length ? config.fonts[ 0 ].handle : '',
 		outline: root.querySelector( '[data-role="outline"]' ),
+		outlineColour: root.querySelector( '[data-role="outline-colour"]' ),
 		error: root.querySelector( '[data-role="error-3"]' ),
 		next: root.querySelector( '[data-role="next-3"]' ),
 		hint: root.querySelector( '[data-role="hint-3"]' )
@@ -326,6 +330,9 @@
 		onChange: function () {
 			renderLineControls();
 			renderPiecePicker();
+			// The font list previews the customer's own text, so it has to
+			// follow what they type.
+			renderFontChoices();
 		},
 		onError: function ( message ) {
 			if ( step3.error ) {
@@ -450,46 +457,46 @@
 
 			row.appendChild( input );
 
-			// The swatches are the colour control, not a picker: the palette
-			// the endpoint accepts is capped, and a free picker would let a
-			// customer declare their way past the check (LayerInspector).
-			var swatches = document.createElement( 'span' );
-			swatches.className = 'aicake-swatches';
+			/*
+			 * A real colour control. The endpoint caps how *many* distinct
+			 * colours a layer may declare, not which ones, so a free picker is
+			 * no weaker than a fixed swatch list — four arbitrary colours and
+			 * four chosen ones give `LayerInspector` exactly the same job.
+			 */
+			var colour = document.createElement( 'input' );
+			colour.type = 'color';
+			colour.className = 'aicake-line__colour';
+			colour.value = line.colour;
+			colour.title = config.i18n.colour;
 
-			( config.palette || [] ).forEach( function ( colour ) {
-				var swatch = document.createElement( 'button' );
-				swatch.type = 'button';
-				swatch.className = 'aicake-swatch' + ( colour.value === line.colour ? ' is-selected' : '' );
-				swatch.style.background = colour.value;
-				swatch.title = colour.label;
+			colour.addEventListener( 'input', function () {
+				var previous = line.colour;
 
-				swatch.addEventListener( 'click', function () {
-					var previous = line.colour;
+				line.colour = colour.value;
 
-					line.colour = colour.value;
-
-					if ( editor.paletteFull() ) {
-						line.colour = previous;
-
-						if ( step3.error ) {
-							step3.error.textContent = config.i18n.tooManyColours.replace( '%d', config.maxColours );
-							step3.error.hidden = false;
-						}
-
-						return;
-					}
+				// Checked after the change, because changing the only red line
+				// to blue removes red — the cap is on the colours actually in
+				// use, not on how many have ever been picked.
+				if ( editor.paletteFull() ) {
+					line.colour = previous;
+					colour.value = previous;
 
 					if ( step3.error ) {
-						step3.error.hidden = true;
+						step3.error.textContent = config.i18n.tooManyColours.replace( '%d', config.maxColours );
+						step3.error.hidden = false;
 					}
 
-					editor.changed();
-				} );
+					return;
+				}
 
-				swatches.appendChild( swatch );
+				if ( step3.error ) {
+					step3.error.hidden = true;
+				}
+
+				editor.changed();
 			} );
 
-			row.appendChild( swatches );
+			row.appendChild( colour );
 
 			var smaller = document.createElement( 'button' );
 			smaller.type = 'button';
@@ -540,17 +547,86 @@
 		}
 	}
 
+	/**
+	 * The font list, each entry drawn in the font it selects.
+	 *
+	 * Shows the customer's own text where there is any, because "Ąžuolas" in a
+	 * face is a far better basis for choosing than the face's name is — and it
+	 * is also the moment a font with no Lithuanian glyphs would become obvious.
+	 * (`FontCatalogue` refuses those already, so this is belt and braces.)
+	 */
 	function renderFontChoices() {
-		if ( ! step3.font ) {
+		if ( ! step3.fontList || ! step3.fontButton ) {
 			return;
 		}
 
-		( config.fonts || [] ).forEach( function ( font ) {
-			var option = document.createElement( 'option' );
-			option.value = font.handle;
-			option.textContent = font.label;
-			step3.font.appendChild( option );
+		var fonts = config.fonts || [];
+
+		step3.fontList.textContent = '';
+
+		fonts.forEach( function ( font ) {
+			var item = document.createElement( 'li' );
+			item.className = 'aicake-fontpicker__item' + ( font.handle === step3.fontHandle ? ' is-selected' : '' );
+			item.setAttribute( 'role', 'option' );
+			item.setAttribute( 'aria-selected', font.handle === step3.fontHandle ? 'true' : 'false' );
+			item.tabIndex = 0;
+			item.style.fontFamily = '"' + font.handle + '", sans-serif';
+			item.textContent = fontSample( font );
+
+			var choose = function () {
+				step3.fontHandle = font.handle;
+
+				if ( editor ) {
+					editor.setFont( font.handle );
+				}
+
+				closeFontList();
+				renderFontChoices();
+			};
+
+			item.addEventListener( 'click', choose );
+			item.addEventListener( 'keydown', function ( event ) {
+				if ( event.key === 'Enter' || event.key === ' ' ) {
+					event.preventDefault();
+					choose();
+				}
+			} );
+
+			step3.fontList.appendChild( item );
 		} );
+
+		var current = fonts.filter( function ( font ) {
+			return font.handle === step3.fontHandle;
+		} )[ 0 ] || fonts[ 0 ];
+
+		if ( current ) {
+			step3.fontButton.style.fontFamily = '"' + current.handle + '", sans-serif';
+			step3.fontButton.textContent = fontSample( current );
+		}
+	}
+
+	function fontSample( font ) {
+		var typed = editor ? editor.plainText().trim() : '';
+
+		return typed !== '' ? typed.slice( 0, 24 ) : font.label;
+	}
+
+	function openFontList() {
+		if ( ! step3.fontList ) {
+			return;
+		}
+
+		step3.fontList.hidden = false;
+		step3.fontButton.setAttribute( 'aria-expanded', 'true' );
+	}
+
+	function closeFontList() {
+		if ( ! step3.fontList ) {
+			return;
+		}
+
+		step3.fontList.hidden = true;
+		step3.fontButton.setAttribute( 'aria-expanded', 'false' );
 	}
 
 	/**
@@ -668,10 +744,26 @@
 		} );
 	}
 
-	if ( step3.font ) {
-		step3.font.addEventListener( 'change', function () {
-			if ( editor ) {
-				editor.setFont( step3.font.value );
+	if ( step3.fontButton ) {
+		step3.fontButton.addEventListener( 'click', function ( event ) {
+			event.stopPropagation();
+
+			if ( step3.fontList.hidden ) {
+				openFontList();
+			} else {
+				closeFontList();
+			}
+		} );
+
+		document.addEventListener( 'click', function ( event ) {
+			if ( step3.fontPicker && ! step3.fontPicker.contains( event.target ) ) {
+				closeFontList();
+			}
+		} );
+
+		document.addEventListener( 'keydown', function ( event ) {
+			if ( event.key === 'Escape' ) {
+				closeFontList();
 			}
 		} );
 	}
@@ -679,7 +771,29 @@
 	if ( step3.outline ) {
 		step3.outline.addEventListener( 'change', function () {
 			if ( editor ) {
-				editor.setOutline( step3.outline.checked );
+				editor.setOutline( step3.outline.checked, step3.outlineColour ? step3.outlineColour.value : null );
+			}
+		} );
+	}
+
+	if ( step3.outlineColour ) {
+		step3.outlineColour.addEventListener( 'input', function () {
+			if ( ! editor ) {
+				return;
+			}
+
+			var previous = editor.state().outlineColour;
+
+			editor.setOutline( step3.outline ? step3.outline.checked : true, step3.outlineColour.value );
+
+			if ( editor.paletteFull() ) {
+				step3.outlineColour.value = previous;
+				editor.setOutline( step3.outline ? step3.outline.checked : true, previous );
+
+				if ( step3.error ) {
+					step3.error.textContent = config.i18n.tooManyColours.replace( '%d', config.maxColours );
+					step3.error.hidden = false;
+				}
 			}
 		} );
 	}

@@ -444,24 +444,60 @@
 	cursor: pointer;
 }
 
-.aicake-swatches {
-	display: inline-flex;
+.aicake-line__colour {
 	flex: 0 0 auto;
-	gap: 0.2rem;
-}
-
-.aicake-swatch {
-	width: 1.35rem;
-	height: 1.35rem;
+	width: 2rem;
+	height: 2rem;
 	padding: 0;
-	border: 1px solid #8c8f94;
-	border-radius: 50%;
 	cursor: pointer;
 }
 
-.aicake-swatch.is-selected {
-	outline: 2px solid #0073aa;
-	outline-offset: 1px;
+/*
+ * A listbox, not a <select>: each entry is drawn in the font it selects, and
+ * styling <option> does nothing on most mobile browsers.
+ */
+.aicake-fontpicker {
+	position: relative;
+}
+
+.aicake-fontpicker__button {
+	display: block;
+	width: 100%;
+	min-height: 2.5rem;
+	padding: 0.35rem 0.6rem;
+	text-align: left;
+	font-size: 1.1rem;
+	cursor: pointer;
+}
+
+.aicake-fontpicker__list {
+	position: absolute;
+	z-index: 10;
+	left: 0;
+	right: 0;
+	max-height: 15rem;
+	margin: 0;
+	padding: 0;
+	overflow-y: auto;
+	list-style: none;
+	background: #fff;
+	border: 1px solid #8c8f94;
+}
+
+.aicake-fontpicker__item {
+	/* Themes put the marker on the item, not the list. Blocksy does. */
+	list-style: none;
+	padding: 0.45rem 0.6rem;
+	font-size: 1.25rem;
+	line-height: 1.3;
+	cursor: pointer;
+}
+
+.aicake-fontpicker__item.is-selected,
+.aicake-fontpicker__item:hover,
+.aicake-fontpicker__item:focus {
+	background: #f0f0f1;
+	outline: none;
 }
 
 .aicake-piece-picker {

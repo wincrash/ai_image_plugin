@@ -1505,4 +1505,71 @@ freely without touching PHP.
 
 ---
 
-<!-- Next: D-042 -->
+### D-042 · The cut line is the limit, and colours are picked not chosen from
+**2026-08-03** · Ruslan · **decided against my recommendation on the first point**
+· amends D-033
+
+Three changes to the step 3 editor after Ruslan used it.
+
+#### The editor constrains text to the trim circle, not the safe margin
+
+D-033 put the limit 5 mm inside the trim, reasoning that the customer cuts by
+hand and an inaccurate cut clips a name. Ruslan's call is that the usable area
+is worth more than that margin.
+
+**I recommended trim less ~2 mm and he chose the trim line exactly.** The
+concession is real and worth stating once: text touching the cut line is text a
+wandering cut can slice through. He owns the printer and the customers.
+
+Mechanically the limit is a **separate field** — `limit_w` / `limit_h` on
+`PrintSpec::editor_layout()` — rather than an alias for the trim box. The
+editor constrains to it and `tools/layer-check.php` audits against it, so
+moving it again is one server-side change and both follow. Auditing against a
+different boundary than the one being enforced makes the report noise.
+`safe_w` / `safe_h` stay in the payload as advisory, and `layer-check` still
+prints clearance against both.
+
+The grey dashed ring is gone with it. Two circles a few millimetres apart is
+exactly the sort of thing a customer cuts along by mistake.
+
+#### Colours come from a picker, not a fixed swatch list
+
+I had built swatches and justified them as a *control*, claiming a free picker
+would let a customer widen the declared palette until `LayerInspector` stopped
+meaning anything. **That reasoning was wrong.** The check caps how *many*
+distinct colours a layer declares, not which ones — four arbitrary colours give
+the inspector exactly the same job as four chosen ones. The cap is the whole
+control. So the picker is a real `<input type="color">`, for the fill and for
+the outline, and `MAX_COLOURS` still travels to the browser so the editor
+cannot build a layer the endpoint will refuse.
+
+#### Fonts are chosen visually
+
+A listbox rather than a `<select>`, with each entry drawn in the face it
+selects and showing **the customer's own text** where there is any. Styling
+`<option>` is unreliable in desktop browsers and does nothing at all on mobile
+ones, where the OS draws the list. Showing the typed text rather than the font
+name is also the moment a font with no Lithuanian glyphs would become obvious —
+`FontCatalogue` already refuses those, so this is belt and braces.
+
+The font *list* is still the four bundled DejaVu faces. Ruslan's call was to
+build the picker first and choose the real decorative set separately; D-023 is
+already open on exactly that.
+
+#### Two bugs this found, both from actually driving it
+
+- **A single line started above the piece centre**, because every line was
+  offset upward by 15% of the piece height regardless of how many there were.
+  Worse than cosmetic: it left the piece centre *outside* the line's own hit
+  box, so pressing the obvious place to grab a name started no drag at all.
+  First line is now dead centre and later ones stack below.
+- **My first verification of the constraint was wrong.** I reported text
+  "dragged +900 px and clamped to the boundary". The drag never grabbed
+  anything — that was the bug above — and the clamping I measured came from the
+  ten size increases in the same test. Re-run after the fix, the drag does
+  work and clamps to 1.17 mm inside the cut line. Two mechanisms in one test
+  and only one of them running looks exactly like success.
+
+---
+
+<!-- Next: D-043 -->

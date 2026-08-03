@@ -224,19 +224,34 @@ defined( 'ABSPATH' ) || exit;
 					</button>
 				</p>
 
-				<p class="aicake-field">
-					<label for="aicake-font"><?php esc_html_e( 'Šriftas', 'ai-cake-topper' ); ?></label>
-					<select id="aicake-font" data-role="font"></select>
-				</p>
+				<?php
+				/*
+				 * A listbox rather than a <select>, because the whole point is
+				 * to show each font in its own face. Styling <option> is not
+				 * reliable across browsers and does nothing at all on most
+				 * mobile ones, where the OS draws the list.
+				 */
+				?>
+				<div class="aicake-field aicake-fontpicker" data-role="fontpicker">
+					<label id="aicake-font-label"><?php esc_html_e( 'Šriftas', 'ai-cake-topper' ); ?></label>
+
+					<button type="button" class="aicake-fontpicker__button" data-role="font-button"
+						aria-haspopup="listbox" aria-expanded="false" aria-labelledby="aicake-font-label"></button>
+
+					<ul class="aicake-fontpicker__list" data-role="font-list" role="listbox"
+						aria-labelledby="aicake-font-label" hidden></ul>
+				</div>
 
 				<p class="aicake-field">
 					<label>
 						<input type="checkbox" data-role="outline" checked>
-						<?php esc_html_e( 'Tamsus kontūras (geriau matosi ant piešinio)', 'ai-cake-topper' ); ?>
+						<?php esc_html_e( 'Kontūras (geriau matosi ant piešinio)', 'ai-cake-topper' ); ?>
 					</label>
+					<input type="color" data-role="outline-colour" value="#000000"
+						aria-label="<?php esc_attr_e( 'Kontūro spalva', 'ai-cake-topper' ); ?>">
 				</p>
 
-				<p class="aicake-field__note"><?php esc_html_e( 'Užrašas turi tilpti tarp punktyrinių linijų — už jų jis bus nukirptas.', 'ai-cake-topper' ); ?></p>
+				<p class="aicake-field__note"><?php esc_html_e( 'Užrašas turi tilpti apskritime — pagal juodą liniją karpysite.', 'ai-cake-topper' ); ?></p>
 
 			</div>
 		</div>

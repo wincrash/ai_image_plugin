@@ -117,21 +117,29 @@
 		}
 
 		function defaultSize( piece ) {
-			return Math.round( piece.safe_h * 0.12 );
+			return Math.round( piece.limit_h * 0.12 );
 		}
 
 		function addLine( text ) {
 			var piece = state.layout.pieces[ state.selected ];
 			var lines = currentLines();
+			var size  = defaultSize( piece );
 
 			lines.push( {
 				text: text || '',
-				colour: config.palette && config.palette.length ? config.palette[ 0 ].value : '#ffffff',
-				size: defaultSize( piece ),
-				// Offset from the piece centre, in print pixels. Stacked so a
-				// second line does not land on top of the first.
+				colour: '#ffffff',
+				size: size,
+				/*
+				 * Offset from the piece centre, in print pixels. The first line
+				 * starts dead centre and each later one stacks below it.
+				 *
+				 * An earlier version offset even the first line upward, which
+				 * put a single line above the middle of the piece — and, worse,
+				 * left the piece centre outside the line's own hit box, so
+				 * pressing the obvious place to grab it started no drag at all.
+				 */
 				dx: 0,
-				dy: Math.round( lines.length * defaultSize( piece ) * 1.3 - piece.safe_h * 0.15 )
+				dy: Math.round( lines.length * size * 1.3 )
 			} );
 
 			changed();
@@ -211,26 +219,34 @@
 		}
 
 		/**
-		 * Push a line back inside the safe area of its piece.
+		 * Push a line back inside its piece.
 		 *
-		 * Round pieces are the interesting case: the limit on how far left a
-		 * line may sit depends on how far down it already is, because the safe
-		 * area is a circle. Clamping each axis independently against the
-		 * bounding square would let a corner poke out of the circle — which is
-		 * exactly where a hand cut takes it off.
+		 * The boundary is `limit_w` / `limit_h`, which the server sets — now
+		 * the trim line itself (D-042). Never `w` directly: the editor and
+		 * `tools/layer-check.php` both read the limit, and hardcoding the trim
+		 * here would make moving it a two-file change that silently half-lands.
+		 *
+		 * Round pieces are the interesting case: how far left a line may sit
+		 * depends on how far down it already is, because the boundary is a
+		 * circle. Clamping each axis independently against the bounding square
+		 * would let a corner poke outside the circle — which is exactly the
+		 * part the cut removes.
 		 *
 		 * @param {Object} line  The line.
 		 * @param {Object} piece Its piece.
 		 */
 		function constrain( line, piece ) {
-			var box = measure( line );
+			var limitW = piece.limit_w;
+			var limitH = piece.limit_h;
+			var box    = measure( line );
+			var floor  = limitH * MIN_RATIO;
 
 			if ( state.layout.round ) {
-				var r = piece.safe_w / 2;
+				var r = limitW / 2;
 
 				// Shrink until the line can fit across the circle at all.
-				while ( box.w / 2 > r && line.size > piece.safe_h * MIN_RATIO ) {
-					line.size = Math.max( piece.safe_h * MIN_RATIO, line.size * 0.94 );
+				while ( box.w / 2 > r && line.size > floor ) {
+					line.size = Math.max( floor, line.size * 0.94 );
 					box = measure( line );
 				}
 
@@ -247,13 +263,13 @@
 				return;
 			}
 
-			while ( box.w > piece.safe_w && line.size > piece.safe_h * MIN_RATIO ) {
-				line.size = Math.max( piece.safe_h * MIN_RATIO, line.size * 0.94 );
+			while ( box.w > limitW && line.size > floor ) {
+				line.size = Math.max( floor, line.size * 0.94 );
 				box = measure( line );
 			}
 
-			var limitX = Math.max( 0, ( piece.safe_w - box.w ) / 2 );
-			var limitY = Math.max( 0, ( piece.safe_h - box.h ) / 2 );
+			var limitX = Math.max( 0, ( limitW - box.w ) / 2 );
+			var limitY = Math.max( 0, ( limitH - box.h ) / 2 );
 
 			line.dx = Math.max( -limitX, Math.min( limitX, line.dx ) );
 			line.dy = Math.max( -limitY, Math.min( limitY, line.dy ) );
@@ -373,22 +389,15 @@
 				}
 
 				ctx.stroke();
-
-				// The safe zone, dashed. A constraint rather than a guide, but
-				// it still has to be visible or being pushed back by it looks
-				// like a bug.
-				ctx.setLineDash( [ 4, 4 ] );
-				ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-				ctx.beginPath();
-
-				if ( state.layout.round ) {
-					ctx.arc( px, py, piece.safe_w * k / 2, 0, Math.PI * 2 );
-				} else {
-					ctx.rect( px - piece.safe_w * k / 2, py - piece.safe_h * k / 2, piece.safe_w * k, piece.safe_h * k );
-				}
-
-				ctx.stroke();
 				ctx.restore();
+
+				/*
+				 * No second dashed ring. The cut line *is* the limit now
+				 * (D-042), so drawing a separate boundary would show a rule
+				 * that no longer exists — and two circles a few millimetres
+				 * apart is exactly the sort of thing a customer cuts along by
+				 * mistake.
+				 */
 
 				if ( ! state.sameForAll && index === state.selected ) {
 					ctx.save();

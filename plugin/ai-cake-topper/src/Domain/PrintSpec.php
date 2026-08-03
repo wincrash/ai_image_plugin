@@ -385,11 +385,18 @@ class PrintSpec {
 	 * Coordinates are print-file pixels. The editor scales them to whatever it
 	 * displays at; it does not re-derive them.
 	 *
-	 * `safe_w` / `safe_h` are the box text may occupy — trim less the safe
-	 * margin, and less the bleed, because the bleed is cut away entirely. The
-	 * editor enforces it as a constraint rather than drawing it as a guide
-	 * (D-033), since the customer cuts by hand and a name 2 mm inside the trim
-	 * gets clipped.
+	 * Three boxes per piece, and the distinction matters:
+	 *
+	 * - `w` / `h` — the trim size. Where the black cut line is drawn.
+	 * - `limit_w` / `limit_h` — **where the editor actually stops text.**
+	 * - `safe_w` / `safe_h` — trim less the safe margin, advisory only.
+	 *
+	 * The limit is the trim line itself (D-042, Ruslan's call). D-033 had it at
+	 * the safe margin on the reasoning that a hand cut is inaccurate; he owns
+	 * the printer and the customers and decided the usable area is worth more.
+	 * The limit is a separate field rather than an alias for `w` so that moving
+	 * it moves the editor and `tools/layer-check.php` together — the editor
+	 * constraint and the check that audits it must never be two opinions.
 	 *
 	 * @return array<string, mixed>
 	 */
@@ -419,12 +426,14 @@ class PrintSpec {
 
 		foreach ( $centres as $centre ) {
 			$pieces[] = array(
-				'cx'     => (int) $centre['x'],
-				'cy'     => (int) $centre['y'],
-				'w'      => $trim_w,
-				'h'      => $trim_h,
-				'safe_w' => max( 0, $trim_w - ( 2 * $safe ) ),
-				'safe_h' => max( 0, $trim_h - ( 2 * $safe ) ),
+				'cx'      => (int) $centre['x'],
+				'cy'      => (int) $centre['y'],
+				'w'       => $trim_w,
+				'h'       => $trim_h,
+				'limit_w' => $trim_w,
+				'limit_h' => $trim_h,
+				'safe_w'  => max( 0, $trim_w - ( 2 * $safe ) ),
+				'safe_h'  => max( 0, $trim_h - ( 2 * $safe ) ),
 			);
 		}
 

@@ -252,50 +252,6 @@ class Wizard {
 	}
 
 	/**
-	 * The colours the editor offers.
-	 *
-	 * A fixed swatch list rather than a free colour picker, and that is a
-	 * control rather than a simplification: `LayerInspector` refuses any pixel
-	 * that is not near a declared colour, and the palette it accepts is capped
-	 * at four. Offering an arbitrary picker would let a customer declare their
-	 * way toward a palette wide enough for the check to stop meaning anything.
-	 *
-	 * @return array<int, array<string, string>>
-	 */
-	public function palette(): array {
-		return array(
-			array(
-				'value' => '#ffffff',
-				'label' => __( 'Balta', 'ai-cake-topper' ),
-			),
-			array(
-				'value' => '#000000',
-				'label' => __( 'Juoda', 'ai-cake-topper' ),
-			),
-			array(
-				'value' => '#c62828',
-				'label' => __( 'Raudona', 'ai-cake-topper' ),
-			),
-			array(
-				'value' => '#1565c0',
-				'label' => __( 'Mėlyna', 'ai-cake-topper' ),
-			),
-			array(
-				'value' => '#2e7d32',
-				'label' => __( 'Žalia', 'ai-cake-topper' ),
-			),
-			array(
-				'value' => '#ad1457',
-				'label' => __( 'Rožinė', 'ai-cake-topper' ),
-			),
-			array(
-				'value' => '#f9a825',
-				'label' => __( 'Auksinė', 'ai-cake-topper' ),
-			),
-		);
-	}
-
-	/**
 	 * The sheet types and what each adds, read from Fields Factory.
 	 *
 	 * @return array<int, array<string, mixed>>
@@ -405,10 +361,14 @@ class Wizard {
 				'prices'    => $this->prices( $product ),
 				'layouts'   => $this->layouts(),
 				'fonts'     => $this->fonts(),
-				'palette'   => $this->palette(),
-				// LayerInspector's own cap, sent rather than duplicated: the
-				// editor must not let a customer build a layer the endpoint
-				// will then refuse.
+				/*
+				 * The colour control is a real picker, not a swatch list. The
+				 * check the endpoint runs caps how *many* distinct colours a
+				 * layer declares, not which ones — four arbitrary colours give
+				 * `LayerInspector` exactly the same job as four chosen ones —
+				 * so the cap is the whole control and it is sent rather than
+				 * duplicated, or the editor builds layers the endpoint refuses.
+				 */
 				'maxColours' => LayerInspector::MAX_COLOURS,
 				'usable'    => array(
 					'w' => SheetLayout::USABLE_WIDTH_MM,
@@ -442,7 +402,8 @@ class Wizard {
 					'textSaved'  => __( 'Užrašas išsaugotas.', 'ai-cake-topper' ),
 					'textFailed' => __( 'Nepavyko išsaugoti užrašo. Bandykite dar kartą.', 'ai-cake-topper' ),
 					'tooManyColours' => __( 'Per daug spalvų. Galima rinktis iki %d.', 'ai-cake-topper' ),
-					'safeZone'   => __( 'Užrašas turi tilpti tarp punktyrinių linijų — už jų jis bus nukirptas.', 'ai-cake-topper' ),
+					'colour'     => __( 'Spalva', 'ai-cake-topper' ),
+					'safeZone'   => __( 'Užrašas turi tilpti apskritime — pagal juodą liniją karpysite.', 'ai-cake-topper' ),
 					/*
 					 * Rotating text, because 5–15 s of a bare spinner reads as
 					 * broken (§15). The wording tracks the real pipeline
