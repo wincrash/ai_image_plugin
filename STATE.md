@@ -9,10 +9,16 @@
 
 ## Where we are
 
-Phases 1–6 are built. Everything up to the storefront is verified on the testbed, most of it
-against live APIs. The one thing not yet seen working is a **successful** generation end to end,
-because the image provider is out of credit (D-022) — the failure path is verified, the success
-path is not.
+Phases 1–7 are built, and the chain runs from a paid order all the way to a print file in
+`orders/`. Everything is verified on the testbed, most of it against live APIs.
+
+**One link is unverified, and money is the only reason.** A *successful* generation has never
+been seen end to end, because both image providers are out of credit (D-022 — re-probed
+2026-08-03: Replicate `402`, fal `403 Exhausted balance`). The failure path is verified through
+to a terminal `quota` failure; the success path is not. Phase 7 was built and tested against a
+**synthetic master**, which exercises every step after "an image exists on disk".
+
+So: ~$5 at fal.ai closes Phase 6's gate and retires the last unknown.
 
 | Phase | Status |
 |---|---|

@@ -1264,7 +1264,8 @@ ai-cake-topper/
 │   │   ├── Design.php  DesignRepository.php
 │   │   ├── Job.php     JobRepository.php      atomic claim lives here
 │   │   ├── PrintSpec.php        shape, size, bleed, copies, sheet — read from variation meta
-│   │   └── TextSpec.php         text, font, colour, placement, arc
+│   │   ├── TextSpec.php         text, font, colour, placement, arc
+│   │   └── PrintFile.php        a rendered print file and what it took to make it
 │   │
 │   ├── Providers/
 │   │   ├── ImageProvider.php  UpscaleProvider.php  TextProvider.php     (interfaces)
@@ -1306,7 +1307,8 @@ ai-cake-topper/
 │   │
 │   ├── Storage/
 │   │   ├── PrivateStorage.php   unguessable paths, write, delete, orphan sweep
-│   │   └── FileGateway.php      capability-checked delivery endpoint
+│   │   └── OrderArchive.php     sessions/ → orders/, DB repoint, the .json sidecar
+│   │                            (delivery is Rest/FileEndpoint.php, not a separate gateway)
 │   │
 │   ├── Rest/
 │   │   ├── RestController.php   route registration
