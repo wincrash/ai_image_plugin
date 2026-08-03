@@ -1264,4 +1264,77 @@ a much wider range of choices than D-035 imagined.
 
 ---
 
-<!-- Next: D-038 -->
+### D-038 · Hardcode the choices, derive the arrangement
+**2026-08-03** · Ruslan proposed hardcoding · **partly agreed, partly my recommendation** ·
+refines D-037
+
+Ruslan: both circle and cupcake sizes become **predefined combobox selections** — circles
+20 cm → 10 cm in 1 cm steps, cupcakes a fixed list — "so you can just hardcode the arrangement
+on A4. I think it will be simple and less errors?"
+
+#### Agreed: the choices are a fixed list, not a free input
+
+This replaces D-037's continuous diameter input. A combobox of 11 circle sizes is better than a
+number field: no ⌀17.5 cm, no unit confusion, no floor to define (which D-037 left open), and
+every offered size can be reviewed once and trusted.
+
+#### Not agreed: hardcoding the arrangement
+
+The instinct is right — fewer moving parts, inspectable. But the arrangement is the wrong half
+to freeze, for one reason:
+
+**A hardcoded layout encodes the usable area implicitly, and the usable area is still not
+measured.** The moment a margin changes, every hardcoded table is silently wrong — and wrong in
+the only way that cannot be caught on screen, because the file still looks correct and only the
+printed sheet disagrees. That is D-027's failure mode reached by a third route.
+
+This is not hypothetical. **We watched it happen an hour ago**: the ⌀4.0 cm cupcake case went
+from 35 per sheet to 30, purely because the usable long axis went 287 → 277 (D-037). Had 35 been
+a hardcoded constant, the plugin would have imposed 35 circles onto a sheet that holds 30, and
+the first anyone would know is a ruined print run.
+
+Against that, hardcoding saves nothing that is currently costing anything: `SheetLayout` exists,
+is pure, and is covered by Phase 4's unit tests. Freezing its output means deleting tested code
+and hand-maintaining ~15 position tables.
+
+#### The synthesis
+
+- **Choices hardcoded** — an explicit list of offered sizes, exactly as Ruslan wants.
+- **Arrangement derived** — `SheetLayout` computes cols/rows/positions from the size and the
+  measured usable area, as it already does.
+- **Plus an admin screen that renders every offered size's derived layout on one page**, so all
+  ~15 can be eyeballed at once. That is the real thing hardcoding was buying — inspectability —
+  and this way it re-derives instead of going stale when a margin is corrected.
+
+#### Finding: ⌀20 cm does not fit, and it is arithmetic, not a setting
+
+Ruslan's range starts at 20 cm. It cannot:
+
+```
+⌀200 mm + 2 × 3 mm bleed = 206 mm
+A4 short edge             = 210 mm
+→ side margins must be ≤ 2 mm per side
+```
+
+2 mm side margins are optimistic for any inkjet. So ⌀20 cm fits **only with bleed dropped
+entirely**, at ~1.6 mm clearance a side — and a hand-cut circle with no bleed shows white edges
+on exactly the failure D-033's bleed exists to prevent. **The list realistically starts at
+⌀19 cm.** Ruslan's call; raised twice now, not yet answered.
+
+#### Open: how many pieces a "single circle" yields
+
+Ruslan wrote "1 circle inside A4 (or 2 circles if fit)". At ⌀10 cm **four** fit (2 × 2), not two.
+So there is no natural stopping point at 2, and the rule has to be stated:
+
+- *as many as fit* — makes "single circle" and "cupcakes" literally the same mechanism with
+  different lists, which is the simplest code and the most customer value at zero cost; **but**
+- the existing catalogue prices by count — `Lakštas, 1 vnt.` and `Lakštas, 12 vnt.` are separate
+  products at different prices — so "always as many as fit" is inconsistent with how the rest of
+  the shop is sold.
+
+Either way the wizard must **state the count it is giving**. A cap, if wanted, is a per-size
+setting rather than a rule in code.
+
+---
+
+<!-- Next: D-039 -->

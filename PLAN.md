@@ -233,13 +233,20 @@ catalogue of SKUs but **three format types** (D-037):
 | Type | What the customer chooses | Geometry |
 |---|---|---|
 | **A4 visas lapas** | nothing | rect, the whole usable area |
-| **Vienas apskritimas** | the diameter, freely — 19 cm, 15 cm, 12 cm… | round, ⌀ as entered, ×1 |
+| **Vienas apskritimas** | a diameter from a fixed list — 19…10 cm in 1 cm steps | round, ×N as fits |
 | **Keksiukams** | one predefined case showing **count and diameter** | round, ⌀ as listed, ×N |
 
-The circle diameter is a **continuous input**, bounded: minimum a sane floor, maximum derived
-from the usable area (§3.4 — ⌀194 mm at the working numbers). The cupcake cases are **generated
-from §3.5**, not typed, so "⌀5 cm, 20 vnt" is arithmetic rather than a maintained list, and the
-count can never disagree with the geometry.
+Both are **comboboxes over a hardcoded list of offered sizes** (D-038) — no free numeric input,
+so there is no ⌀17.5 cm and no floor to define.
+
+**The list is hardcoded; the arrangement is not** (D-038). `SheetLayout` derives cols, rows and
+positions from the chosen size and the measured usable area, so "⌀5 cm, 20 vnt" is arithmetic
+rather than a maintained table and a count can never disagree with the geometry. Freezing
+positions would encode the usable area implicitly, and it is still not measured — the ⌀4.0 cm
+case already moved from 35 per sheet to 30 when the long axis went 287 → 277.
+
+An admin screen renders every offered size's derived layout on one page, so all of them can be
+reviewed at once without any of them going stale.
 
 > **Format is a property of the design, not of the product.**
 
