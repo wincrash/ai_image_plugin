@@ -1104,4 +1104,87 @@ is unaffected.
 
 ---
 
-<!-- Next: D-036 -->
+### D-036 · The shop already prices this way — WC Fields Factory, not variations
+**2026-08-03** · observed on the live site · **withdraws the variation half of D-035** ·
+the format-catalogue half of D-035 stands
+
+D-035 was written without looking at the live shop. Ruslan then showed me a real
+cart. **Sheet type is not a variation and never was.**
+
+#### What is actually running
+
+`lakstas-zuvis-1-vnt` is a **simple** product — no `variations_form`, no
+`data-product_variations` in the markup. Base price €3.50. Everything else is
+**WC Fields Factory 4.1.9** (`wccpf_*` fields): `wccpf_urasas` (caption),
+`wccpf_spalva` (caption colour), `wccpf_maketuotojas_parinks_spalva` (designer
+picks the colour, or the customer does) and `wccpf_lakto_tipas` (sheet type).
+
+The cart line, copied verbatim:
+
+```
+Lakštas "Žuvis", 1 vnt.
+  Užrašas:                  testas
+  Užrašo spalva:            #aa0e0e
+  Spalvos parinkimas:       jusu_spalva
+  Lakšto tipas:             Cukrinis lakštas
+  Užrašo mokestis:          1,00 €
+  Cukrinio lakšto mokestis: 1,50 €
+                            6,00 €
+```
+
+3,50 + 1,00 + 1,50 = 6,00. So the plugin **already** does, in production, on
+~2500 products, every mechanical thing D-035 proposed building:
+
+- a per-**line** price adjustment, not a cart-level fee — the same cart holds a
+  second line of the same product at plain €3.50 × 3;
+- each surcharge shown as its **own labelled row** under the line, which D-035
+  called out as necessary or "the cart shows €6.00 with no explanation";
+- the labels already in Lithuanian, already the shop's voice.
+
+It also confirms Ruslan's figures from the other direction: 3,50 + 1,50 = 5,00
+is exactly the icing-sheet price he quoted.
+
+#### What follows
+
+1. **The plugin owns no pricing at all.** Not variations, not a settings field,
+   not `set_price()`, not `add_fee()`. D-035's "AI surcharge in
+   `aicake_settings`" is withdrawn. **AI generation becomes one more Fields
+   Factory field with a price rule** — the same shape as `Užrašo mokestis`,
+   which already exists and already charges €1.00.
+2. **Ruslan edits every price where he edits them today**, in the Fields Factory
+   rules. This was his actual question and the answer is now "nothing changes".
+   No new admin screen, and no second pricing mechanism to drift against the
+   first.
+3. **Customers already pay €1.00 for a caption** (`Užrašo mokestis`). That is
+   not a hypothetical price point — it is revenue the shop takes today, for
+   work a human currently does. D-033's browser text editor automates exactly
+   that field, including its "maketuotojas parinks spalvą" escape hatch.
+4. D-035's **format catalogue and design-row geometry stand unchanged.** Nothing
+   observed here touches them, and one simple product suits them better than the
+   variable product D-035 assumed.
+
+#### The integration risk, and it is the whole risk
+
+The wizard must set a Fields Factory field **programmatically** — the customer
+never sees "AI paveikslėlis? taip/ne" as a form control, it is implied by having
+generated an image — and that field must still fire its price rule and still
+render on the cart line and the order.
+
+Unknown, and the reason to install WCFF on the testbed: whether a hidden or
+programmatically-populated `wccpf_*` field prices and displays like a chosen
+one. If it does not, the fallback is our own line adjustment, which works but
+reintroduces the second mechanism this decision exists to avoid.
+
+**Install the same version, 4.1.9.** Pricing behaviour is exactly the kind of
+thing that differs between the wordpress.org build and a licensed one, and a
+testbed that disagrees with production here is worse than no testbed.
+
+#### Also worth noting
+
+The cart renders the colour as a raw hex `#aa0e0e` and the choice as a raw slug
+`jusu_spalva`. Cosmetic, pre-existing, not ours — recorded only so nobody later
+reports it as a regression we caused.
+
+---
+
+<!-- Next: D-037 -->

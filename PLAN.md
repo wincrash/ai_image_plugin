@@ -181,17 +181,26 @@ fights every theme and extension for no benefit.
 physical thing, at the same cost to produce. Ten products for one product is ten things to keep
 in sync.
 
-**Sheet type is the variation axis** — the one thing that genuinely changes price and material:
+**A simple product, priced the way the shop already prices everything** (D-036). Not a variable
+product — the live site does not use variations for this. Base price plus **WC Fields Factory**
+fields carrying named surcharges onto the line item:
 
 ```
-Product: Valgomas paveikslėlis (AI)
-  └── Variation: Vaflinis popierius (wafer)          €3.50
-  └── Variation: Storas vaflinis (thick wafer)       €4.50
-  └── Variation: Cukrinis lapas (icing sheet)        €5.00
+Lakštas … — 3,50 €
+  Lakšto tipas:  Krakmolo lakštas (0.3–0.4 mm)      +0,00 €
+                 Storas krakmolo lakštas (0.6 mm)   +1,00 €
+                 Cukrinis lakštas (0.6 mm)          +1,50 €
+  Užrašo mokestis                                   +1,00 €   ← already live
+  AI paveikslėlio mokestis                          +1,00 €   ← the one we add
 ```
 
 Sheet type changes price and print notes but **not** shape, size or aspect ratio, so it never
 invalidates a generated design.
+
+**The plugin owns no pricing.** No variations, no settings field, no `set_price()`, no
+`add_fee()`. Fields Factory already applies surcharges per line and already renders each one as
+its own labelled row on the cart and the order — which is the whole mechanism, in production, on
+~2500 products. Prices are edited where they are edited today.
 
 **Format — shape, size, copies — is a wizard choice, recorded on the design row**, resolved from
 an admin-editable format catalogue in the plugin:
@@ -212,14 +221,10 @@ The "geometry must be known before generation" requirement that drove the old mo
 the aspect ratio differs (1:1 round, 2:3 for A4, §3.2). The wizard satisfies it by fixing format
 at step 1, before anything is generated (D-034). It does not need separate products.
 
-**Pricing lives in two places, deliberately** (D-035):
-
-- **Base prices are ordinary variation prices, edited in the product.** That is where
-  WooCommerce, tax, reports and coupons already read from. The plugin does not reimplement it.
-- **The AI surcharge (+€1.00) is one number in the plugin settings**, applied per line via
-  `woocommerce_before_calculate_totals` → `set_price()`, with item meta stating why. It is not a
-  second variation axis: as an axis it doubles the variations and every base price change then
-  has to be made twice. Entered on the same tax basis as product prices.
+The open risk is that the wizard must set the AI field **programmatically** — the customer never
+sees a "did you use AI?" control, it is implied by having generated an image — and it must still
+fire its price rule and render on the line. Verify against **WCFF 4.1.9 specifically** before
+relying on it (D-036).
 
 Shipping does not enter this model at all — default methods, independent of size and product.
 

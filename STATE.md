@@ -472,19 +472,25 @@ Three sessions' worth of design discussion, agreed in principle, **no code writt
   products kept underneath it** for SEO, pricing, tax and cart. Presentation-layer change; Phase
   6 survives almost intact.
 
-- **D-035** — **one AI product, not ten.** Sheet type becomes the variation axis (wafer €3.50,
-  thick wafer €4.50, icing €5.00); format — shape, size, copies — leaves product meta and becomes
-  a wizard choice recorded on the design, from an admin-editable format catalogue. AI generation
-  adds a flat **€1.00** from a single plugin setting, applied per line, never as a second
-  variation axis. Base prices stay ordinary Woo variation prices. **Supersedes `PLAN.md` §4.1**,
-  which is now rewritten. Reworks `ProductFields`, `PrintSpec` and `CartIntegration`; Phase 7 is
-  unaffected. Provisional — Ruslan re-reviews once he can see the whole product.
+- **D-035** — **one AI product, not ten.** Format — shape, size, copies — leaves product meta
+  and becomes a wizard choice recorded on the design row, from an admin-editable format
+  catalogue. Adding a size becomes a table row, not a new product. **Supersedes `PLAN.md` §4.1.**
+  Reworks `ProductFields`, `PrintSpec` and `CartIntegration`; Phase 7 is unaffected. *Its pricing
+  half is withdrawn by D-036.*
+- **D-036** — **the plugin owns no pricing.** Observed on the live cart: the shop uses a
+  **simple** product plus **WC Fields Factory 4.1.9** surcharge fields, not variations. Base
+  €3.50, `Cukrinio lakšto mokestis +1,50 €`, `Užrašo mokestis +1,00 €` — each already rendered
+  as its own labelled row on the line. So AI generation is one more WCFF field with a price
+  rule, and Ruslan edits prices exactly where he does today.
 
 None is scheduled against Phase 8. Read all three before starting any.
 
-Not yet inspected: the **Fields Factory** plugin already live on the shop, which carries the three
-sheet types today. If it holds the selection and its price adjustment on the line item reliably,
-variations may not be needed at all. Slug and testbed presence unknown.
+**Next concrete step for this thread: install WC Fields Factory 4.1.9 on the testbed** — the same
+build as production, not the wordpress.org one, because pricing behaviour is where those differ.
+The one thing to verify is whether a **programmatically set** `wccpf_*` field still fires its
+price rule and still renders on the cart line and the order. The wizard cannot ask "did you use
+AI?" — it is implied. If that does not work, the fallback is our own line adjustment, which
+reintroduces the second pricing mechanism D-036 exists to avoid.
 
 Worth doing soon, none blocking:
 
