@@ -677,7 +677,48 @@ engine's session hook, so seeing it proves the adapter still drives the engine.
 > nothing while §10 still writes the row to inspect. Disabling the derivation on the deployed copy
 > turns that assertion red; restoring it turns it green.
 
-**Step 5 next:** the D-033 text editor, then the proof step. The AI flag must be derived
+**Step 5 done: the D-033 text editor.** Proven in a real browser on a real fal
+generation, not a simulation: format → prompt → preview → step 3, three *different* names on
+three of twenty-four cupcakes, saved, and the stored print-resolution layer measured.
+
+| File | What it does |
+|---|---|
+| `Imaging/LayerInspector.php` | The colour + density gate on customer bitmaps |
+| `Domain/TextLayer.php` | The bitmap, the plain string, the declared colours |
+| `Domain/PrintSpec.php` | Gains `canvas_px()` and `editor_layout()` — one source for the print canvas |
+| `Rest/TextLayerEndpoint.php` | `POST /text-layer` — ownership, moderation, size, pixels |
+| `assets/js/editor.js` | The canvas editor: drag, per-piece text, safe-zone constraint, export |
+| `tools/text-check.php` | **24 assertions, falsified twice** |
+| `tools/layer-check.php` | Diagnostic: is a stored layer inside its safe zones? |
+
+Measured, not assumed:
+
+- **The inspector costs 0.44 s and 40 MB** over a full 8.3 M-pixel A4 layer at 300 DPI, accept
+  and worst-case reject alike. Once per design, so constraint #2 holds.
+- **The safe zone is a constraint, not a guide.** Piece 0's text was dragged +900 px and grown
+  ten times; the exported layer has its furthest pixel at 198.5 px against a 206 px safe radius.
+  It was clamped to the boundary, not left where it was put.
+- **The layer is exactly the print canvas** — 2481 × 3331 for a 4.5 cm cupcake sheet, matching
+  `PrintSpec::canvas_px()`, which is also what `FulfilPipeline` builds.
+- **The plain string survives** as „Ąžuolas Eglė Rūta", so layers 0 and 1 still read what was
+  typed even though it is a bitmap.
+
+> **The colour check concedes one thing, deliberately.** Allowing blends between declared colours
+> — which a stroke over a fill genuinely produces — means black plus white admits the whole grey
+> ramp, so *greyscale* art satisfies the colour rule. `MAX_COVERAGE` is what closes it, and the
+> falsification shows the two halves are independent: disabling the colour test leaves "a picture
+> is refused" green, because density catches it alone.
+
+**Not yet done in step 3:** D-041's „Pasiūlyk dizainą" button. Everything it needs now exists —
+the canvas draws, `constrain()` clamps sizes by real measurement, and the palette is derived from
+what is drawn. See D-041.
+
+**Still to delete:** all server-side text rendering — `TextRenderer`, arc text, auto-fit,
+wrapping, the cmap gate, `TextSpec`. D-033 says delete nothing until the browser side works. It
+now works; deleting is a deliberate separate commit, and `FulfilPipeline` must composite the
+stored layer first.
+
+**Step 6 next:** the proof step (step 4), then the cart hand-off. The AI flag must be derived
 server-side in `CartIntegration` from whether the design really has a generated image — a posted
 flag about whether money was spent cannot be trusted, and hiding the field is not a control.
 
@@ -735,14 +776,19 @@ Housekeeping, not blocking:
 deploys the plugin only, which has caught me out twice:
 
 ```bash
-ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
+ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check text-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
 ```
 
 ```bash
 bash tools/rest-check.sh
 ```
 
-- **Six suites, all committed and all green — 350 assertions:** `tests/run.php` (220 pure-PHP),
+Add `text-check` to the loop above; `layer-check.php` is a diagnostic, not a gate, and takes a
+design id (or picks the newest layer).
+
+- **Seven suites, all committed and all green — 454 assertions:** `tests/run.php` is now 300
+  (was 220 — `LayerInspectorTest` and `EditorLayoutTest`), and `tools/text-check.php` adds 24.
+  The older list, for reference: `tests/run.php` (220 pure-PHP),
   `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (54,
   a real order end to end), `tools/wcff-check.php` (18, the money path), `tools/proof-check.php`
   (18, printable proofs — also writes them), `tools/wizard-check.php` (28, steps 1–2). All but the first test the *deployed* copy, so sync

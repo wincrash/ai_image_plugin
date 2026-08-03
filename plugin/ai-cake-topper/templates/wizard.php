@@ -179,18 +179,94 @@ defined( 'ABSPATH' ) || exit;
 
 	</section>
 
-	<?php
-	/*
-	 * Steps 3–4 are placeholders until their own commits. They exist now so
-	 * the progress rail is honest about how many steps there are — a wizard
-	 * that grows extra steps as you go is the thing customers abandon.
-	 */
-	?>
 	<section class="aicake-wizard__step" data-step="3" hidden>
+
 		<h2 class="aicake-wizard__heading"><?php esc_html_e( 'Užrašas', 'ai-cake-topper' ); ?></h2>
-		<p><?php esc_html_e( 'Šis žingsnis dar ruošiamas.', 'ai-cake-topper' ); ?></p>
+
+		<?php
+		/*
+		 * D-033: the text is composed here, in the browser, over the
+		 * watermarked preview. No PHP worker is touched while editing, and
+		 * what eventually crosses the wire is a transparent PNG the size of
+		 * the whole print file plus the plain string.
+		 */
+		?>
+		<p class="aicake-field__note"><?php esc_html_e( 'Užrašas nebūtinas — galite tęsti ir be jo.', 'ai-cake-topper' ); ?></p>
+
+		<div class="aicake-editor">
+			<div class="aicake-editor__stage">
+				<canvas data-role="editor-canvas" class="aicake-editor__canvas"></canvas>
+			</div>
+
+			<div class="aicake-editor__controls">
+
+				<?php
+				/*
+				 * Only shown for a multi-piece format. D-033's headline case is
+				 * twelve cupcakes with twelve different names, which is
+				 * impossible if text is baked in before imposition — and
+				 * meaningless on a single topper.
+				 */
+				?>
+				<p class="aicake-field" data-role="pieces-field" hidden>
+					<label>
+						<input type="checkbox" data-role="same-for-all" checked>
+						<?php esc_html_e( 'Toks pat užrašas ant visų', 'ai-cake-topper' ); ?>
+					</label>
+					<span class="aicake-piece-picker" data-role="piece-picker" hidden></span>
+				</p>
+
+				<div class="aicake-lines" data-role="lines"></div>
+
+				<p class="aicake-actions">
+					<button type="button" class="button aicake-add-line" data-role="add-line">
+						<?php esc_html_e( 'Pridėti eilutę', 'ai-cake-topper' ); ?>
+					</button>
+				</p>
+
+				<p class="aicake-field">
+					<label for="aicake-font"><?php esc_html_e( 'Šriftas', 'ai-cake-topper' ); ?></label>
+					<select id="aicake-font" data-role="font"></select>
+				</p>
+
+				<p class="aicake-field">
+					<label>
+						<input type="checkbox" data-role="outline" checked>
+						<?php esc_html_e( 'Tamsus kontūras (geriau matosi ant piešinio)', 'ai-cake-topper' ); ?>
+					</label>
+				</p>
+
+				<p class="aicake-field__note"><?php esc_html_e( 'Užrašas turi tilpti tarp punktyrinių linijų — už jų jis bus nukirptas.', 'ai-cake-topper' ); ?></p>
+
+			</div>
+		</div>
+
+		<div class="aicake-error" data-role="error-3" role="alert" hidden></div>
+
 		<p class="aicake-actions">
 			<button type="button" class="button aicake-back" data-role="back-3">
+				<?php esc_html_e( 'Atgal', 'ai-cake-topper' ); ?>
+			</button>
+			<button type="button" class="button aicake-next" data-role="next-3">
+				<?php esc_html_e( 'Toliau', 'ai-cake-topper' ); ?>
+			</button>
+			<span class="aicake-hint" data-role="hint-3" role="status"></span>
+		</p>
+
+	</section>
+
+	<?php
+	/*
+	 * Step 4 is a placeholder until its own commit. It exists now so the
+	 * progress rail is honest about how many steps there are — a wizard that
+	 * grows extra steps as you go is the thing customers abandon.
+	 */
+	?>
+	<section class="aicake-wizard__step" data-step="4" hidden>
+		<h2 class="aicake-wizard__heading"><?php esc_html_e( 'Peržiūra', 'ai-cake-topper' ); ?></h2>
+		<p><?php esc_html_e( 'Šis žingsnis dar ruošiamas.', 'ai-cake-topper' ); ?></p>
+		<p class="aicake-actions">
+			<button type="button" class="button aicake-back" data-role="back-4">
 				<?php esc_html_e( 'Atgal', 'ai-cake-topper' ); ?>
 			</button>
 		</p>

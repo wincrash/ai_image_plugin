@@ -48,7 +48,7 @@ function aicake_check( string $label, $expect, $actual ): void {
 
 $plugin = AiCake\Plugin::instance();
 $fields = new FieldsFactory();
-$wizard = new Wizard( $plugin->settings(), $fields );
+$wizard = new Wizard( $plugin->settings(), $fields, $plugin->logger() );
 
 /* ------------------------------------------------------------------ page */
 

@@ -10,8 +10,11 @@ declare( strict_types=1 );
 namespace AiCake\Frontend;
 
 use AiCake\Domain\FormatCatalogue;
+use AiCake\Imaging\FontCatalogue;
+use AiCake\Imaging\LayerInspector;
 use AiCake\Imaging\SheetLayout;
 use AiCake\Rest\RestController;
+use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\WooCommerce\FieldsFactory;
 use WC_Product;
@@ -54,13 +57,17 @@ class Wizard {
 
 	private FieldsFactory $fields;
 
+	private Logger $logger;
+
 	/**
 	 * @param Settings      $settings Configuration.
 	 * @param FieldsFactory $fields   Fields Factory reader.
+	 * @param Logger        $logger   Logging, for the font catalogue.
 	 */
-	public function __construct( Settings $settings, FieldsFactory $fields ) {
+	public function __construct( Settings $settings, FieldsFactory $fields, Logger $logger ) {
 		$this->settings = $settings;
 		$this->fields   = $fields;
+		$this->logger   = $logger;
 	}
 
 	/**
@@ -183,6 +190,112 @@ class Wizard {
 	}
 
 	/**
+	 * Where every piece sits, for every format on offer.
+	 *
+	 * D-033: the client must never compute piece positions itself, or text
+	 * lands across a gutter and looks right in the editor while being wrong on
+	 * paper. So these come from `SheetLayout` through `PrintSpec`, precomputed
+	 * for each format the same way prices are — the browser looks the answer up
+	 * rather than deriving it.
+	 *
+	 * All of them ship at once rather than being fetched when the format is
+	 * chosen. It is about 100 pieces of six integers in total, which is cheaper
+	 * than the round trip and means step 3 opens instantly.
+	 *
+	 * @return array<string, array<string, mixed>>
+	 */
+	public function layouts(): array {
+		$layouts = array();
+
+		foreach ( FormatCatalogue::offerable() as $option ) {
+			$type = (string) $option['type'];
+			$mm   = (float) $option['diameter_mm'];
+			$spec = FormatCatalogue::spec( $type, $mm );
+
+			if ( null === $spec ) {
+				continue;
+			}
+
+			$layouts[ $type . '|' . $mm ] = $spec->editor_layout();
+		}
+
+		return $layouts;
+	}
+
+	/**
+	 * Fonts the editor may offer.
+	 *
+	 * The Lithuanian coverage gate applies to the browser too, and matters more
+	 * there: D-033 puts the glyphs into a bitmap, so `Ąžuolas` rendered as tofu
+	 * boxes is baked in and nothing downstream can catch it. `FontCatalogue`
+	 * already refuses a font that cannot spell Lithuanian; this is the same list
+	 * with URLs attached.
+	 *
+	 * Self-hosted, never the Google CDN — an EU shop hotlinking it is a GDPR
+	 * problem, not just a latency one (D-033).
+	 *
+	 * @return array<int, array<string, string>>
+	 */
+	public function fonts(): array {
+		$catalogue = new FontCatalogue( $this->logger );
+		$fonts     = array();
+
+		foreach ( $catalogue->usable() as $font ) {
+			$fonts[] = array(
+				'handle' => (string) $font['handle'],
+				'label'  => (string) $font['label'],
+				'url'    => AICAKE_URL . 'fonts/' . basename( (string) $font['path'] ),
+			);
+		}
+
+		return $fonts;
+	}
+
+	/**
+	 * The colours the editor offers.
+	 *
+	 * A fixed swatch list rather than a free colour picker, and that is a
+	 * control rather than a simplification: `LayerInspector` refuses any pixel
+	 * that is not near a declared colour, and the palette it accepts is capped
+	 * at four. Offering an arbitrary picker would let a customer declare their
+	 * way toward a palette wide enough for the check to stop meaning anything.
+	 *
+	 * @return array<int, array<string, string>>
+	 */
+	public function palette(): array {
+		return array(
+			array(
+				'value' => '#ffffff',
+				'label' => __( 'Balta', 'ai-cake-topper' ),
+			),
+			array(
+				'value' => '#000000',
+				'label' => __( 'Juoda', 'ai-cake-topper' ),
+			),
+			array(
+				'value' => '#c62828',
+				'label' => __( 'Raudona', 'ai-cake-topper' ),
+			),
+			array(
+				'value' => '#1565c0',
+				'label' => __( 'Mėlyna', 'ai-cake-topper' ),
+			),
+			array(
+				'value' => '#2e7d32',
+				'label' => __( 'Žalia', 'ai-cake-topper' ),
+			),
+			array(
+				'value' => '#ad1457',
+				'label' => __( 'Rožinė', 'ai-cake-topper' ),
+			),
+			array(
+				'value' => '#f9a825',
+				'label' => __( 'Auksinė', 'ai-cake-topper' ),
+			),
+		);
+	}
+
+	/**
 	 * The sheet types and what each adds, read from Fields Factory.
 	 *
 	 * @return array<int, array<string, mixed>>
@@ -269,7 +382,14 @@ class Wizard {
 		// contract and D-025's nonce rules exist once, for both the wizard and
 		// the product-page generator.
 		wp_enqueue_script( 'aicake-generation', AICAKE_URL . 'assets/js/generation.js', array(), $this->asset_version( 'assets/js/generation.js' ), true );
-		wp_enqueue_script( 'aicake-wizard', AICAKE_URL . 'assets/js/wizard.js', array( 'aicake-generation' ), $this->asset_version( 'assets/js/wizard.js' ), true );
+		wp_enqueue_script( 'aicake-editor', AICAKE_URL . 'assets/js/editor.js', array(), $this->asset_version( 'assets/js/editor.js' ), true );
+		wp_enqueue_script(
+			'aicake-wizard',
+			AICAKE_URL . 'assets/js/wizard.js',
+			array( 'aicake-generation', 'aicake-editor' ),
+			$this->asset_version( 'assets/js/wizard.js' ),
+			true
+		);
 
 		wp_localize_script(
 			'aicake-wizard',
@@ -283,6 +403,13 @@ class Wizard {
 				'formats'   => $this->formats(),
 				'sheets'    => $this->sheet_types(),
 				'prices'    => $this->prices( $product ),
+				'layouts'   => $this->layouts(),
+				'fonts'     => $this->fonts(),
+				'palette'   => $this->palette(),
+				// LayerInspector's own cap, sent rather than duplicated: the
+				// editor must not let a customer build a layer the endpoint
+				// will then refuse.
+				'maxColours' => LayerInspector::MAX_COLOURS,
 				'usable'    => array(
 					'w' => SheetLayout::USABLE_WIDTH_MM,
 					'h' => SheetLayout::USABLE_HEIGHT_MM,
@@ -305,6 +432,17 @@ class Wizard {
 					'reload'     => __( 'Sesija pasibaigė. Atnaujinkite puslapį.', 'ai-cake-topper' ),
 					'queued'     => __( 'Eilėje: %d', 'ai-cake-topper' ),
 					'reselect'   => __( 'Pasirinkti šį piešinį', 'ai-cake-topper' ),
+					/* Step 3 — the text editor. */
+					'addLine'    => __( 'Pridėti eilutę', 'ai-cake-topper' ),
+					'removeLine' => __( 'Pašalinti', 'ai-cake-topper' ),
+					'piece'      => __( 'Gabalėlis %d', 'ai-cake-topper' ),
+					'allPieces'  => __( 'Toks pat užrašas ant visų', 'ai-cake-topper' ),
+					'noText'     => __( 'Be užrašo', 'ai-cake-topper' ),
+					'savingText' => __( 'Išsaugome užrašą…', 'ai-cake-topper' ),
+					'textSaved'  => __( 'Užrašas išsaugotas.', 'ai-cake-topper' ),
+					'textFailed' => __( 'Nepavyko išsaugoti užrašo. Bandykite dar kartą.', 'ai-cake-topper' ),
+					'tooManyColours' => __( 'Per daug spalvų. Galima rinktis iki %d.', 'ai-cake-topper' ),
+					'safeZone'   => __( 'Užrašas turi tilpti tarp punktyrinių linijų — už jų jis bus nukirptas.', 'ai-cake-topper' ),
 					/*
 					 * Rotating text, because 5–15 s of a bare spinner reads as
 					 * broken (§15). The wording tracks the real pipeline

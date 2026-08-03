@@ -383,3 +383,100 @@
 	border-left: 3px solid #d63638;
 	background: #fcf0f1;
 }
+
+/* ------------------------------------------------------------------ step 3 */
+
+/*
+ * Functional only. The testbed runs an older Blocksy child and live has many
+ * small modifications, so cosmetics happen at ship time (Ruslan, 2026-08-03).
+ * What is here is the minimum for a control to be visible and clickable — the
+ * canvas needing a width to scale against, and the swatches needing a size to
+ * be a hit target at all.
+ */
+
+.aicake-editor {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 1rem;
+	align-items: flex-start;
+}
+
+.aicake-editor__stage {
+	flex: 1 1 320px;
+	min-width: 260px;
+}
+
+/*
+ * The canvas sizes its backing store from this width, so it has to be a real
+ * layout width rather than the intrinsic 300px a canvas defaults to.
+ */
+.aicake-editor__canvas {
+	display: block;
+	width: 100%;
+	background: #f4f4f6;
+	touch-action: none;
+	cursor: move;
+}
+
+.aicake-editor__controls {
+	flex: 1 1 260px;
+	min-width: 240px;
+}
+
+.aicake-line {
+	display: flex;
+	align-items: center;
+	gap: 0.35rem;
+	margin-bottom: 0.5rem;
+}
+
+.aicake-line__text {
+	flex: 1 1 auto;
+	min-width: 6rem;
+}
+
+.aicake-line__size,
+.aicake-line__remove {
+	flex: 0 0 auto;
+	min-width: 2rem;
+	min-height: 2rem;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.aicake-swatches {
+	display: inline-flex;
+	flex: 0 0 auto;
+	gap: 0.2rem;
+}
+
+.aicake-swatch {
+	width: 1.35rem;
+	height: 1.35rem;
+	padding: 0;
+	border: 1px solid #8c8f94;
+	border-radius: 50%;
+	cursor: pointer;
+}
+
+.aicake-swatch.is-selected {
+	outline: 2px solid #0073aa;
+	outline-offset: 1px;
+}
+
+.aicake-piece-picker {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 0.25rem;
+	margin-left: 0.5rem;
+}
+
+.aicake-piece {
+	min-width: 1.9rem;
+	min-height: 1.9rem;
+	cursor: pointer;
+}
+
+.aicake-piece.is-selected {
+	outline: 2px solid #0073aa;
+}

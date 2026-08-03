@@ -274,7 +274,7 @@ class Plugin {
 			( new ProductFields() )->register();
 			( new CartIntegration( $this->designs, $this->identity ) )->register();
 			( new Generator( $this->settings, $this->fonts ) )->register();
-			( new Wizard( $this->settings, new FieldsFactory() ) )->register();
+			( new Wizard( $this->settings, new FieldsFactory(), $this->logger ) )->register();
 
 			/*
 			 * Statuses and fulfilment are registered on the frontend too. The
