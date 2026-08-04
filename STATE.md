@@ -2,14 +2,20 @@
 
 **Updated:** 2026-08-04
 **Phase:** Phases 1–7 built. **The wizard track is finished** (D-033 → D-045). **Phase 8 is
-almost entirely cut** — Ruslan deleted the review queue and four of the five screens (D-047).
-Phase 0 deferred to a later calibration step (D-018).
+almost entirely cut** — Ruslan deleted the review queue and four of the five screens (D-047),
+then the background worker as well (D-048). Phase 0 deferred to a later calibration step (D-018).
 
-> **A reset session picking this up:** read D-033 → D-045, then **D-047**, which reverses D-046
-> and is the one that changes how you should think about this project. The wizard runs end to
-> end — a Lithuanian prompt becomes a cart line at the right price with the finished picture on
-> it — and all server-side text rendering is deleted.
+> **A reset session picking this up:** read D-033 → D-045, then **D-047 and D-048**, which
+> between them reverse D-046 and §13.4 and are what changes how you should think about this
+> project. The wizard runs end to end — a Lithuanian prompt becomes a cart line at the right
+> price with the finished picture on it — all server-side text rendering is deleted, and from the
+> shop's side the whole plugin is now **a thumbnail and a download button on the order**.
 > **Start here: the retention cleanup job, the last thing Phase 8 has left.**
+
+> **The shape of the system after D-048, in one line.** Customer designs in the wizard → orders
+> → Ruslan moves the order by hand exactly as he always has → he presses **Atsisiųsti
+> spausdinimui** on the order and gets the A4 file, rendered on the spot in ~1 s. No statuses, no
+> queue, no notes, no emails to anyone.
 
 > **⚠ The scope rule this project keeps re-learning, now in its strongest form (D-047).**
 >
@@ -72,11 +78,11 @@ nothing** — WC Fields Factory does.
 
 | File | What it does |
 |---|---|
-| `WooCommerce/Fulfilment.php` | AS job per line item, idempotency, retries, private notes, reorder |
+| `WooCommerce/Fulfilment.php` | **`ensure_print_file()`** — render on demand, idempotent, reorder carry-over (D-048) |
 | `Pipeline/FulfilPipeline.php` | master → upscale → shape → text at 300 DPI → imposition → flatten → PNG |
 | `Storage/OrderArchive.php` | `sessions/` → `orders/`, DB repoint, the `.json` sidecar |
 | `Domain/PrintFile.php` | The rendered file and what it took to make it |
-| `Admin/OrderScreen.php` | Preview, gated download, retry button |
+| `Admin/OrderScreen.php` | **The only screen the shop uses** — thumbnail + „Atsisiųsti spausdinimui", which renders if needed |
 | `tools/order-check.php` | **The gate, committed and re-runnable — 54 assertions** |
 
 Produced and inspected, not just asserted, from a real
@@ -87,14 +93,16 @@ Produced and inspected, not just asserted, from a real
 - **The order folder** — `orders/2026/08/<id>/` with `item-N-print.png`, `-master.png`,
   `-preview.webp` and `item-N.json`, browsable on the SMB share exactly as §12.2 promises.
 
-Also verified, re-run after D-047: the „files ready" note appears only when *every* item has a
-file, and only once; a second run does not re-render; a missing master retries three times then
-writes a private failure note and mails the shop (seen in Mailpit); the retry button recovers it;
-an ordinary sale with no design collects none of our notes; and "Order again" carries the design
-across.
+Also verified, re-run after D-048: paying schedules **no** background work and produces no file
+on its own; the download button renders every item; pressing it twice serves the same bytes
+rather than re-rendering; a missing master returns a Lithuanian reason and no path, and pressing
+the button again after the master is restored produces the file; an ordinary sale with no design
+has nothing to render; and "Order again" carries the design across.
 
-**The order's status is unchanged by all of it** — that is the D-047 assertion, and it holds on
-the happy path, the failure path and the recovery path independently.
+**The order's status is unchanged by all of it, and no note is written** — that is D-047, and it
+holds on the happy path, the failure path and the recovery path independently. The note count is
+measured as a delta across `ensure_print_file()`, because WooCommerce writes its own
+status-change notes and counting the whole order would measure WooCommerce rather than us.
 
 Two bugs found while verifying, both fixed and both the same shape — the end-to-end result
 looked correct:
@@ -710,11 +718,15 @@ thats it."*
 | **d. Cleanup cron** | §12.5 retention — delete unpurchased designs after N days, never one attached to an order | **The only one left, and genuinely needed.** Storage grows with every generation, bought or not, and production is a managed host. `order_id` on the design row exists precisely so this is answerable without a query per candidate |
 | **e. Emails** | Order-status mails carrying the design | **Cut by Ruslan** — out of scope, and the plugin now mails the customer nothing at all |
 
-> **Open, and Ruslan's call: the print file draws no cut line.** D-033 says it should — the
-> customer cuts by hand — and the editor draws one on screen, and `ProofSheet` draws one on the
-> admin proofs. `FulfilPipeline` does not. So the printed sheet and the D-045 cart proof agree
-> with each other and both differ from what the customer saw in the editor. Whether ink belongs
-> on the cut line is a printing decision, not a code one.
+> **✅ Settled: the print file draws the cut line (D-048).** Ruslan asked for it after printing a
+> sheet of cupcakes with no circles on it. Solid black, 0.3 mm, derived from `sheet_plan()` so
+> the line and the artwork cannot drift.
+>
+> **Reprint any proof you checked before 2026-08-04.** Finding this turned up a second bug:
+> **GD ignores `imagesetthickness()` for `imageellipse()`**, silently, so both `FulfilPipeline`
+> and `ProofSheet` drew a **1 px hairline** where 0.3 mm was asked for. Every proof produced
+> before the fix understates its own line weight. `GdEngine::ring()` is now the only way either
+> of them draws a circle.
 
 > **The photo-upload idea lost its safety net.** It was parked partly because the review queue
 > made it viable — a photo product is arbitrary customer bitmaps and moderation layers 0–2 are
@@ -1012,20 +1024,20 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 550 assertions** (verified 2026-08-04, after
-  D-047): `tests/run.php` 368, `tools/rest-check.sh` (12, over real HTTP, logged out *and* in),
-  `tools/order-check.php` (57, a real order end to end, including a D-033 layer),
-  `tools/wcff-check.php` (30, the money path, the D-044 hand-off and the D-045 thumbnail),
+- **Seven suites, all committed and all green — 556 assertions** (verified 2026-08-04, after
+  D-048): `tests/run.php` 368, `tools/rest-check.sh` (12, over real HTTP, logged out *and* in),
+  `tools/order-check.php` (63, a real order end to end, including a D-033 layer and the cut
+  line), `tools/wcff-check.php` (30, the money path, the D-044 hand-off and the D-045 thumbnail),
   `tools/proof-check.php` (18, printable proofs — also writes them), `tools/wizard-check.php`
-  (35, steps 1–2 and the D-043 layout key), `tools/text-check.php` (30, including the D-045
-  proof). `tools/review-check.php` is deleted with the screen it tested.
+  (39, steps 1–2, the D-043 layout key and D-048's entry points), `tools/text-check.php` (30,
+  including the D-045 proof). `tools/review-check.php` is deleted with the screen it tested.
   All but the first test the *deployed* copy, so sync first. Falsified rather than merely passed:
   reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 30 red
   and restoring the old product-meta gate turns 13 red; keying the wizard's layouts independently
   of `FormatCatalogue::layout_key()` turns 3 of the 35 red; serving the preview instead of the
-  proof turns the thumbnail assertion red; **reintroducing an `update_status()` call in
-  `Fulfilment` turns 2 of the 57 red and making the „files ready" note customer-visible turns a
-  third** (D-047), the two caught by independent assertions rather than one reported twice.
+  proof turns the thumbnail assertion red; reintroducing an `update_status()` call in
+  `Fulfilment` turns 2 of the 63 red (D-047); **removing the cut line turns 1 red, and posting
+  the cart form to the product permalink again turns 1 of the 39 red** (D-048).
 
 > **`rest-check.sh` reads the printed nonce off the wizard page**, not a product page — D-047
 > deleted the product-page generator that used to carry it. Getting that wrong turns 5 of the 12

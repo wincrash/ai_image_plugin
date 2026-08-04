@@ -16,6 +16,7 @@ use AiCake\Imaging\SheetLayout;
 use AiCake\Rest\RestController;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
+use AiCake\WooCommerce\CartIntegration;
 use AiCake\WooCommerce\FieldsFactory;
 use WC_Product;
 
@@ -43,6 +44,11 @@ defined( 'ABSPATH' ) || exit;
 class Wizard {
 
 	public const SHORTCODE = 'aicake_wizard';
+
+	/**
+	 * Where `page_url()` caches its answer.
+	 */
+	public const PAGE_OPTION = 'aicake_wizard_page_url';
 
 	/**
 	 * Slug of the single AI product (D-035).
@@ -75,6 +81,76 @@ class Wizard {
 	 */
 	public function register(): void {
 		add_shortcode( self::SHORTCODE, array( $this, 'render' ) );
+
+		add_action( 'save_post_page', array( self::class, 'forget_page' ) );
+		add_action( 'deleted_post', array( self::class, 'forget_page' ) );
+
+		/*
+		 * The AI product cannot be bought from its own page — there is nothing
+		 * to buy until a picture exists. D-048: this used to render an ordinary
+		 * add-to-cart form with a duplicate „AI paveikslėlis" radio on it, which
+		 * is where a cart line's "empty product" link landed.
+		 */
+		add_action( 'woocommerce_single_product_summary', array( $this, 'replace_add_to_cart' ), 1 );
+		add_filter( 'woocommerce_cart_item_permalink', array( $this, 'cart_item_permalink' ), 10, 3 );
+	}
+
+	/**
+	 * On the AI product page, offer the wizard instead of an add-to-cart form.
+	 *
+	 * Not a redirect: the product is a real catalogue entry with a permalink
+	 * that may be indexed or linked (D-034 keeps it precisely for that), so the
+	 * page must still exist and describe itself. What it must not do is take
+	 * money for a design nobody has made.
+	 */
+	public function replace_add_to_cart(): void {
+		$product = $this->product();
+
+		if ( null === $product || get_the_ID() !== $product->get_id() ) {
+			return;
+		}
+
+		remove_action( 'woocommerce_single_product_summary', 'woocommerce_template_single_add_to_cart', 30 );
+
+		$url = self::page_url();
+
+		if ( '' === $url ) {
+			return;
+		}
+
+		add_action(
+			'woocommerce_single_product_summary',
+			static function () use ( $url ): void {
+				printf(
+					'<p class="aicake-product-cta"><a href="%s" class="button alt">%s</a></p>',
+					esc_url( $url ),
+					esc_html__( 'Sukurti piešinį', 'ai-cake-topper' )
+				);
+			},
+			30
+		);
+	}
+
+	/**
+	 * Send a cart line back to the wizard rather than to the product.
+	 *
+	 * The customer clicking their own cake in the cart wants to see the thing
+	 * they designed, not a catalogue page for the generic product.
+	 *
+	 * @param string               $permalink The product permalink.
+	 * @param array<string, mixed> $cart_item The cart item.
+	 * @param string               $cart_key  Its key.
+	 */
+	public function cart_item_permalink( $permalink, $cart_item, $cart_key ) {
+		unset( $cart_key );
+
+		if ( ! is_array( $cart_item ) || ! isset( $cart_item[ CartIntegration::CART_KEY ] ) ) {
+			return $permalink;
+		}
+
+		$url = self::page_url();
+
+		return '' === $url ? $permalink : $url;
 	}
 
 	/**
@@ -175,6 +251,56 @@ class Wizard {
 			'aicake_wizard_product_id',
 			$post instanceof \WP_Post ? $post->ID : 0
 		);
+	}
+
+	/**
+	 * Where the wizard lives, or '' if it is not on any page yet.
+	 *
+	 * Found by looking for the shortcode rather than by a stored id or a fixed
+	 * slug: the page is Ruslan's to create, rename and move, and a hardcoded
+	 * slug would send customers to a 404 the first time he does. Static for the
+	 * same reason `product_id()` is — the callers are cart and product hooks
+	 * that render no wizard.
+	 *
+	 * Cached in an option because this runs on the cart and the product page.
+	 * The cache is dropped whenever any page is saved, which is rare and cheap;
+	 * a stale answer here is a dead link, so correctness beats the lookup.
+	 */
+	public static function page_url(): string {
+		$cached = get_option( self::PAGE_OPTION, null );
+
+		if ( is_string( $cached ) ) {
+			return $cached;
+		}
+
+		$pages = get_posts(
+			array(
+				'post_type'      => 'page',
+				'post_status'    => 'publish',
+				'posts_per_page' => 1,
+				'orderby'        => 'ID',
+				'order'          => 'ASC',
+				's'              => '[' . self::SHORTCODE,
+				'fields'         => 'ids',
+			)
+		);
+
+		$url = array() === $pages ? '' : (string) get_permalink( (int) $pages[0] );
+
+		update_option( self::PAGE_OPTION, $url, false );
+
+		return $url;
+	}
+
+	/**
+	 * Forget the cached wizard page.
+	 *
+	 * @param int $post_id The post that changed.
+	 */
+	public static function forget_page( int $post_id ): void {
+		unset( $post_id );
+
+		delete_option( self::PAGE_OPTION );
 	}
 
 	/**

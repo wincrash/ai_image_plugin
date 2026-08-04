@@ -1195,20 +1195,33 @@ are admin-only and email nobody.
 > `-rejected`, `-failed` — were a second order process running beside the one the shop actually
 > uses. Deleted with the screen that drove them.
 
-### 13.4 Fulfilment
+### 13.4 Fulfilment — **there is no job system. Superseded by D-048.**
 
-`woocommerce_order_status_processing` → enqueue one Action Scheduler job per line item →
-render → attach print file → when *all* line items are done, ~~flip the order status~~ write one
-private note saying so.
+The shop presses **Atsisiųsti spausdinimui** on the order. If the print file is on disk it is
+served; if not it is rendered, archived and served. That is the whole of fulfilment.
 
-Must be idempotent: AS retries, and a retry that re-runs a paid upscale costs money. Check for
-an existing print file before doing anything. **The completion note needs its own idempotency
-key** (`_aicake_files_ready`) now that there is no status transition to serve as one.
+```
+Download  →  archived file?  →  yes: serve it
+                             →  no:  render (~1 s) → archive → serve
+```
 
-On repeated failure: ~~order goes to `render-failed`~~ a private note records why, the shop is
-emailed, and the admin screen offers a "retry render" button. It must never fail silently after
-the customer has paid — and with no status to go red, **that email is the only thing that
-surfaces it**, so it carries more weight than it did, not less.
+~~`woocommerce_order_status_processing` → enqueue one Action Scheduler job per line item →
+render → attach print file → when *all* line items are done, flip the order status.~~
+
+> All of that existed to keep a slow render off the request. **Measured: 0.75–1.1 s** for a full
+> A4 sheet at 300 DPI. Under a second does not need a queue, a retry ladder, an attempt counter,
+> a „Ruošiama…" state or a failure email. Deleted, all of it.
+>
+> `CLAUDE.md`'s second constraint is untouched: it forbids blocking a worker on anything
+> **customer-facing**. This is wp-admin, one shop manager, by deliberate click.
+
+Still idempotent — the archived file is checked first, so pressing the button twice serves the
+same bytes rather than making them again.
+
+On failure: the reason is shown to the person who pressed the button, on the order screen they
+are already looking at. **Nothing is emailed and nothing is written to the order.** There is no
+background any more, so there is no silent failure to surface — and pressing the button again
+*is* the retry.
 
 ---
 
@@ -1447,7 +1460,7 @@ Each of these will happen; each needs a defined behaviour rather than a stack tr
 | Failure | Behaviour |
 |---|---|
 | Provider times out (preview) | Fall to next provider; if all fail, `failed` + friendly LT message + **no quota consumed** |
-| Provider times out (post-payment) | AS retry ×3 with backoff → `render-failed` + admin email + retry button |
+| Provider times out (post-payment) | ~~AS retry ×3 → `render-failed` + admin email~~ **D-048:** the Download button reports the reason on the order screen; pressing it again is the retry. The production upscaler is GD in PHP, so this path needs no provider at all |
 | Loopback blocked by host | Poll-triggered execution (§6.2); flagged in Site Health |
 | Imagick missing | GD path; arc text, CMYK proof and PDF hidden |
 | `memory_limit` too low for A4 | Detected at activation, warned; imposition tiles to stay under |

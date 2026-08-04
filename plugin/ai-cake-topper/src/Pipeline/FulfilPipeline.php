@@ -15,6 +15,7 @@ use AiCake\Domain\TextLayer;
 use AiCake\Imaging\GdEngine;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Support\Logger;
+use AiCake\Support\Mm;
 use GdImage;
 
 defined( 'ABSPATH' ) || exit;
@@ -48,6 +49,13 @@ class FulfilPipeline {
 	 * comes off the image itself.
 	 */
 	private const ASSUMED_NATIVE_PX = 1024;
+
+	/**
+	 * Cut-line thickness. Matches `ProofSheet` deliberately — the proof exists
+	 * so a printed sheet can be measured against it, and a line of a different
+	 * weight would be the first thing to differ.
+	 */
+	private const CUT_LINE_MM = 0.3;
 
 	private GdEngine $images;
 
@@ -115,6 +123,7 @@ class FulfilPipeline {
 			return null;
 		}
 
+		$this->draw_cut_lines( $canvas, $spec );
 		$this->composite_layer( $canvas, $layer );
 
 		$png = $this->images->to_png( $canvas, $spec->dpi );
@@ -145,6 +154,65 @@ class FulfilPipeline {
 		);
 
 		return $result;
+	}
+
+	/**
+	 * The line the customer cuts along — D-033, built at D-048.
+	 *
+	 * D-033 specified this and it was never implemented: the editor drew a cut
+	 * line on screen and `ProofSheet` drew one on the admin proofs, so the two
+	 * things the shop looked at both had it and **the only file that reaches the
+	 * printer did not**. Ruslan found it the way it was always going to be
+	 * found — by printing a sheet of cupcakes with no circles on it.
+	 *
+	 * Solid black at 0.3 mm, the same as `ProofSheet`. Ink on the trim line is
+	 * correct: the blade goes through it, so it ends up on neither piece.
+	 *
+	 * Round pieces only. A rectangular A4 sheet is trimmed at the sheet edge —
+	 * there is nothing to draw, and a border printed at the very edge would be
+	 * clipped by the printer's own margins rather than guiding anything.
+	 *
+	 * The centres come from `sheet_plan()`, which is what `impose()` pasted
+	 * against. Deriving them separately is how the printed line and the printed
+	 * artwork drift apart by one rounding step (D-038, the same argument as the
+	 * formats page).
+	 *
+	 * @param GdImage   $canvas The imposed or flattened sheet.
+	 * @param PrintSpec $spec   Product geometry.
+	 */
+	private function draw_cut_lines( GdImage $canvas, PrintSpec $spec ): void {
+		if ( ! $spec->is_round() ) {
+			return;
+		}
+
+		$black = imagecolorallocate( $canvas, 0, 0, 0 );
+
+		if ( false === $black ) {
+			return;
+		}
+
+		$diameter = Mm::to_px( $spec->width_mm, $spec->dpi );
+		$thick    = max( 1, Mm::to_px( self::CUT_LINE_MM, $spec->dpi ) );
+
+		if ( $spec->is_sheet() ) {
+			$centres = (array) ( $spec->sheet_plan()['centres_px'] ?? array() );
+		} else {
+			// One piece, centred on its own canvas. The artwork is bled, so the
+			// trim circle sits inside the canvas edge rather than on it.
+			$centres = array(
+				array(
+					'x' => (int) round( imagesx( $canvas ) / 2 ),
+					'y' => (int) round( imagesy( $canvas ) / 2 ),
+				),
+			);
+		}
+
+		foreach ( $centres as $centre ) {
+			// `GdEngine::ring()`, not `imageellipse()` — GD ignores
+			// `imagesetthickness()` for ellipses and would draw a 0.085 mm
+			// hairline while reporting success.
+			$this->images->ring( $canvas, (int) $centre['x'], (int) $centre['y'], $diameter, $black, $thick );
+		}
 	}
 
 	/**

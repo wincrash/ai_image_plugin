@@ -2023,4 +2023,141 @@ anyone buys, and a managed host will not grow forever.
 
 ---
 
-<!-- Next: D-048 -->
+### D-048 · No background worker, and the cut line finally gets drawn
+**2026-08-04** · Ruslan, testing · supersedes `PLAN.md` §13.4 · extends D-047
+
+Five things found in one session of Ruslan actually buying something. Four were
+his, one was mine, and the one I found while checking his is the worst of them.
+
+#### 1 · The download button replaces the whole job system
+
+Ruslan, on seeing „vienaragis su vaivorykšte ir žvaigždutėmis · Ruošiama… ·
+Bandyti dar kartą" on an order: *„really we can simplify, just create button,
+Download. if image was generated then download, if not generate and download.
+that way we remove background worker at all."*
+
+**Measured before agreeing**, on real designs on the testbed:
+
+| Format | Render |
+|---|---|
+| cupcake ⌀6.0 cm, full A4 at 300 DPI | **1.10 s** |
+| cupcake ⌀4.5 cm, full A4 at 300 DPI | **0.75 s** |
+
+Peak memory 326 MB either way — unchanged by this decision, since the same
+render happened in the background before.
+
+Under a second is not worth a queue. **Deleted:** the
+`woocommerce_order_status_processing` hook, Action Scheduler scheduling, the
+three-attempt retry ladder, `META_ATTEMPTS`, `META_ERROR`, `META_NOTIFIED`, the
+„Ruošiama…" state, the retry button, the admin failure email, and the private
+order notes D-047 had only just introduced. `Fulfilment` is now one method,
+`ensure_print_file()`, called by the button.
+
+> **This retires the argument I made in D-047 for keeping the failure email.**
+> I said it was load-bearing because nothing else would surface a paid order
+> with no printable file. That was true of a background worker and is false
+> here: there is no background, so the failure is reported to the person who
+> pressed the button, on the screen they are standing at. Pressing it again is
+> the retry.
+
+Constraint #2 in `CLAUDE.md` — never block a worker for seconds — is untouched.
+It says *nothing customer-facing*; this is wp-admin, one shop manager, by
+deliberate click.
+
+#### 2 · Adding to cart landed on a bare product page
+
+`templates/wizard.php` posted its add-to-cart form to `$product->get_permalink()`.
+WooCommerce's handler runs on `wp_loaded` wherever the post lands, so the action
+decides the destination — and the destination was a product page showing a
+duplicate „AI paveikslėlis" radio and none of the work just done. Now
+`wc_get_cart_url()`.
+
+#### 3 · „in cart if i press on item, i got some empty product"
+
+The same page, reached from the cart line. Two fixes, and deliberately not a
+redirect: the product is a real catalogue entry whose permalink D-034 keeps for
+SEO, so the page must still exist.
+
+- `woocommerce_cart_item_permalink` sends AI lines to the wizard. Ordinary
+  lines are untouched — a filter rewriting every cart line would send someone
+  buying sprinkles to the picture wizard, and that is asserted.
+- On the AI product page, `woocommerce_template_single_add_to_cart` is removed
+  and replaced with „Sukurti piešinį" linking to the wizard. There is nothing to
+  buy until a picture exists.
+
+`Wizard::page_url()` finds the page **by its shortcode**, not by a stored id or
+a fixed slug. The page is Ruslan's to rename and move.
+
+> The visible TAIP/NE radio was never a pricing hole — `CartIntegration`
+> overwrites it server-side and `wcff-check` turns 3 red if that is removed. It
+> was a confusing second way to answer a question the wizard had already
+> answered.
+
+#### 4 · The print file had no cut lines. D-033 said it should, since D-033.
+
+Ruslan: *„on final images, there is no circles on cupcakes. it should be."*
+
+The editor drew a cut line on screen and `ProofSheet` drew one on the admin
+proofs, so **both things anybody looked at had it and the only file that reaches
+the printer did not.** Now drawn from `sheet_plan()` — the same centres
+`impose()` pasted against, so the line and the artwork cannot drift by a
+rounding step.
+
+Round pieces only. A rectangular A4 is trimmed at the sheet edge.
+
+#### 5 · The bug I found checking #4: `imagesetthickness()` does nothing to ellipses
+
+Having drawn the line and watched the assertion go green, I cropped a rendered
+sheet and measured it. **1 pixel — 0.085 mm — where 0.3 mm was asked for.**
+
+> **GD honours `imagesetthickness()` for lines, rectangles and polygons, and
+> silently ignores it for `imageellipse()`.** No error, no warning.
+
+Too thin to cut along by hand and thin enough that an inkjet may print it faint
+or drop it. And `ProofSheet` had the identical bug, so **every printable proof
+Ruslan has been checking has a hairline trim circle** — a proof that lies about
+its own line weight, which is the same class of fault as D-027.
+
+Fixed once, in `GdEngine::ring()`, as N concentric one-pixel ellipses. Both
+callers use it.
+
+> **The lesson is about the assertion, not the API.** "Is there ink on the trim
+> radius?" was green for a line eight times too thin. A hairline circle looks
+> perfectly fine on screen — you have to measure the file, or print it, to see
+> it is wrong. `order-check` now asserts the **thickness in pixels against
+> `Mm::to_px( 0.3 )`**, in the units the specification is written in. Ruslan
+> found the missing line by printing; nobody would ever have found the thin one
+> that way.
+
+#### Verified
+
+**556 assertions across seven suites, all green.** `order-check` 57 → 63,
+`wizard-check` 35 → 39.
+
+Falsified, each independently:
+
+| Change | Result |
+|---|---|
+| Remove `draw_cut_lines()` | 1 of 63 red |
+| `imageellipse()` instead of `ring()` | measured 1 px against an expected 4 |
+| Post the cart form to the permalink again | 1 of 39 red |
+| Reintroduce `update_status()` (D-047) | 2 of 63 red |
+
+Also looked at rather than only asserted: a rendered 24-up cupcake sheet cropped
+at 1:1, showing a solid black trim circle with the artwork bled past it.
+
+> **A 1 px ring appears just outside the cut line in that crop.** It is the test
+> fixture's own decoration — `aicake_master()` does `imagesetthickness( 8 )` and
+> `imageellipse()`, and gets 1 px for exactly the reason above. Left in place
+> and commented, as a standing demonstration of the bug.
+
+#### Testbed housekeeping
+
+50 orphaned `aicake_fulfil_item` actions were pending from the deleted queue,
+pointing at a hook that no longer exists. Unscheduled. `order-check` now asserts
+the pending count as a **delta** rather than an absolute, so leftovers can never
+make it red for a reason unrelated to the order under test.
+
+---
+
+<!-- Next: D-049 -->

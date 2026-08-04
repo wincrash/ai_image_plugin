@@ -341,6 +341,55 @@ $plain_body = rest_do_request( new WP_REST_Request( 'GET', '/aicake/v1/job/' . $
 aicake_check( 'an unformatted design reports done', 'done', $plain_body['status'] ?? '' );
 aicake_check( 'and names no layout at all', false, array_key_exists( 'layout_key', $plain_body ) );
 
+/* ------------------------------------------------ where the wizard lives */
+
+/*
+ * D-048. Ruslan hit all three of these in one test: adding to cart landed him
+ * on a bare product page, that page offered a second „AI paveikslėlis" radio,
+ * and clicking his own cart line opened the same "empty product".
+ */
+
+echo "\nentry points (D-048)\n";
+
+$wizard_url = AiCake\Frontend\Wizard::page_url();
+
+aicake_check( 'the wizard page is findable by its shortcode', true, '' !== $wizard_url );
+
+$wiz = new AiCake\Frontend\Wizard(
+	AiCake\Plugin::instance()->settings(),
+	new AiCake\WooCommerce\FieldsFactory(),
+	AiCake\Plugin::instance()->logger()
+);
+
+aicake_check(
+	'an AI cart line links to the wizard',
+	$wizard_url,
+	$wiz->cart_item_permalink(
+		'http://example.com/product/x',
+		array( AiCake\WooCommerce\CartIntegration::CART_KEY => array( 'public_id' => 'abc' ) ),
+		'k'
+	)
+);
+
+/*
+ * And nothing else is touched. A filter that rewrote every cart line would
+ * send a customer buying sprinkles to the picture wizard.
+ */
+aicake_check(
+	'an ordinary cart line is left alone',
+	'http://example.com/product/x',
+	$wiz->cart_item_permalink( 'http://example.com/product/x', array(), 'k' )
+);
+
+// The step-4 form posts to the cart, not to the product permalink.
+$wizard_html = $wiz->render();
+
+aicake_check(
+	'the add-to-cart form posts to the cart',
+	true,
+	str_contains( $wizard_html, 'action="' . esc_url( wc_get_cart_url() ) . '"' )
+);
+
 printf(
 	"\n%d passed, %d failed\n\n",
 	(int) $GLOBALS['aicake_pass'],

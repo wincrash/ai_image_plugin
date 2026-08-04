@@ -333,6 +333,48 @@ class GdEngine {
 	}
 
 	/**
+	 * A circle outline of a real, measurable thickness.
+	 *
+	 * > **`imagesetthickness()` does not apply to `imageellipse()`.** GD honours
+	 * > it for lines, rectangles and polygons and silently ignores it for
+	 * > ellipses, so `imagesetthickness( 4 ); imageellipse( … )` draws a **1
+	 * > pixel** hairline and reports no error.
+	 *
+	 * That is 0.085 mm at 300 DPI where 0.3 mm was asked for — a line too thin
+	 * to cut along by hand, and thin enough that an inkjet may render it faint
+	 * or drop it altogether. It went unnoticed because a hairline circle is
+	 * clearly visible on screen: you have to *measure* the file, or print one,
+	 * to see that it is wrong. Ruslan found the missing line by printing;
+	 * nobody would have found the thin one that way.
+	 *
+	 * Drawn as `$thickness` concentric one-pixel ellipses, which is exact and
+	 * needs no anti-aliasing — a cut line wants a crisp edge anyway.
+	 *
+	 * @param GdImage $canvas    Target.
+	 * @param int     $centre_x  Centre x.
+	 * @param int     $centre_y  Centre y.
+	 * @param int     $diameter  Outer diameter in pixels.
+	 * @param int     $colour    Allocated colour.
+	 * @param int     $thickness Thickness in pixels, at least 1.
+	 */
+	public function ring( GdImage $canvas, int $centre_x, int $centre_y, int $diameter, int $colour, int $thickness = 1 ): void {
+		$thickness = max( 1, $thickness );
+
+		// Grown inward from the nominal diameter. The trim circle is where the
+		// blade goes, so the outer edge of the ink is the line to follow and
+		// the piece keeps its stated size rather than losing half a thickness.
+		for ( $i = 0; $i < $thickness; $i++ ) {
+			$d = $diameter - ( $i * 2 );
+
+			if ( $d < 1 ) {
+				break;
+			}
+
+			imageellipse( $canvas, $centre_x, $centre_y, $d, $d, $colour );
+		}
+	}
+
+	/**
 	 * Composite onto opaque white.
 	 *
 	 * For the print file, always. On a white icing sheet "no ink" and "white"

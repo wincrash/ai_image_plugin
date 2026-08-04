@@ -204,20 +204,24 @@ class ProofSheet {
 		$bled  = Mm::to_px( Mm::with_bleed( (float) $option['diameter_mm'], (float) $option['bleed_mm'] ) );
 		$thick = max( 1, Mm::to_px( 0.3 ) );
 
+		/*
+		 * `GdEngine::ring()`, not `imageellipse()`. GD ignores
+		 * `imagesetthickness()` for ellipses, so this drew a 1 px hairline where
+		 * 0.3 mm was asked for — and the proof exists precisely so a printed
+		 * sheet can be measured against it, which makes a proof that lies about
+		 * its own line weight worse than no proof (D-048, and the same class of
+		 * fault as D-027).
+		 */
 		foreach ( (array) $plan['centres_px'] as $centre ) {
 			$x = (int) $centre['x'];
 			$y = (int) $centre['y'];
 
 			if ( $bled > $trim ) {
-				imagesetthickness( $canvas, 1 );
-				imageellipse( $canvas, $x, $y, $bled, $bled, $grey );
+				$this->gd->ring( $canvas, $x, $y, $bled, $grey, 1 );
 			}
 
-			imagesetthickness( $canvas, $thick );
-			imageellipse( $canvas, $x, $y, $trim, $trim, $black );
+			$this->gd->ring( $canvas, $x, $y, $trim, $black, $thick );
 		}
-
-		imagesetthickness( $canvas, 1 );
 	}
 
 	/**

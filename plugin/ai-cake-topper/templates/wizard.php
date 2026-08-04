@@ -333,10 +333,16 @@ defined( 'ABSPATH' ) || exit;
 		 * AI was used decides €1, so `CartIntegration` derives it server-side
 		 * from whether the design really has a generated image. A flag about
 		 * whether money was spent cannot be trusted, not even enough to check.
+		 *
+		 * **It posts to the cart, not to the product permalink** (D-048).
+		 * WooCommerce's add-to-cart handler runs on `wp_loaded` wherever the
+		 * post lands, so the action decides where the customer ends up — and
+		 * the permalink sent them to a bare product page carrying a duplicate
+		 * „AI paveikslėlis" radio and none of the work they had just done.
 		 */
 		?>
 		<form class="aicake-cart-form" method="post"
-			action="<?php echo esc_url( apply_filters( 'woocommerce_add_to_cart_form_action', $product->get_permalink() ) ); ?>">
+			action="<?php echo esc_url( apply_filters( 'woocommerce_add_to_cart_form_action', wc_get_cart_url() ) ); ?>">
 
 			<input type="hidden" name="add-to-cart" value="<?php echo esc_attr( (string) $product->get_id() ); ?>">
 			<input type="hidden" name="quantity" value="1">

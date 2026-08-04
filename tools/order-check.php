@@ -89,6 +89,14 @@ function aicake_master( int $size = 1024 ): string {
 	imagefilledrectangle( $img, $half, $half, $size, $size, $quadrants[3] );
 
 	$ink = imagecolorallocate( $img, 40, 40, 40 );
+
+	/*
+	 * This ring comes out **1 px**, not 8: GD ignores `imagesetthickness()` for
+	 * ellipses. Left as it is, because it is decoration on a test fixture and
+	 * because it is a standing demonstration of the bug that produced D-048's
+	 * hairline cut line — if you crop a rendered sheet and find a thin circle
+	 * outside the thick black one, this is it, and it is not the print path.
+	 */
 	imagesetthickness( $img, 8 );
 	imageellipse( $img, $half, $half, (int) ( $size * 0.94 ), (int) ( $size * 0.94 ), $ink );
 	imagefilledpolygon( $img, array( $half, 40, $half - 40, 120, $half + 40, 120 ), $ink );
@@ -172,42 +180,83 @@ function aicake_order( array $pairs ): array {
 }
 
 /**
- * Run the fulfilment actions queued for one order.
+ * Ask for every print file on an order, the way the download button does.
  *
- * Scoped to the order on purpose. A previous run's failure-path retries are
- * still pending in the queue, so draining everything both miscounts and
- * re-executes another order's work as a side effect.
+ * Under D-048 there is no queue to drain: `ensure_print_file()` is the whole
+ * fulfilment path, and it runs inside the request that wants the file.
  *
- * @param int $order_id Order to drain.
+ * @param int $order_id Order to render.
+ *
+ * @return int How many items produced a readable file.
  */
-function aicake_drain_queue( int $order_id ): int {
+/**
+ * Pending Action Scheduler jobs in this plugin's group.
+ *
+ * Under D-048 this must never grow. It is not zero on the testbed — the queue
+ * that D-048 deleted left work behind — so it is only useful as a delta.
+ */
+function aicake_pending_actions(): int {
 	if ( ! function_exists( 'as_get_scheduled_actions' ) ) {
 		return 0;
 	}
 
-	$actions = as_get_scheduled_actions(
-		array(
-			'hook'     => AiCake\WooCommerce\Fulfilment::HOOK,
-			'status'   => ActionScheduler_Store::STATUS_PENDING,
-			'group'    => AiCake\WooCommerce\Fulfilment::GROUP,
-			'per_page' => 100,
+	return count(
+		(array) as_get_scheduled_actions(
+			array(
+				'group'    => 'ai-cake-topper',
+				'status'   => ActionScheduler_Store::STATUS_PENDING,
+				'per_page' => 200,
+			)
 		)
 	);
+}
 
-	$ran = 0;
+/**
+ * How many of an order's design items already have a print file on disk.
+ *
+ * @param int $order_id Order.
+ */
+function aicake_files_on_disk( int $order_id ): int {
+	$order = wc_get_order( $order_id );
 
-	foreach ( $actions as $action_id => $action ) {
-		$args = $action->get_args();
-
-		if ( ( (int) ( $args[0] ?? 0 ) ) !== $order_id ) {
-			continue;
-		}
-
-		ActionScheduler::runner()->process_action( $action_id );
-		++$ran;
+	if ( ! $order instanceof WC_Order ) {
+		return 0;
 	}
 
-	return $ran;
+	$found = 0;
+
+	foreach ( AiCake\Plugin::instance()->fulfilment()->design_items( $order ) as $item ) {
+		$path = (string) $item->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT );
+
+		if ( '' !== $path && is_readable( $path ) ) {
+			++$found;
+		}
+	}
+
+	return $found;
+}
+
+function aicake_render_order( int $order_id ): int {
+	$order = wc_get_order( $order_id );
+
+	if ( ! $order instanceof WC_Order ) {
+		return 0;
+	}
+
+	$made = 0;
+
+	foreach ( AiCake\Plugin::instance()->fulfilment()->design_items( $order ) as $item_id => $item ) {
+		unset( $item );
+
+		$error = '';
+		$path  = AiCake\Plugin::instance()->fulfilment()->ensure_print_file( $order_id, (int) $item_id, $error );
+
+		if ( '' !== $path && is_readable( $path ) ) {
+			++$made;
+		}
+	}
+
+	return $made;
 }
 
 /* ------------------------------------------------------------- statuses */
@@ -290,38 +339,64 @@ list( $order, $item_ids ) = aicake_order(
 
 $order_id = $order->get_id();
 
-// The hook a payment gateway fires. Nothing below calls the pipeline directly.
+/*
+ * The transition a payment gateway fires. Under D-048 it must do **nothing** —
+ * there is no hook on it any more. Asserted below rather than assumed, because
+ * "the background worker is gone" is exactly the kind of claim that stays true
+ * in the code and false on the server if a stale copy is deployed.
+ */
+$aicake_queued_before = aicake_pending_actions();
+
 $order->update_status( 'processing' );
 
-aicake_check( 'queued one action per design item', 2, aicake_drain_queue( $order_id ) );
+/*
+ * Measured as a delta, not an absolute. The testbed carries leftover actions
+ * from the queue D-048 deleted, so "the group is empty" would be red for a
+ * reason that has nothing to do with this order.
+ */
+aicake_check( 'paying schedules no background work', $aicake_queued_before, aicake_pending_actions() );
+aicake_check( 'and produces no print file on its own', 0, aicake_files_on_disk( $order_id ) );
+
+/*
+ * What the download button does, with the order notes counted across it.
+ *
+ * The window matters: `update_status()` above makes WooCommerce write its own
+ * status-change note, so counting notes on the whole order would measure
+ * WooCommerce rather than us. Nothing but our code runs inside this window, so
+ * a delta of zero is the precise form of "the plugin says nothing" — and unlike
+ * matching known strings, it catches a note somebody adds later without
+ * thinking (D-047, D-048).
+ */
+$aicake_notes_before = count( wc_get_order_notes( array( 'order_id' => $order_id ) ) );
+
+aicake_check( 'the download button renders every item', 2, aicake_render_order( $order_id ) );
+
+aicake_check(
+	'and writes no order note doing it',
+	$aicake_notes_before,
+	count( wc_get_order_notes( array( 'order_id' => $order_id ) ) )
+);
 
 $order = wc_get_order( $order_id );
 
 /*
- * The assertion the whole of D-047 rests on. Fulfilment ran, both print files
- * exist, and the order is still exactly where the shop left it. Reintroducing
- * any `update_status()` in `Fulfilment` turns this red.
+ * The assertion the whole of D-047 rests on. Both print files exist and the
+ * order is still exactly where the shop left it. Reintroducing any
+ * `update_status()` in `Fulfilment` turns this red.
  */
 aicake_check( 'fulfilment left the status alone', 'processing', $order->get_status() );
 
-$aicake_notes = wc_get_order_notes( array( 'order_id' => $order_id ) );
-
-aicake_check(
-	'it said so in a note',
-	true,
-	(bool) array_filter( $aicake_notes, static fn( $n ) => str_contains( $n->content, 'Spausdinimo failai paruošti' ) )
-);
-
 /*
- * The plugin sends the customer nothing, ever (D-047). A customer note is what
- * WooCommerce emails, so this is the mechanical form of that promise — and it
- * covers notes this check never anticipated, because it asserts over *all* of
- * them rather than over a list of known strings.
+ * The promise with no list: nothing the plugin does may produce a note the
+ * customer can read, because a customer note is what WooCommerce emails.
  */
 aicake_check(
 	'and told the customer nothing',
 	array(),
-	array_values( array_map( static fn( $n ) => $n->content, array_filter( $aicake_notes, static fn( $n ) => (bool) $n->customer_note ) ) )
+	array_values( array_map(
+		static fn( $n ) => $n->content,
+		array_filter( wc_get_order_notes( array( 'order_id' => $order_id ) ), static fn( $n ) => (bool) $n->customer_note )
+	) )
 );
 
 foreach ( $item_ids as $product_id => $item_id ) {
@@ -429,7 +504,7 @@ $plugin->designs()->update(
 list( $layer_order, $layer_items ) = aicake_order( array( 646 => $layer_design ) );
 
 $layer_order->update_status( 'processing' );
-aicake_drain_queue( $layer_order->get_id() );
+aicake_render_order( $layer_order->get_id() );
 
 $layer_print = (string) wc_get_order( $layer_order->get_id() )
 	->get_item( $layer_items[646] )
@@ -459,6 +534,84 @@ if ( is_readable( $layer_print ) ) {
 		|| abs( ( $elsewhere & 0xFF ) - $mark_rgb[2] ) > 30;
 
 	aicake_check( 'and not on the pieces it was not', true, $clean );
+
+	/*
+	 * The cut line — D-033 specified it, D-048 finally drew it, and Ruslan found
+	 * it missing by printing a sheet of cupcakes with no circles on it.
+	 *
+	 * Sampled on the trim radius rather than by eye: walk the circumference of
+	 * one piece and require dark ink somewhere on it. Sampling a single point
+	 * would pass on any dark artwork that happened to reach the edge, and the
+	 * artwork is bled *past* the trim line by design, so "there is something
+	 * dark there" is not enough — the ring has to be dark all the way round.
+	 */
+	$centre  = $layout['pieces'][0];
+	$radius  = AiCake\Support\Mm::to_px( 45.0 ) / 2;
+	$on_line = 0;
+	$samples = 0;
+
+	for ( $deg = 0; $deg < 360; $deg += 15 ) {
+		$px = (int) round( $centre['cx'] + $radius * cos( deg2rad( $deg ) ) );
+		$py = (int) round( $centre['cy'] + $radius * sin( deg2rad( $deg ) ) );
+
+		if ( $px < 0 || $py < 0 || $px >= imagesx( $printed ) || $py >= imagesy( $printed ) ) {
+			continue;
+		}
+
+		++$samples;
+
+		$rgb = imagecolorat( $printed, $px, $py );
+
+		// Dark on every channel. The trim line is solid black; bled artwork
+		// underneath it may be any colour, which is why all three must be low.
+		if ( ( $rgb >> 16 & 0xFF ) < 90 && ( $rgb >> 8 & 0xFF ) < 90 && ( $rgb & 0xFF ) < 90 ) {
+			++$on_line;
+		}
+	}
+
+	aicake_check( 'the cut line is drawn all the way round a cupcake', true, $samples > 20 && $on_line === $samples );
+
+	/*
+	 * And it is the thickness it claims to be.
+	 *
+	 * This is the assertion that matters and the one that was missing: the
+	 * original drew a **1 px** hairline, because GD ignores
+	 * `imagesetthickness()` for ellipses and says nothing about it. Presence
+	 * alone was green throughout. On screen a hairline circle looks fine; it is
+	 * 0.085 mm at 300 DPI, too thin to cut along and liable to print faint.
+	 *
+	 * Measured radially, so it is in the same units the specification is
+	 * written in rather than "some dark pixels are near the edge".
+	 */
+	$want = AiCake\Support\Mm::to_px( 0.3 );
+	$run  = 0;
+	$got  = 0;
+
+	for ( $px = (int) round( $centre['cx'] - $radius - 15 ); $px <= (int) round( $centre['cx'] - $radius + 15 ); $px++ ) {
+		$rgb = imagecolorat( $printed, $px, (int) round( $centre['cy'] ) );
+		$lum = ( ( $rgb >> 16 & 0xFF ) + ( $rgb >> 8 & 0xFF ) + ( $rgb & 0xFF ) ) / 3;
+
+		if ( $lum < 100 ) {
+			++$run;
+			$got = max( $got, $run );
+		} else {
+			$run = 0;
+		}
+	}
+
+	aicake_check( 'and is 0.3 mm thick, not a hairline', $want, $got );
+
+	/*
+	 * And only there. A gutter midway between two pieces must stay white, or
+	 * the "cut line" is really just a dark sheet.
+	 */
+	$gap = imagecolorat(
+		$printed,
+		(int) round( ( $layout['pieces'][0]['cx'] + $layout['pieces'][1]['cx'] ) / 2 ),
+		(int) round( ( $layout['pieces'][0]['cy'] + $layout['pieces'][1]['cy'] ) / 2 )
+	);
+
+	aicake_check( 'and the gutter between pieces stays clean', true, ( $gap >> 16 & 0xFF ) > 200 );
 
 	imagedestroy( $printed );
 }
@@ -517,12 +670,14 @@ if ( is_readable( $sidecar ) ) {
 
 echo "\nidempotency (§13.4)\n";
 
-$before = filemtime( $sheet_print );
+$aicake_err = '';
+$before     = filemtime( $sheet_print );
 sleep( 1 );
-$plugin->fulfilment()->fulfil_item( $order_id, $item_ids[649] );
+$again = $plugin->fulfilment()->ensure_print_file( $order_id, $item_ids[649], $aicake_err );
 clearstatcache();
 
-aicake_check( 'a second run does not re-render', $before, filemtime( $sheet_print ) );
+aicake_check( 'pressing download twice serves the same file', $sheet_print, $again );
+aicake_check( 'and does not re-render it', $before, filemtime( $sheet_print ) );
 
 /* --------------------------------------------------------- the DB link */
 
@@ -546,17 +701,23 @@ ob_start();
 $screen->value( null, $order->get_item( $item_ids[649] ), $item_ids[649] );
 $cell = (string) ob_get_clean();
 
-aicake_check( 'offers the print file', true, str_contains( $cell, '/print?' ) || str_contains( $cell, '/print&' ) );
+aicake_check( 'offers the download button', true, str_contains( $cell, 'action=aicake_download_print' ) );
 aicake_check( 'never emits a filesystem path', false, str_contains( $cell, '/var/lib/aicake' ) );
 
 /*
- * The download is a plain <a href> and the preview a plain <img src>, neither
- * of which can send an X-WP-Nonce header. Without the nonce in the query
- * string, WordPress's REST cookie check leaves even a shop manager as user 0,
- * the capability test fails, and the button 404s while looking correct —
- * D-025's trap in a second place.
+ * D-048 moved the download from the REST gateway to `admin_post`, because it
+ * now renders before answering. The nonce requirement is unchanged and is the
+ * same trap in the same place: a plain <a href> sends cookies and no header, so
+ * without `_wpnonce` even a shop manager is user 0 and the button fails while
+ * looking perfectly correct (D-025, D-028).
  */
-aicake_check( 'the print link carries a nonce', true, (bool) preg_match( '#/print\?_wpnonce=[a-z0-9]+#', $cell ) );
+aicake_check( 'the download link carries a nonce', true, (bool) preg_match( '#_wpnonce=[a-z0-9]+#', $cell ) );
+
+/*
+ * And the *preview* is still served through the REST gateway as an <img>, which
+ * has the identical problem and a separate nonce.
+ */
+aicake_check( 'the preview still goes through the gateway', true, (bool) preg_match( '#/preview\?_wpnonce=[a-z0-9]+#', $cell ) );
 aicake_check( 'the preview link carries a nonce', true, (bool) preg_match( '#/preview\?_wpnonce=[a-z0-9]+#', $cell ) );
 
 /* --------------------------------------------------------- failure path */
@@ -576,38 +737,35 @@ $bad_order = wc_get_order( $bad_id );
 
 aicake_check( 'a paid order is not moved on our account', 'processing', $bad_order->get_status() );
 
-for ( $attempt = 0; $attempt < 3; $attempt++ ) {
-	$plugin->fulfilment()->fulfil_item( $bad_id, $bad_item_id );
-}
+/*
+ * D-048: no retry ladder, no attempt counter, no email. The person who pressed
+ * the button is told why, on the screen they are standing at, and pressing it
+ * again *is* the retry.
+ */
+$bad_error = '';
+$bad_path  = $plugin->fulfilment()->ensure_print_file( $bad_id, $bad_item_id, $bad_error );
 
 $bad_order = wc_get_order( $bad_id );
 $bad_item  = $bad_order->get_item( $bad_item_id );
 
 aicake_check( 'a failure does not move the order either', 'processing', $bad_order->get_status() );
-aicake_check( 'stops at the attempt ceiling', 3, (int) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_ATTEMPTS ) );
-aicake_check( 'records why', true, '' !== (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_ERROR ) );
+aicake_check( 'returns no path', '', $bad_path );
+aicake_check( 'and says why, in Lithuanian', true, '' !== $bad_error && ! str_contains( $bad_error, 'Exception' ) );
 aicake_check( 'claims no print file', '', (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT ) );
 
-$noted   = false;
-$leaked  = false;
-
-foreach ( wc_get_order_notes( array( 'order_id' => $bad_id ) ) as $note ) {
-	if ( str_contains( $note->content, 'Nepavyko paruošti' ) ) {
-		$noted = true;
-
-		// A customer note is the thing WooCommerce emails.
-		$leaked = $leaked || (bool) $note->customer_note;
-	}
-}
-
-aicake_check( 'leaves an order note a human will see', true, $noted );
-
 /*
- * The failure the customer must not hear about from us. They have paid and the
- * file cannot be made — what happens next is a refund, a reprint or a phone
- * call, and that is the shop's decision to make and to word (D-047).
+ * The failure the customer must not hear about from us. Since D-048 nothing is
+ * written to the order at all, so this asserts the strongest available form:
+ * not one note of any kind, customer-visible or otherwise.
  */
-aicake_check( 'and does not tell the customer it broke', false, $leaked );
+aicake_check(
+	'and tells the customer nothing about it',
+	array(),
+	array_values( array_map(
+		static fn( $n ) => $n->content,
+		array_filter( wc_get_order_notes( array( 'order_id' => $bad_id ) ), static fn( $n ) => (bool) $n->customer_note )
+	) )
+);
 
 /* ------------------------------------------------------------- recovery */
 
@@ -615,18 +773,15 @@ echo "\nrecovery\n";
 
 $designs->update( $broken['id'], array( 'file_master' => $storage->store_master( $broken['public_id'], aicake_master() ) ) );
 
-// What the retry button does.
-$bad_item->delete_meta_data( AiCake\WooCommerce\Fulfilment::META_ATTEMPTS );
-$bad_item->save();
-
-$plugin->fulfilment()->fulfil_item( $bad_id, $bad_item_id );
+// Pressing the button again is the whole recovery mechanism.
+$bad_error = '';
+$bad_path  = $plugin->fulfilment()->ensure_print_file( $bad_id, $bad_item_id, $bad_error );
 
 $bad_order = wc_get_order( $bad_id );
-$bad_item  = $bad_order->get_item( $bad_item_id );
 
-aicake_check( 'a retry produces the print file', true, is_readable( (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT ) ) );
+aicake_check( 'pressing download again produces the file', true, '' !== $bad_path && is_readable( $bad_path ) );
+aicake_check( 'with no error left over', '', $bad_error );
 aicake_check( 'with the status still untouched', 'processing', $bad_order->get_status() );
-aicake_check( 'and clears the error', '', (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_ERROR ) );
 
 /* ------------------------------------------------------ ordinary orders */
 
@@ -646,21 +801,11 @@ $plain->update_status( 'processing' );
 aicake_check( 'a sale with no design is left alone', 'processing', wc_get_order( $plain->get_id() )->get_status() );
 
 /*
- * Since D-047 the status assertion above is true of every order in the shop,
- * so on its own it no longer distinguishes "left alone" from "handled". The
- * notes do: an ordinary sale must collect none of ours.
+ * Since D-047 the status assertion above is true of every order in the shop and
+ * no longer distinguishes "left alone" from "handled". This does: a sale with
+ * no design has nothing for the download button to act on.
  */
-aicake_check(
-	'and collects none of our notes',
-	array(),
-	array_values( array_map(
-		static fn( $n ) => $n->content,
-		array_filter(
-			wc_get_order_notes( array( 'order_id' => $plain->get_id() ) ),
-			static fn( $n ) => str_contains( $n->content, 'spausdinimo fail' ) || str_contains( $n->content, 'Spausdinimo fail' )
-		)
-	) )
-);
+aicake_check( 'and has nothing to render', 0, aicake_render_order( $plain->get_id() ) );
 
 /* ------------------------------------------------------------- reorder */
 

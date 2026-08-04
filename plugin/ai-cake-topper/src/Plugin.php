@@ -181,7 +181,6 @@ class Plugin {
 			$this->designs,
 			$this->prints,
 			$this->archive,
-			$this->settings,
 			$this->logger
 		);
 
