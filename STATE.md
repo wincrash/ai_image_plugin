@@ -1044,6 +1044,16 @@ bash tools/rest-check.sh
 > red in a way that looks exactly like having broken D-026. The page is now argument 1
 > (`/ai-paveikslelis-vedlys/`) and the product id is argument 2.
 
+> **The testbed's limits are currently lifted for manual testing (2026-08-04):**
+> `free_per_user` **500** (default 20) and `ip_daily_ceiling` **500** (default 30).
+> `free_per_session` is still **5**, deliberately — raising it breaks „logged-in allowance
+> exceeds anonymous" in `rest-check`, correctly. Put them back with:
+>
+> ```
+> wp eval 'AiCake\Plugin::instance()->settings()->update(
+>   array( "free_per_user" => 20, "ip_daily_ceiling" => 30 ) );'
+> ```
+
 > **A 429 in any check is the throttle, not the thing under test — and there are two of them
 > behind one message.** `aicake_session_limit` is `free_per_user`/`free_per_session`;
 > `aicake_ip_limit` is `ip_daily_ceiling`, default 30, per IP. „Pasiektas dienos piešinių
