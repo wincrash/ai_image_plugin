@@ -1,30 +1,34 @@
 # Project state
 
-**Updated:** 2026-08-03
-**Phase:** Phases 1–7 built. **The wizard track is finished** (D-033 → D-045). **Phase 8 has
-started** — the review queue is done (D-046). Phase 0 deferred to a later calibration step
-(D-018).
+**Updated:** 2026-08-04
+**Phase:** Phases 1–7 built. **The wizard track is finished** (D-033 → D-045). **Phase 8 is
+almost entirely cut** — Ruslan deleted the review queue and four of the five screens (D-047).
+Phase 0 deferred to a later calibration step (D-018).
 
-> **A reset session picking this up:** read D-033 → D-046 in `DECISIONS.md` first. The wizard
-> runs end to end — a Lithuanian prompt becomes a cart line at the right price with the finished
-> picture on it — and all server-side text rendering is deleted.
-> **Start here: Phase 8b — the print queue.**
+> **A reset session picking this up:** read D-033 → D-045, then **D-047**, which reverses D-046
+> and is the one that changes how you should think about this project. The wizard runs end to
+> end — a Lithuanian prompt becomes a cart line at the right price with the finished picture on
+> it — and all server-side text rendering is deleted.
+> **Start here: the retention cleanup job, the last thing Phase 8 has left.**
 
-> **⚠ Before anything else, a conversation Ruslan asked for. He did not ask for the rejection
-> apology and wants to decide it himself** (2026-08-03, end of session).
+> **⚠ The scope rule this project keeps re-learning, now in its strongest form (D-047).**
 >
-> What was built from `PLAN.md` §10 without asking him: rejecting in the review queue writes a
-> **customer-visible order note** — which WooCommerce emails — carrying the manager's typed
-> reason and the sentence „Grąžinsime pinigus." The refund itself is *not* automatic (D-046).
+> `PLAN.md` describing a workflow is **not** evidence the shop wants that workflow. §10 said a
+> human must review every image, so I built a review queue; Ruslan does not review orders,
+> because he already sees every image when he loads the icing sheet and presses print. The
+> requirement was met before I wrote a line of it.
 >
-> **Nothing has reached a real customer**: the plugin is testbed-only and the only rejections so
-> far were test orders.
+> What that screen actually was: **a second order process running beside the one the shop uses.**
+> The shop moves orders sustabdytas → vykdomas → įvykdytas by hand and has done for years.
 >
-> Three things to settle: whether a rejection notifies the customer at all, what it says, and
-> whether refunding should ever be automatic. §10 assumes all three; he has agreed to none of
-> them. **Do not build further on this until that talk happens.**
+> **The plugin now touches no order status and sends the customer nothing, ever.** Both are
+> asserted in `order-check` and both falsify. If you find yourself adding a status, a customer
+> note or a screen the shop must visit daily, that is the thing to ask about first.
 >
-> Ruslan is also printing and checking formats tomorrow — corrections to geometry come from that
+> This is the same rule as „customer-facing text and money are Ruslan's" — one level up. That
+> one is about sentences; this one is about processes.
+
+> **Ruslan is printing and checking formats** — corrections to geometry come from that
 > (D-039, D-040), not from arithmetic.
 
 > Read `WORKFLOW.md` for how we work, `PLAN.md` for the design, `DECISIONS.md` for why.
@@ -68,8 +72,7 @@ nothing** — WC Fields Factory does.
 
 | File | What it does |
 |---|---|
-| `WooCommerce/OrderStatuses.php` | The five statuses, registered HPOS **and** legacy **and** in the dropdown |
-| `WooCommerce/Fulfilment.php` | AS job per line item, idempotency, retries, status flips, reorder |
+| `WooCommerce/Fulfilment.php` | AS job per line item, idempotency, retries, private notes, reorder |
 | `Pipeline/FulfilPipeline.php` | master → upscale → shape → text at 300 DPI → imposition → flatten → PNG |
 | `Storage/OrderArchive.php` | `sessions/` → `orders/`, DB repoint, the `.json` sidecar |
 | `Domain/PrintFile.php` | The rendered file and what it took to make it |
@@ -84,11 +87,14 @@ Produced and inspected, not just asserted, from a real
 - **The order folder** — `orders/2026/08/<id>/` with `item-N-print.png`, `-master.png`,
   `-preview.webp` and `item-N.json`, browsable on the SMB share exactly as §12.2 promises.
 
-Also verified: the order reaches `aicake-approval` only when *every* item has a file; a second
-run does not re-render; a missing master retries three times then lands on `aicake-failed` with
-an order note and an admin email (seen in Mailpit); the retry button recovers it and lifts the
-order back out of `failed`; an ordinary sale with no design is left in `processing`; and
-"Order again" carries the design across.
+Also verified, re-run after D-047: the „files ready" note appears only when *every* item has a
+file, and only once; a second run does not re-render; a missing master retries three times then
+writes a private failure note and mails the shop (seen in Mailpit); the retry button recovers it;
+an ordinary sale with no design collects none of our notes; and "Order again" carries the design
+across.
+
+**The order's status is unchanged by all of it** — that is the D-047 assertion, and it holds on
+the happy path, the failure path and the recovery path independently.
 
 Two bugs found while verifying, both fixed and both the same shape — the end-to-end result
 looked correct:
@@ -108,9 +114,13 @@ looked correct:
 | `Domain/PrintSpec.php` | `_aicake_*` meta → geometry, variation → product → default (§4.2) |
 | `WooCommerce/ProductFields.php` | "AI Topper" tab, live summary computed server-side |
 | `WooCommerce/CartIntegration.php` | Add-to-cart validation, ownership, cart display, order hand-off |
-| `Frontend/Generator.php` | Enqueue + render, theme-overridable template |
-| `Pipeline/PreviewPipeline.php` | master → shape → text → watermark → WebP |
-| `templates/generator.php`, `assets/` | The UI, Lithuanian, mobile-first |
+| `Pipeline/PreviewPipeline.php` | master → shape → watermark → WebP |
+| `assets/js/generation.js` | The §6.5 polling contract and D-025's nonce rules |
+
+> **`Frontend/Generator.php`, `templates/generator.php` and `assets/js/generator.js` are deleted**
+> (D-047). The product-page generator was superseded by the wizard at D-034 and kept alive only
+> because nothing had said to remove it. Everything below describing "the generator" as a
+> product-page feature is history — the wizard is the only generation UI there is.
 
 **Verified working:** five real products created and rendering; geometry correct per SKU read
 straight off product meta (4.5 cm → 603 px, no upscale, 24/sheet; 15 cm → 1843 px, 2×; A4 →
@@ -688,28 +698,29 @@ bitmap the browser made and draws no glyphs. Looked at: 24 cupcakes, „Emilija"
 > before debugging: count today's designs per `ip_hash`. Raising `ip_daily_ceiling` through
 > `Settings::update()` and putting it back to 30 turns an ambiguous run into a definite one.
 
-**3. Phase 8 — operations (§14). This is the next track.** Five screens, and they are not equal:
-the first is what stands between the shop and printing something it should not, and the rest are
-convenience until volume exists.
+**3. Phase 8 — four of the five screens are cut (D-047).** Ruslan's scope, in his words: *„user
+generates image using our wizard, places the order, i get order with final a4 image for printing,
+thats it."*
 
-| | What it is | Why now |
+| | What it is | Status |
 |---|---|---|
-| **a. Review queue** | **DONE — D-046.** Print file shown large, prompt in LT *and* EN, verdict + layer, customer, approve / reject-with-reason, J/K/A/R | §10 layer 3 is now a screen. Menu carries a waiting count; oldest first; a decision is final; rejection tells the customer and **does not refund** — that stays in WooCommerce's own form |
-| **b. Print queue** | Every approved, unprinted file; batch download as ZIP; mark as printed | **Next.** The second daily tool, and `aicake-approved` now actually fills up because the review queue moves orders into it. Today the files are browsable on the share, which works and does not scale past a few orders a day |
-| **c. Cost dashboard** | Spend by day / provider / model, generation→purchase conversion, most-rejected prompts | All of it already sits in `aicake_designs`; no new tracking. Matters more now that generation costs real money ($0.012) and `BudgetGuard`'s ceilings have never fired against non-zero cost |
-| **d. Cleanup cron** | §12.5 retention — delete unpurchased designs after N days, never one attached to an order | Storage grows with every generation, purchased or not. `order_id` on the design row exists precisely so this can be answered without a query per candidate |
-| **e. Emails** | Order-status mails carrying the design | Partly free already: the proof (D-045) is the image they should carry, and WCFF puts the sheet type and AI answer on the order itself |
-
-Two things worth deciding before starting (a): **keyboard shortcuts are in §14 for a reason** —
-this screen gets used dozens of times a day — and **the review queue is a prerequisite for
-Ruslan's parked photo-upload idea**, because a photo product is arbitrary customer bitmaps by
-design and layers 0–2 are blind to them.
+| **a. Review queue** | Approve / reject before printing | **Deleted (D-047).** He does not review orders — he *is* the review, at the printer. It was a second order process beside the real one |
+| **b. Print queue** | Batch download as ZIP, mark as printed | **Cut by Ruslan.** The order screen's download button is how the file is collected |
+| **c. Cost dashboard** | Spend by day / provider / model | **Cut by Ruslan.** `BudgetGuard` already mails him when a ceiling is crossed |
+| **d. Cleanup cron** | §12.5 retention — delete unpurchased designs after N days, never one attached to an order | **The only one left, and genuinely needed.** Storage grows with every generation, bought or not, and production is a managed host. `order_id` on the design row exists precisely so this is answerable without a query per candidate |
+| **e. Emails** | Order-status mails carrying the design | **Cut by Ruslan** — out of scope, and the plugin now mails the customer nothing at all |
 
 > **Open, and Ruslan's call: the print file draws no cut line.** D-033 says it should — the
 > customer cuts by hand — and the editor draws one on screen, and `ProofSheet` draws one on the
 > admin proofs. `FulfilPipeline` does not. So the printed sheet and the D-045 cart proof agree
 > with each other and both differ from what the customer saw in the editor. Whether ink belongs
 > on the cut line is a printing decision, not a code one.
+
+> **The photo-upload idea lost its safety net.** It was parked partly because the review queue
+> made it viable — a photo product is arbitrary customer bitmaps and moderation layers 0–2 are
+> blind to them, so §10 layer 3 was the only control. That screen is gone. The control still
+> exists, because Ruslan looks at every sheet he prints; it is just no longer in the software.
+> Worth saying out loud if that idea comes back.
 
 **4. Keep buying designs through the storefront as a customer.** The first real customer order
 (D-031) found a bug none of the assertions could, because they ran with privileges the real code
@@ -825,11 +836,13 @@ Worth knowing when it comes up:
 - **Downscale on receipt and discard the original.** Peak memory is already 339 MB (D-023) and
   production's limit is still unverified. A 12 MP phone photo is ~48 MB decoded in GD before any
   canvas is allocated.
-- **It makes Phase 8's review queue a prerequisite, not a nice-to-have.** A photo product is
-  arbitrary customer bitmaps by design — the exact thing `LayerInspector` exists to refuse for
-  text — and moderation layers 0–2 are blind to it because there is no prompt to read. §10 layer
-  3 (a human sees it) becomes the only control. Ruslan reviews every image anyway, which is what
-  makes it viable, but it reorders Phase 8 ahead of it.
+- **Nothing in the software would vet the image.** A photo product is arbitrary customer bitmaps
+  by design — the exact thing `LayerInspector` exists to refuse for text — and moderation layers
+  0–2 are blind to it because there is no prompt to read. This used to read "the review queue
+  becomes a prerequisite"; D-047 deleted that screen. The control is Ruslan looking at every
+  sheet he prints, which is real but is not code, so it holds only as long as he prints
+  personally. Say that out loud before building this, rather than rebuilding the screen he
+  already rejected.
 - **It needs a rights confirmation at upload.** Liability moves to the customer, which is normal
   for photo toppers, but only if they are asked.
 - **Pricing needs no new mechanism.** The €1 AI fee is already derived server-side from whether
@@ -851,8 +864,9 @@ not a simulation: prompt → 202 → poll → preview, `remaining` counting down
 `aspect=1:1`, `status=done`, `cost 0.0121`**.
 
 `assets/js/generation.js` now holds the engine — session, D-025's nonce rules, the §6.5 polling
-contract — and both `generator.js` (product page) and `wizard.js` are thin adapters over it. Two
-copies of a back-off schedule drift apart silently and only for some visitors. The product-page
+contract — and `wizard.js` is a thin adapter over it. (It was extracted when `generator.js` was
+the second caller; D-047 deleted that one, and the engine stays separate because the polling
+contract is worth reading without a UI around it.) The product-page
 generator was re-verified after the extraction; its remaining-count text is written solely by the
 engine's session hook, so seeing it proves the adapter still drives the engine.
 
@@ -989,7 +1003,7 @@ Housekeeping, not blocking:
 deploys the plugin only, which has caught me out twice:
 
 ```bash
-ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check text-check review-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
+ssh ruslan@ruslan-server 'cd /home/ruslan/wordpress-test && docker compose exec -T wordpress php wp-content/plugins/ai-cake-topper/tests/run.php | tail -1; for f in wizard-check wcff-check order-check proof-check text-check; do echo -n "$f: "; docker compose exec -T -u www-data wordpress wp eval-file /var/lib/aicake/$f.php --path=/var/www/html | grep "passed,"; done'
 ```
 
 ```bash
@@ -998,19 +1012,25 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-- **Eight suites, all committed and all green — 573 assertions:** `tests/run.php` 368,
-  `tools/rest-check.sh` (12, over real HTTP, logged out *and* in), `tools/order-check.php` (59,
-  a real order end to end, including a D-033 layer), `tools/wcff-check.php` (30, the money path,
-  the D-044 hand-off and the D-045 thumbnail), `tools/proof-check.php` (18, printable proofs —
-  also writes them), `tools/wizard-check.php` (35, steps 1–2 and the D-043 layout key),
-  `tools/text-check.php` (30, including the D-045 proof), `tools/review-check.php` (21, the
-  D-046 review queue — both decisions, through `admin_post`, nonce and all).
+- **Seven suites, all committed and all green — 550 assertions** (verified 2026-08-04, after
+  D-047): `tests/run.php` 368, `tools/rest-check.sh` (12, over real HTTP, logged out *and* in),
+  `tools/order-check.php` (57, a real order end to end, including a D-033 layer),
+  `tools/wcff-check.php` (30, the money path, the D-044 hand-off and the D-045 thumbnail),
+  `tools/proof-check.php` (18, printable proofs — also writes them), `tools/wizard-check.php`
+  (35, steps 1–2 and the D-043 layout key), `tools/text-check.php` (30, including the D-045
+  proof). `tools/review-check.php` is deleted with the screen it tested.
   All but the first test the *deployed* copy, so sync first. Falsified rather than merely passed:
   reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 30 red
   and restoring the old product-meta gate turns 13 red; keying the wizard's layouts independently
   of `FormatCatalogue::layout_key()` turns 3 of the 35 red; serving the preview instead of the
-  proof turns the thumbnail assertion red; removing the review queue's re-decision guard, or
-  showing the proof instead of the print file, each turn one of the 21 red.
+  proof turns the thumbnail assertion red; **reintroducing an `update_status()` call in
+  `Fulfilment` turns 2 of the 57 red and making the „files ready" note customer-visible turns a
+  third** (D-047), the two caught by independent assertions rather than one reported twice.
+
+> **`rest-check.sh` reads the printed nonce off the wizard page**, not a product page — D-047
+> deleted the product-page generator that used to carry it. Getting that wrong turns 5 of the 12
+> red in a way that looks exactly like having broken D-026. The page is now argument 1
+> (`/ai-paveikslelis-vedlys/`) and the product id is argument 2.
 
 > **A 429 in any check is the throttle, not the thing under test — and there are two of them
 > behind one message.** `aicake_session_limit` is `free_per_user`/`free_per_session`;

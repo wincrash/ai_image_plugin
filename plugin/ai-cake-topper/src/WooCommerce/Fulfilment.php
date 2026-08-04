@@ -22,22 +22,33 @@ use WC_Order_Item_Product;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The post-payment job system (PLAN.md §13.4).
+ * The post-payment job system (PLAN.md §13.4, as amended by D-047).
  *
  * `woocommerce_order_status_processing` → one Action Scheduler job per line
- * item → render → archive → when *every* item is done, move the order to
- * awaiting-approval.
+ * item → render → archive → the print file appears on the order screen.
  *
- * Two properties matter more than the flow:
+ * ### It does not touch the order's status — D-047
+ *
+ * The shop runs the ordinary WooCommerce flow, moved by hand: on-hold →
+ * processing → completed. This class used to drive five statuses of its own
+ * through an approval workflow, which meant the plugin was quietly running a
+ * *second* order process alongside the one the shop actually uses. Everything
+ * it needs to say it now says in **private order notes**, which are
+ * admin-only and email nobody.
+ *
+ * Anything here calling `update_status()` is a bug, not a feature.
+ *
+ * Two properties still matter more than the flow:
  *
  * **Idempotency.** A retry that re-runs a paid upscale costs money, and a
  * retry that re-archives already-moved files would find nothing to move. Every
  * job checks for an existing print file first and returns early.
  *
  * **It must never fail silently.** The customer has already paid. After the
- * last attempt the order goes to `aicake-failed`, the admin is emailed, and
- * the order screen offers a retry button — rather than an order sitting in
- * `processing` forever with nobody aware.
+ * last attempt the failure is written to the order, the shop is emailed, and
+ * the order screen offers a retry button. With no status to go red, that email
+ * is now the *only* thing that surfaces a paid order with no printable file —
+ * so it carries more weight than it did, not less.
  */
 class Fulfilment {
 
@@ -65,6 +76,16 @@ class Fulfilment {
 	 * Item meta: why the last attempt failed.
 	 */
 	public const META_ERROR = '_aicake_render_error';
+
+	/**
+	 * Order meta: the "files are ready" note has been written.
+	 *
+	 * Under D-047 there is no status transition to be idempotent for us, and
+	 * `finish_if_complete()` runs after every item — including the early
+	 * return of an already-rendered one. Without this flag a four-item order
+	 * collects four identical notes, and pressing retry adds more.
+	 */
+	public const META_NOTIFIED = '_aicake_files_ready';
 
 	/**
 	 * Give up after this many. Three is the same ceiling the generation queue
@@ -140,15 +161,13 @@ class Fulfilment {
 		}
 
 		if ( 0 === $queued ) {
-			// An ordinary order with no AI items. Leave it entirely alone —
-			// hijacking the status of a normal sale would be a nasty surprise.
+			// An ordinary order with no AI items. Nothing to say about it.
 			return;
 		}
 
-		$order->update_status(
-			OrderStatuses::RENDERING,
-			__( 'Ruošiami spausdinimo failai.', 'ai-cake-topper' )
-		);
+		// Private: the shop is told work has started, the customer is not
+		// emailed, and the status stays wherever the shop put it (D-047).
+		$order->add_order_note( __( 'Ruošiami spausdinimo failai.', 'ai-cake-topper' ), false );
 
 		$this->logger->info(
 			'Fulfilment queued.',
@@ -258,7 +277,12 @@ class Fulfilment {
 	}
 
 	/**
-	 * Move the order on once every item has a print file.
+	 * Say so, once, when every item has a print file.
+	 *
+	 * The note is the audit trail rather than the delivery mechanism — the
+	 * files are on the order screen with a download button either way. Its
+	 * value is the negative case: an order with no such note is one where
+	 * something did not finish.
 	 *
 	 * @param WC_Order $order Order.
 	 */
@@ -277,25 +301,27 @@ class Fulfilment {
 			}
 		}
 
-		/*
-		 * Only from a state that is genuinely still upstream of approval.
-		 * `aicake-failed` is in the list because a successful retry has to be
-		 * able to lift an order back out of it — leaving a fully rendered
-		 * order marked failed is exactly the silent-failure §13.4 forbids.
-		 * Anything further along is left alone: an admin may have approved it
-		 * while the last item was still rendering, and dragging that backwards
-		 * would un-approve work somebody already checked.
-		 */
-		$upstream = array( OrderStatuses::RENDERING, OrderStatuses::FAILED, 'processing' );
-
-		if ( ! $order->has_status( $upstream ) ) {
+		if ( '' !== (string) $order->get_meta( self::META_NOTIFIED ) ) {
 			return;
 		}
 
-		$order->update_status(
-			OrderStatuses::APPROVAL,
-			__( 'Spausdinimo failai paruošti. Laukiama patvirtinimo.', 'ai-cake-topper' )
+		$order->update_meta_data( self::META_NOTIFIED, (string) time() );
+
+		$order->add_order_note(
+			sprintf(
+				/* translators: %d: how many print files were produced */
+				_n(
+					'Spausdinimo failas paruoštas (%d).',
+					'Spausdinimo failai paruošti (%d).',
+					count( $items ),
+					'ai-cake-topper'
+				),
+				count( $items )
+			),
+			false
 		);
+
+		$order->save();
 	}
 
 	/**
@@ -331,14 +357,20 @@ class Fulfilment {
 			return;
 		}
 
-		$order->update_status(
-			OrderStatuses::FAILED,
+		/*
+		 * Private, so a paid order that cannot be produced does not announce
+		 * itself to the customer before the shop has decided what to do about
+		 * it. That decision — refund, reprint, phone call — is the shop's, and
+		 * WooCommerce already has the tools for all three (D-047).
+		 */
+		$order->add_order_note(
 			sprintf(
 				/* translators: 1: order item name, 2: error message */
 				__( 'Nepavyko paruošti „%1$s“: %2$s', 'ai-cake-topper' ),
 				$item->get_name(),
 				$message
-			)
+			),
+			false
 		);
 
 		$this->notify_admin( $order, $item, $message );

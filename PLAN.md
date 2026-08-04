@@ -924,13 +924,26 @@ Design notes:
 - The classifier only needs a cheap fast model. Claude Haiku, Gemini Flash Lite and GPT mini
   are all fine; pick whichever key the client already has.
 
-### Layer 3 — human approval before printing. Non-negotiable.
+### Layer 3 — a human sees the image before it prints. Non-negotiable, and **not software**.
 
-Nothing reaches the printer automatically. Order lands in `wc-awaiting-approval`, admin looks
-at the actual rendered image for ten seconds, approves or rejects. This catches everything the
+> **Amended by D-047 (2026-08-04).** The requirement stands; the screen that was built for it is
+> deleted. Ruslan does not review orders in wp-admin — he sees every image when he loads the
+> icing sheet and presses print, so layer 3 was satisfied before any code existed. What follows
+> is the original text, kept because the *reasoning* is still right and matters for anything
+> that bypasses a prompt (the parked photo-upload idea, above all).
+>
+> **There is no approval status, no approval screen, and no rejection email.** The plugin sends
+> the customer nothing, ever. If layer 3 ever has to move back into software — because somebody
+> other than Ruslan is printing — that is a conversation to have, not a screen to rebuild
+> quietly.
+
+~~Nothing reaches the printer automatically. Order lands in `wc-awaiting-approval`, admin looks
+at the actual rendered image for ten seconds, approves or rejects.~~ This catches everything the
 first three layers miss, and it is the only layer that sees the *image* rather than the prompt.
 
-Rejection triggers a templated apology email and a WooCommerce refund.
+~~Rejection triggers a templated apology email and a WooCommerce refund.~~ Whether a customer
+hears anything, and whether money moves, is the shop's decision and is made in WooCommerce's own
+tools.
 
 ### Supporting requirements
 - Terms text **next to the prompt input**, not in a footer link: no copyrighted characters, no
@@ -1166,27 +1179,36 @@ into one cart line with quantity 2, and the customer receives two copies of one 
 **Ownership check on add-to-cart is a real security control**, not a nicety — otherwise anyone
 can put an arbitrary `design_id` in the request and buy someone else's design.
 
-### 13.3 Order statuses
+### 13.3 Order statuses — **there are none. Superseded by D-047.**
+
+The shop runs the ordinary WooCommerce flow and moves orders by hand:
 
 ```
-processing  →  aicake-rendering  →  awaiting-approval  →  approved  →  completed
-                      │                     │
-                      └──► render-failed    └──► rejected → refunded
+sustabdytas  →  vykdomas  →  įvykdytas       (on-hold → processing → completed)
 ```
 
-`awaiting-approval` and `rejected` become real filters in the orders list, so the print queue
-is a view rather than a note somebody has to remember to read.
+The plugin adds nothing to that and **never calls `update_status()`**. Rendering happens in the
+background off the `processing` transition and reports itself in **private order notes**, which
+are admin-only and email nobody.
+
+> The five statuses this section used to define — `aicake-rendering`, `-approval`, `-approved`,
+> `-rejected`, `-failed` — were a second order process running beside the one the shop actually
+> uses. Deleted with the screen that drove them.
 
 ### 13.4 Fulfilment
 
 `woocommerce_order_status_processing` → enqueue one Action Scheduler job per line item →
-render → attach print file → when *all* line items are done, flip the order status.
+render → attach print file → when *all* line items are done, ~~flip the order status~~ write one
+private note saying so.
 
 Must be idempotent: AS retries, and a retry that re-runs a paid upscale costs money. Check for
-an existing print file before doing anything.
+an existing print file before doing anything. **The completion note needs its own idempotency
+key** (`_aicake_files_ready`) now that there is no status transition to serve as one.
 
-On repeated failure: order goes to `render-failed`, admin is emailed, and the admin screen
-offers a "retry render" button. It must never fail silently after the customer has paid.
+On repeated failure: ~~order goes to `render-failed`~~ a private note records why, the shop is
+emailed, and the admin screen offers a "retry render" button. It must never fail silently after
+the customer has paid — and with no status to go red, **that email is the only thing that
+surfaces it**, so it carries more weight than it did, not less.
 
 ---
 
@@ -1196,14 +1218,18 @@ offers a "retry render" button. It must never fail silently after the customer h
    printer usable area, watermark text, style presets, "Test provider" button.
 2. **Blocklist editor** — textarea, one term per line, plus a list of recent rejections with a
    one-click "add to blocklist".
-3. **Review queue** — the core operational screen. Large image, prompt in LT and EN, moderation
-   verdict and which layer flagged it, customer, approve / reject-with-reason. Keyboard
-   shortcuts, because this gets used dozens of times a day.
-4. **Print queue** — all approved, unprinted files. Batch download as ZIP, mark as printed.
-   Later: combine several *single* toppers from different orders onto one A4 to save sheets —
-   a direct materials saving and a natural v1.5 feature.
-5. **Cost dashboard** — spend by day, by provider, by model; conversion rate from generation to
-   purchase; most common rejected prompts. All from `aicake_designs`, no extra tracking.
+3. ~~**Review queue**~~ — **built, then deleted at Ruslan's instruction (D-047).** He does not
+   review orders in wp-admin; he sees every image at the printer. Do not rebuild it.
+4. ~~**Print queue**~~ — **cut by Ruslan (D-047).** The print file is a download button on the
+   order screen, which is where he already is. The v1.5 idea underneath it is still good and
+   still unscheduled: combine several *single* toppers from different orders onto one A4 to save
+   sheets — a direct materials saving.
+5. ~~**Cost dashboard**~~ — **cut by Ruslan (D-047).** `BudgetGuard` already mails him when a
+   ceiling is crossed, and the data stays in `aicake_designs` if this is ever wanted.
+
+> **What survives of §14 is 1, 2, the formats page (D-038) and the design column on the order
+> screen.** The rule D-047 sets: this plugin does not add screens the shop has to visit. Anything
+> it needs to say, it says on the order the shop is already looking at.
 
 ---
 

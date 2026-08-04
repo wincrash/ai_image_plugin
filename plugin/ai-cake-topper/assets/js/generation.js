@@ -1,11 +1,12 @@
 /**
  * The generation engine: session, nonce, generate, poll.
  *
- * Extracted from `generator.js` so the product page and the wizard share one
- * implementation of PLAN.md §6.5 rather than two. The polling contract is the
- * wrong thing to have two copies of — it encodes the back-off schedule, the
- * give-up point, and D-025's nonce rules, and a second copy would drift from
- * the first silently and only for some visitors.
+ * The one implementation of PLAN.md §6.5. It was extracted when the product
+ * page and the wizard both needed it; D-047 has since deleted the product page,
+ * leaving the wizard as the only caller. It stays a separate file because the
+ * polling contract is the wrong thing to fold back into a UI — it encodes the
+ * back-off schedule, the give-up point and D-025's nonce rules, and those are
+ * worth being able to read without a wizard around them.
  *
  * No DOM in here. Callers pass hooks and build their own payload, which is why
  * the wizard can add a format to the request without this file knowing what a

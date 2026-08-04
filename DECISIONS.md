@@ -1917,4 +1917,110 @@ exists for.
 
 ---
 
-<!-- Next: D-047 -->
+### D-047 · The plugin runs no order process of its own
+**2026-08-04** · Ruslan · **reverses D-046** · supersedes `PLAN.md` §10 layer 3, §13.3, §14
+
+Ruslan, on being shown the review queue: *„i will not perform any reviews of
+orders. simplify it a lot. if we get order, good, you just create final a4 image
+for printing and thats it, nothing more."* And on the rejection message:
+*„i dont need »grazinsime pinigus« at all, all this is out of scope."*
+
+**Deleted** — `Admin/ReviewQueue.php`, `templates/admin/review-queue.php`,
+`assets/js/review.js`, `assets/css/review.css`, `tools/review-check.php`,
+`WooCommerce/OrderStatuses.php`, and with it all five custom statuses.
+
+#### The mistake this corrects
+
+§10 said a human must see every image before it prints, so I built a screen to
+make that happen. The requirement was real; **the screen was not.** Ruslan
+already sees every image — he is the one who loads the icing sheet and presses
+print. Layer 3 was satisfied before I wrote a line of it.
+
+What I actually shipped was a *second order process* running beside the one the
+shop uses. The shop moves orders sustabdytas → vykdomas → įvykdytas by hand and
+has done for years; the plugin was inserting five statuses of its own into the
+middle of that and asking for a decision that had already been made downstream.
+
+**The general form, and the reason this is worth a decision entry:** `PLAN.md`
+describing a workflow is not evidence the shop wants that workflow. Where a
+requirement is already met by something outside the software, the software's job
+is to not get in the way. Same shape as the standing rule that customer-facing
+text and money are Ruslan's — this time the thing built without asking was a
+process rather than a sentence.
+
+#### What replaces it: nothing
+
+Paid order → one Action Scheduler job per line item → print file on disk and a
+download button on the order screen. **The plugin never calls
+`update_status()`.** `Fulfilment`'s three transitions became **private order
+notes**, which are admin-only and email nobody:
+
+| Was | Is |
+|---|---|
+| → `aicake-rendering` | private note „Ruošiami spausdinimo failai." |
+| → `aicake-approval` | private note „Spausdinimo failai paruošti (n)." |
+| → `aicake-failed` | private note „Nepavyko paruošti …" + the mail to the shop |
+
+The „files ready" note is guarded by `META_NOTIFIED` order meta: without a status
+to be idempotent against, a four-item order would otherwise collect four
+identical notes and every retry would add more.
+
+#### The plugin now sends the customer nothing, ever
+
+The rejection note was the only customer-visible message it could produce. With
+it gone, the two remaining mails both go to the shop — budget ceiling reached,
+and a render that failed. That second one is kept deliberately and is now
+**load-bearing**: with no status to go red, it is the only thing that surfaces a
+paid order with no printable file.
+
+`order-check` asserts this mechanically rather than against a list of known
+strings — it reads *every* note on the order and requires the customer-visible
+set to be empty. A note added later without thinking turns it red.
+
+#### Also deleted: the product-page generator
+
+`Frontend/Generator.php`, `templates/generator.php`, `assets/js/generator.js`,
+`assets/css/generator.css`. The pre-wizard UI from Phase 6, superseded by D-034,
+kept alive only because nothing had said to remove it. Two UIs for one job, both
+of which had to stay correct.
+
+`assets/js/generation.js` **stays** — it is the §6.5 polling contract and D-025's
+nonce rules, and the wizard is now its only caller.
+
+> **It also held the logged-in nonce, and `rest-check.sh` scraped it from there.**
+> Deleting it turned 5 of the 12 REST assertions red. Not a regression — the
+> nonce is printed by `Wizard.php:370` and the check was reading a page that no
+> longer had a generator on it. Repointed at `/ai-paveikslelis-vedlys/`, 12/12
+> green. Worth stating because the failure looked exactly like having broken
+> D-026, and the first instinct was to assume the harness was fine.
+
+#### Falsified
+
+Reintroducing `update_status()` in `Fulfilment` turns **2 of 57** red — the happy
+path and the recovery path independently. Making the „files ready" note
+customer-visible turns **1** red. The two are caught by different assertions, so
+they are not one check reported twice.
+
+Also confirmed at runtime rather than by reading the diff:
+`wc_get_order_statuses()` contains no `aicake` entry, and none of the three
+deleted classes resolves through the autoloader.
+
+#### One migration, testbed only
+
+103 test orders were sitting in `wc-aicake-approval` / `-approved` / `-rejected`,
+which would render as blank labels now the statuses are unregistered. Moved to
+`wc-processing` by direct SQL — deliberately not `update_status()`, which would
+have re-fired `woocommerce_order_status_processing` and queued 103 fulfilment
+jobs. Production has never had the plugin, so this migration is not needed there
+and no upgrade routine was written.
+
+#### What Phase 8 has left
+
+Of the five screens, (a) review queue is deleted, and Ruslan cut (b) the batch
+print queue, (c) the cost dashboard and (e) the emails. **Only (d) survives** —
+retention cleanup, because storage grows with every generation whether or not
+anyone buys, and a managed host will not grow forever.
+
+---
+
+<!-- Next: D-048 -->

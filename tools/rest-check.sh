@@ -11,7 +11,7 @@
 # tests/run.php cannot cover this — it is pure PHP with no cookie jar and no
 # HTTP. So this is a shell script rather than a new test framework.
 #
-# Usage:  bash tools/rest-check.sh [product_id]
+# Usage:  bash tools/rest-check.sh [wizard_path]
 #
 # Requires the testbed to be up and the `testuser` customer account to exist:
 #   wp user create testuser test@example.com --role=customer --user_pass=TestPass123
@@ -20,7 +20,16 @@ set -u
 
 SITE="${AICAKE_TEST_SITE:-http://100.127.55.45:8080}"
 API="$SITE/wp-json/aicake/v1"
-PRODUCT="${1:-646}"
+
+# The page that carries the generator. Until D-047 this was a product page; the
+# product-page generator is gone and the wizard is the only one there is, so the
+# nonce-printing this script exists to check happens here or nowhere.
+WIZARD="${1:-/ai-paveikslelis-vedlys/}"
+
+# Which product the generate payload names. Independent of the page above: this
+# script tests the REST layer, not the wizard, and 646 is a plain AI-enabled
+# product with no wizard attached.
+PRODUCT="${2:-646}"
 USER_LOGIN="${AICAKE_TEST_USER:-testuser}"
 USER_PASS="${AICAKE_TEST_PASS:-TestPass123}"
 
@@ -77,7 +86,7 @@ generate() {
 	rm -f "$JAR.body"
 }
 
-echo "REST check against $SITE, product $PRODUCT"
+echo "REST check against $SITE — wizard $WIZARD, product $PRODUCT"
 
 # ------------------------------------------------------------- anonymous
 
@@ -91,7 +100,7 @@ check 'session reports logged_in false' 'false' "$(printf '%s' "$anon_session" |
 check 'generate with the session nonce' '202' "$(generate "$ANON" "$anon_nonce")"
 check 'generate with no nonce is refused' '403' "$(generate "$ANON" '')"
 
-page="$(curl -sL "$SITE/?p=$PRODUCT&post_type=product")"
+page="$(curl -sL "$SITE$WIZARD")"
 printed="$(printf '%s' "$page" | grep -o '"nonce":"[a-zA-Z0-9]*"' | head -1 | cut -d'"' -f4)"
 check 'cacheable markup carries no nonce' 'empty' "${printed:-empty}"
 
@@ -109,7 +118,7 @@ if ! grep -q wordpress_logged_in "$JAR"; then
 	exit 1
 fi
 
-page="$(curl -sL -b "$JAR" "$SITE/?p=$PRODUCT&post_type=product")"
+page="$(curl -sL -b "$JAR" "$SITE$WIZARD")"
 printed="$(printf '%s' "$page" | grep -o '"nonce":"[a-zA-Z0-9]*"' | head -1 | cut -d'"' -f4)"
 
 check 'page prints a nonce for a logged-in user' 'yes' "$([ -n "$printed" ] && echo yes || echo no)"

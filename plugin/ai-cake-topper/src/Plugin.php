@@ -12,11 +12,9 @@ namespace AiCake;
 use AiCake\Admin\BlocklistPage;
 use AiCake\Admin\FormatsPage;
 use AiCake\Admin\OrderScreen;
-use AiCake\Admin\ReviewQueue;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
-use AiCake\Frontend\Generator;
 use AiCake\Frontend\Wizard;
 use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\GdEngine;
@@ -55,7 +53,6 @@ use AiCake\Throttle\BudgetGuard;
 use AiCake\WooCommerce\CartIntegration;
 use AiCake\WooCommerce\FieldsFactory;
 use AiCake\WooCommerce\Fulfilment;
-use AiCake\WooCommerce\OrderStatuses;
 use AiCake\WooCommerce\ProductFields;
 use AiCake\Throttle\IdentityResolver;
 use AiCake\Throttle\RateLimiter;
@@ -284,17 +281,13 @@ class Plugin {
 		if ( class_exists( 'WooCommerce' ) ) {
 			( new ProductFields() )->register();
 			( new CartIntegration( $this->designs, $this->identity, new FieldsFactory() ) )->register();
-			( new Generator( $this->settings ) )->register();
 			( new Wizard( $this->settings, new FieldsFactory(), $this->logger ) )->register();
 
 			/*
-			 * Statuses and fulfilment are registered on the frontend too. The
-			 * status transition that starts a render is fired by the payment
-			 * gateway's callback, which is not an admin request, and a status
-			 * registered only in wp-admin renders as a blank label everywhere
-			 * else — including in the customer's own order emails.
+			 * Fulfilment is registered on the frontend too: the status
+			 * transition that starts a render is fired by the payment gateway's
+			 * callback, which is not an admin request.
 			 */
-			( new OrderStatuses() )->register();
 			$this->fulfilment->register();
 		}
 
@@ -315,10 +308,6 @@ class Plugin {
 
 			if ( class_exists( 'WooCommerce' ) ) {
 				( new OrderScreen( $this->designs, $this->fulfilment ) )->register();
-
-				// §10 layer 3. The only moderation layer that sees the image,
-				// and the screen the shop actually works from every day.
-				( new ReviewQueue( $this->designs, $this->logger ) )->register();
 			}
 		}
 	}

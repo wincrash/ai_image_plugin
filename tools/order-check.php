@@ -212,32 +212,36 @@ function aicake_drain_queue( int $order_id ): int {
 
 /* ------------------------------------------------------------- statuses */
 
-echo "statuses (§13.3)\n";
+/*
+ * D-047 deleted all five. The shop runs the ordinary WooCommerce flow and moves
+ * orders by hand; a plugin status is a second order process running alongside
+ * the real one.
+ *
+ * Asserted from three directions because they are three separate registrations
+ * and the old code did all three — a plugin that stops registering only the one
+ * its own site reads still puts a status on somebody else's.
+ */
 
-$statuses = wc_get_order_statuses();
+echo "statuses — none of ours (D-047)\n";
 
-foreach ( array( 'rendering', 'approval', 'approved', 'rejected', 'failed' ) as $slug ) {
-	aicake_check( "wc-aicake-{$slug} is registered", true, isset( $statuses[ 'wc-aicake-' . $slug ] ) );
-}
+$ours = array();
 
-$keys = array_keys( $statuses );
-$at   = array_search( 'wc-processing', $keys, true );
-
-aicake_check( 'they follow processing, not completed', 'wc-aicake-rendering', $keys[ $at + 1 ] ?? '' );
-aicake_check( 'registered for the non-HPOS path too', true, null !== get_post_status_object( 'wc-aicake-approval' ) );
-aicake_check( 'in-flight orders still count as paid', true, in_array( 'aicake-approval', wc_get_is_paid_statuses(), true ) );
-aicake_check( 'rejected does not count as paid', false, in_array( 'aicake-rejected', wc_get_is_paid_statuses(), true ) );
-
-// Every slug must fit the 20-character status column in both backends.
-$longest = 0;
-
-foreach ( array_keys( $statuses ) as $slug ) {
+foreach ( array_keys( wc_get_order_statuses() ) as $slug ) {
 	if ( str_starts_with( $slug, 'wc-aicake-' ) ) {
-		$longest = max( $longest, strlen( $slug ) );
+		$ours[] = $slug;
 	}
 }
 
-aicake_check( 'the longest slug fits the status column', true, $longest <= 20 && $longest > 0 );
+aicake_check( 'no aicake status in the dropdown', array(), $ours );
+aicake_check( 'none registered on the legacy post path', null, get_post_status_object( 'wc-aicake-approval' ) );
+aicake_check( 'none registered on the HPOS path', array(), array_filter(
+	array_keys( (array) apply_filters( 'woocommerce_register_shop_order_post_statuses', array() ) ),
+	static fn( $slug ) => str_starts_with( (string) $slug, 'wc-aicake-' )
+) );
+aicake_check( 'nothing added to the paid-status list', array(), array_filter(
+	wc_get_is_paid_statuses(),
+	static fn( $slug ) => str_starts_with( (string) $slug, 'aicake-' )
+) );
 
 /* ------------------------------------------------------- storage layout */
 
@@ -293,7 +297,32 @@ aicake_check( 'queued one action per design item', 2, aicake_drain_queue( $order
 
 $order = wc_get_order( $order_id );
 
-aicake_check( 'order reaches awaiting-approval', 'aicake-approval', $order->get_status() );
+/*
+ * The assertion the whole of D-047 rests on. Fulfilment ran, both print files
+ * exist, and the order is still exactly where the shop left it. Reintroducing
+ * any `update_status()` in `Fulfilment` turns this red.
+ */
+aicake_check( 'fulfilment left the status alone', 'processing', $order->get_status() );
+
+$aicake_notes = wc_get_order_notes( array( 'order_id' => $order_id ) );
+
+aicake_check(
+	'it said so in a note',
+	true,
+	(bool) array_filter( $aicake_notes, static fn( $n ) => str_contains( $n->content, 'Spausdinimo failai paruošti' ) )
+);
+
+/*
+ * The plugin sends the customer nothing, ever (D-047). A customer note is what
+ * WooCommerce emails, so this is the mechanical form of that promise — and it
+ * covers notes this check never anticipated, because it asserts over *all* of
+ * them rather than over a list of known strings.
+ */
+aicake_check(
+	'and told the customer nothing',
+	array(),
+	array_values( array_map( static fn( $n ) => $n->content, array_filter( $aicake_notes, static fn( $n ) => (bool) $n->customer_note ) ) )
+);
 
 foreach ( $item_ids as $product_id => $item_id ) {
 	$item  = $order->get_item( $item_id );
@@ -545,7 +574,7 @@ $bad_item_id = $bad_items[646];
 $bad_order->update_status( 'processing' );
 $bad_order = wc_get_order( $bad_id );
 
-aicake_check( 'a paid order still enters rendering', 'aicake-rendering', $bad_order->get_status() );
+aicake_check( 'a paid order is not moved on our account', 'processing', $bad_order->get_status() );
 
 for ( $attempt = 0; $attempt < 3; $attempt++ ) {
 	$plugin->fulfilment()->fulfil_item( $bad_id, $bad_item_id );
@@ -554,20 +583,31 @@ for ( $attempt = 0; $attempt < 3; $attempt++ ) {
 $bad_order = wc_get_order( $bad_id );
 $bad_item  = $bad_order->get_item( $bad_item_id );
 
-aicake_check( 'gives up as failed, never silently', 'aicake-failed', $bad_order->get_status() );
+aicake_check( 'a failure does not move the order either', 'processing', $bad_order->get_status() );
 aicake_check( 'stops at the attempt ceiling', 3, (int) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_ATTEMPTS ) );
 aicake_check( 'records why', true, '' !== (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_ERROR ) );
 aicake_check( 'claims no print file', '', (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT ) );
 
-$noted = false;
+$noted   = false;
+$leaked  = false;
 
 foreach ( wc_get_order_notes( array( 'order_id' => $bad_id ) ) as $note ) {
 	if ( str_contains( $note->content, 'Nepavyko paruošti' ) ) {
 		$noted = true;
+
+		// A customer note is the thing WooCommerce emails.
+		$leaked = $leaked || (bool) $note->customer_note;
 	}
 }
 
 aicake_check( 'leaves an order note a human will see', true, $noted );
+
+/*
+ * The failure the customer must not hear about from us. They have paid and the
+ * file cannot be made — what happens next is a refund, a reprint or a phone
+ * call, and that is the shop's decision to make and to word (D-047).
+ */
+aicake_check( 'and does not tell the customer it broke', false, $leaked );
 
 /* ------------------------------------------------------------- recovery */
 
@@ -585,7 +625,7 @@ $bad_order = wc_get_order( $bad_id );
 $bad_item  = $bad_order->get_item( $bad_item_id );
 
 aicake_check( 'a retry produces the print file', true, is_readable( (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT ) ) );
-aicake_check( 'and lifts the order out of failed', 'aicake-approval', $bad_order->get_status() );
+aicake_check( 'with the status still untouched', 'processing', $bad_order->get_status() );
 aicake_check( 'and clears the error', '', (string) $bad_item->get_meta( AiCake\WooCommerce\Fulfilment::META_ERROR ) );
 
 /* ------------------------------------------------------ ordinary orders */
@@ -604,6 +644,23 @@ $plain->save();
 $plain->update_status( 'processing' );
 
 aicake_check( 'a sale with no design is left alone', 'processing', wc_get_order( $plain->get_id() )->get_status() );
+
+/*
+ * Since D-047 the status assertion above is true of every order in the shop,
+ * so on its own it no longer distinguishes "left alone" from "handled". The
+ * notes do: an ordinary sale must collect none of ours.
+ */
+aicake_check(
+	'and collects none of our notes',
+	array(),
+	array_values( array_map(
+		static fn( $n ) => $n->content,
+		array_filter(
+			wc_get_order_notes( array( 'order_id' => $plain->get_id() ) ),
+			static fn( $n ) => str_contains( $n->content, 'spausdinimo fail' ) || str_contains( $n->content, 'Spausdinimo fail' )
+		)
+	) )
+);
 
 /* ------------------------------------------------------------- reorder */
 
