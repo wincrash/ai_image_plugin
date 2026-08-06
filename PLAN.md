@@ -867,6 +867,14 @@ cheaper, faster to dry, and cleaner-looking. The house style should lean on this
 
 Still the biggest business risk, and the ordering matters — each layer is cheaper than the next.
 
+> **Every layer below is switchable, and the built-in blocklist is editable term by term
+> (D-049).** This section describes the shipped defaults, not a policy the plugin enforces on the
+> shop. Copyright exposure is Ruslan's, so the setting is his.
+>
+> One consequence worth reading before assuming what "off" does: **switching layer 2 off does not
+> skip the call.** It is the same request that translates the prompt to English, which the image
+> providers need — so off means the verdict stops being binding, not that the money is saved.
+
 ### Layer 0 — input sanity
 Length cap 500 chars, strip control characters, reject empty/gibberish. Free.
 

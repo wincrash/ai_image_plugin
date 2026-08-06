@@ -198,6 +198,51 @@ class Blocklist {
 	}
 
 	/**
+	 * The shipped terms the shop has switched off.
+	 *
+	 * Stored as an exclusion list rather than by saving an edited copy of the
+	 * whole list, so a plugin update can add a new built-in term and have it
+	 * take effect. A saved copy would freeze the list at whatever shipped on
+	 * the day it was first edited.
+	 *
+	 * @return string[]
+	 */
+	public function removed_terms(): array {
+		$stored = get_option( self::OPTION, null );
+
+		return is_array( $stored ) ? array_map( 'strval', (array) ( $stored['removed'] ?? array() ) ) : array();
+	}
+
+	/**
+	 * Replace the set of switched-off built-in terms.
+	 *
+	 * Anything that is not a shipped term is discarded: the exclusion list is
+	 * meaningless for a term the shop typed itself, which it deletes from its
+	 * own textarea instead. Left unfiltered it would also grow without limit
+	 * as STARTER changes across versions.
+	 *
+	 * @param string[] $terms Shipped terms to switch off.
+	 */
+	public function set_removed_terms( array $terms ): void {
+		$clean = array_values(
+			array_unique(
+				array_filter(
+					array_map( 'strval', $terms ),
+					static fn( string $term ): bool => in_array( $term, self::STARTER, true )
+				)
+			)
+		);
+
+		$stored = get_option( self::OPTION, array() );
+		$stored = is_array( $stored ) ? $stored : array();
+
+		$stored['removed'] = $clean;
+
+		update_option( self::OPTION, $stored );
+		$this->terms = null;
+	}
+
+	/**
 	 * Replace the shop's additions.
 	 *
 	 * @param string[] $terms One per entry.

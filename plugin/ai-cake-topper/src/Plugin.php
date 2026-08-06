@@ -147,7 +147,8 @@ class Plugin {
 			new Sanitiser(),
 			new Blocklist(),
 			$this->providers,
-			$this->logger
+			$this->logger,
+			$this->settings
 		);
 
 		$this->proofs = new ProofPipeline( $this->images, $this->storage, $this->logger );
@@ -302,7 +303,7 @@ class Plugin {
 				$this->logger
 			) )->register();
 
-			( new BlocklistPage( $this->moderator ) )->register();
+			( new BlocklistPage( $this->moderator, $this->settings ) )->register();
 			( new FormatsPage( $this->images, $this->fonts ) )->register();
 
 			if ( class_exists( 'WooCommerce' ) ) {

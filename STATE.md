@@ -1,6 +1,6 @@
 # Project state
 
-**Updated:** 2026-08-04
+**Updated:** 2026-08-06
 **Phase:** Phases 1–7 built. **The wizard track is finished** (D-033 → D-045). **Phase 8 is
 almost entirely cut** — Ruslan deleted the review queue and four of the five screens (D-047),
 then the background worker as well (D-048). Phase 0 deferred to a later calibration step (D-018).
@@ -166,8 +166,23 @@ testbed tests one audience twice.
 | `Moderation/Blocklist.php` | Word-boundary stem matching, ~90 starter terms in both languages |
 | `Moderation/Sanitiser.php` | Layer 0 — length, control characters, gibberish |
 | `Moderation/Verdict.php` | Layer 0/1 result, same JSON shape as the LLM's |
-| `Moderation/Moderator.php` | Layer ordering, verdict caching, customer-facing wording |
-| `Admin/BlocklistPage.php` | Edit terms and try a prompt against the free layers |
+| `Moderation/Moderator.php` | Layer ordering, verdict caching, customer-facing wording, **the three on/off switches** |
+| `Admin/BlocklistPage.php` | Switch layers, edit terms **including the built-in ones**, try a prompt |
+| `tools/moderation-check.php` | **The gate for the switches — 34 assertions, no network, no cost** |
+
+> **All three layers are switchable and every built-in term is removable (D-049).** Ruslan asked
+> for both on 2026-08-06. The one counter-intuitive part: **switching the AI classifier off does
+> not skip the call** — it is the same request that translates the prompt to English, which the
+> image providers need. Off means the verdict stops being binding, not that the money is saved.
+> The admin screen says so on the setting itself.
+>
+> Two things the override deliberately does not do: it does not turn a **failed** call into an
+> allow (a transport outage is not a verdict, and §10 fails closed), and it does not generate from
+> an empty prompt when the classifier blocked without translating — it falls back to the
+> Lithuanian and logs a warning.
+>
+> Built-in removals are stored as an **exclusion list**, so a later version can still add terms. A
+> saved copy of the whole list would freeze it at whatever shipped the day it was first edited.
 
 **39 stack assertions and 140 unit assertions, all passing.** The headline result is D-024: the
 blocklist now catches for free, in zero milliseconds, every declension case D-019 measured the
@@ -546,6 +561,7 @@ C:\AI_IMAGE\
 ├── tools\sync.ps1           C:\AI_IMAGE  ->  Z:\
 ├── tools\rest-check.sh      REST over real HTTP, logged out and logged in
 ├── tools\order-check.php    a real order through to print files (Phase 7's gate)
+├── tools\moderation-check.php  the moderation switches (D-049), no network
 └── plugin\                  the plugin itself
 ```
 

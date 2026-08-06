@@ -12,6 +12,7 @@ namespace AiCake\Moderation;
 use AiCake\Domain\PromptAnalysis;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Support\Logger;
+use AiCake\Support\Settings;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -24,8 +25,12 @@ defined( 'ABSPATH' ) || exit;
  * job where nothing is waiting on it (§6.1).
  *
  * Layer 3 — a human looking at the rendered image before it prints — is not
- * here because it is not automatable. It is the review queue, and it is
- * non-negotiable.
+ * here because it is not automatable. It is also no longer software: D-047
+ * deleted the review queue, because Ruslan already sees every image when he
+ * loads the icing sheet. The control is real, it is just outside this class.
+ *
+ * All three layers here are switchable (D-049). The shop, not the plugin,
+ * decides how much screening it wants.
  */
 class Moderator {
 
@@ -44,22 +49,47 @@ class Moderator {
 
 	private Logger $logger;
 
+	private Settings $settings;
+
+	/**
+	 * Setting key per layer, for enabled().
+	 */
+	public const LAYERS = array(
+		'sanity'    => 'moderation_sanity',
+		'blocklist' => 'moderation_blocklist',
+		'ai'        => 'moderation_ai',
+	);
+
 	/**
 	 * @param Sanitiser        $sanitiser Layer 0.
 	 * @param Blocklist        $blocklist Layer 1.
 	 * @param ProviderRegistry $providers Layer 2.
 	 * @param Logger           $logger    Logging.
+	 * @param Settings         $settings  Which layers are switched on.
 	 */
 	public function __construct(
 		Sanitiser $sanitiser,
 		Blocklist $blocklist,
 		ProviderRegistry $providers,
-		Logger $logger
+		Logger $logger,
+		Settings $settings
 	) {
 		$this->sanitiser = $sanitiser;
 		$this->blocklist = $blocklist;
 		$this->providers = $providers;
 		$this->logger    = $logger;
+		$this->settings  = $settings;
+	}
+
+	/**
+	 * Whether a layer is switched on.
+	 *
+	 * @param string $layer One of the LAYERS keys.
+	 */
+	public function enabled( string $layer ): bool {
+		$key = self::LAYERS[ $layer ] ?? null;
+
+		return null === $key ? false : (bool) $this->settings->get( $key, true );
 	}
 
 	/**
@@ -77,10 +107,23 @@ class Moderator {
 	 * @param string $prompt Cleaned prompt.
 	 */
 	public function pre_check( string $prompt ): Verdict {
-		$sanity = $this->sanitiser->check( $prompt );
+		/*
+		 * Switching layer 0 off does not let an empty prompt reach a paid
+		 * generation: the endpoints refuse '' themselves, because a request
+		 * with nothing in it is a broken client rather than a judgement call.
+		 * What this setting turns off is the *opinion* — gibberish, no vowels,
+		 * a repeated character.
+		 */
+		if ( $this->enabled( 'sanity' ) ) {
+			$sanity = $this->sanitiser->check( $prompt );
 
-		if ( ! $sanity->allowed_through() ) {
-			return $sanity;
+			if ( ! $sanity->allowed_through() ) {
+				return $sanity;
+			}
+		}
+
+		if ( ! $this->enabled( 'blocklist' ) ) {
+			return Verdict::allowed( 'blocklist' );
 		}
 
 		$blocked = $this->blocklist->check( $prompt );
@@ -103,9 +146,56 @@ class Moderator {
 	/**
 	 * Layer 2. Costs money and latency, so only the job calls it.
 	 *
+	 * Switching this layer off does **not** skip the call. The same request
+	 * translates the prompt into English (§10 Layer 2 is "translate and
+	 * classify" in one call), and the image providers need that translation —
+	 * flux draws Lithuanian badly. So off means *the verdict stops being
+	 * binding*: it is still asked for, still recorded on the design row for
+	 * whoever looks later, and simply no longer refuses anything.
+	 *
 	 * @param string $prompt Cleaned prompt that already passed pre_check().
 	 */
 	public function analyse( string $prompt ): PromptAnalysis {
+		$analysis = $this->analyse_raw( $prompt );
+
+		if ( $this->enabled( 'ai' ) || ! $analysis->ok() ) {
+			return $analysis;
+		}
+
+		if ( ! $analysis->blocked() ) {
+			return $analysis;
+		}
+
+		$overridden          = clone $analysis;
+		$overridden->verdict = PromptAnalysis::ALLOW;
+		$overridden->reasons = array_merge( $analysis->reasons, array( 'ai_layer_disabled' ) );
+
+		/*
+		 * The classifier is told it may leave prompt_en empty when it blocks,
+		 * and Google's own safety filter returns nothing at all. Overriding
+		 * the verdict without a translation would send an empty prompt to a
+		 * provider that charges $0.012 for it, so fall back to the Lithuanian.
+		 * The picture will be worse. That is the cost of the switch, and it is
+		 * logged so nobody has to guess why.
+		 */
+		if ( '' === $overridden->prompt_en ) {
+			$overridden->prompt_en = $prompt;
+
+			$this->logger->warning(
+				'AI moderation is off and the classifier returned no translation; generating from the Lithuanian prompt.',
+				array( 'reasons' => $analysis->reasons )
+			);
+		}
+
+		return $overridden;
+	}
+
+	/**
+	 * The layer 2 call itself, verdict untouched.
+	 *
+	 * @param string $prompt Cleaned prompt.
+	 */
+	private function analyse_raw( string $prompt ): PromptAnalysis {
 		$key    = 'aicake_mod_' . md5( LtNormaliser::fold( $prompt ) );
 		$cached = get_transient( $key );
 

@@ -72,6 +72,17 @@ class Settings {
 			 */
 			'trusted_ip_header'    => 'none', // none | cloudflare | x-forwarded-for.
 
+			/*
+			 * Moderation layers — PLAN.md §10. On by default, and each one is
+			 * switchable on its own because they cost different things: layers
+			 * 0 and 1 are free, layer 2 is an API call. A shop that wants to
+			 * stop paying for the classifier should not have to give up the
+			 * free word list to do it.
+			 */
+			'moderation_sanity'    => true,
+			'moderation_blocklist' => true,
+			'moderation_ai'        => true,
+
 			// Operational.
 			'log_level'            => 'info', // debug | info | warning | error | off.
 			'generation_enabled'   => true,

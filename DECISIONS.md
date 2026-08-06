@@ -2160,4 +2160,111 @@ make it red for a reason unrelated to the order under test.
 
 ---
 
-<!-- Next: D-049 -->
+## D-049 · Moderation becomes the shop's decision, not the plugin's
+
+**2026-08-06. Ruslan asked for two things: the ability to edit the built-in
+restrictions, and the ability to turn moderation off entirely.** Both now exist
+on **AI Cake Topper → Moderation**.
+
+Until today that screen could only *add* terms. The shipped list of ~86
+franchise names was read-only, and there was no way to switch any layer off at
+all. §10 was written as though the plugin owned that judgement.
+
+It does not. This is the same rule as D-047 one level further out: the plugin
+decides how the shop works only where the shop has not said otherwise.
+Copyright exposure is Ruslan's, so the setting is his.
+
+#### 1 · Built-in terms are removable, and removal is stored as an exclusion
+
+A checkbox per shipped term. Unticking one writes it to `removed`, which
+`Blocklist::terms()` already filtered on — the storage was built for this and
+nothing had ever written to it.
+
+**Stored as an exclusion list, not as an edited copy of the whole list.** A
+saved copy would freeze the built-ins at whatever shipped the day the shop
+first touched the screen, so every term added by a later version would silently
+do nothing. Terms the shop typed itself are unaffected: those live in `custom`
+and are deleted from the textarea.
+
+> **Unticked checkboxes post nothing**, so what arrives is the terms still
+> wanted and the removals are everything missing from that. Only safe because
+> the form renders all 86 at once — if it ever paginated them, saving page one
+> would switch off page two. Said out loud in the handler, because the next
+> person to add a filter box will not think of it.
+
+#### 2 · Three switches, not one
+
+Per layer, because they do not cost the same thing:
+
+| Layer | Off means |
+|---|---|
+| Input sanity | Gibberish reaches the provider and is paid for. An empty prompt is still refused — the endpoints do that themselves. |
+| Blocked terms | Franchise names are not caught for free before the classifier sees them. |
+| AI classifier | See below. It is not what you would expect. |
+
+A single master switch would have forced a shop that wants to stop paying for
+the classifier to give up the free word list too.
+
+#### 3 · Switching the AI layer off does not skip the call
+
+**Layer 2 is "translate and classify" in one request** (§10, §8.5). The image
+providers need that translation — flux draws Lithuanian badly. So off cannot
+mean "do not call it"; it means **the verdict stops being binding**. The call
+still runs, the verdict is still recorded on the design row for whoever looks
+later, and it simply no longer refuses anything.
+
+Two things fall out of that, and both are in the code because neither is
+obvious:
+
+- **The classifier is told it may return an empty `prompt_en` when it blocks**,
+  and Google's own safety filter returns nothing at all. Overriding a block
+  without a translation would post an empty prompt to a provider that charges
+  $0.012 for it. It falls back to the Lithuanian and logs a warning — a worse
+  picture, which is the honest cost of the switch.
+- **A failed call is not a verdict.** `PromptAnalysis::failed()` is a `block`
+  because §10 fails closed, and the override must not convert a transport
+  outage into an allow. Only a real `block` from a real answer is overridden.
+
+The admin screen says all of this on the setting itself, including that off
+does not save the money, because "off" that still bills is exactly the kind of
+thing someone discovers three weeks later on an invoice.
+
+#### Verified
+
+`tools/moderation-check.php` — **34 assertions, all green.** No network and no
+money: layer 2 runs against a stub `TextProvider`, so a block with no
+translation and a transport failure are produced on demand rather than waited
+for. The blocklist half snapshots and restores the real option, back to
+*absent* when it started absent — `terms()` takes a different branch otherwise.
+
+Falsified, each independently:
+
+| Change | Result |
+|---|---|
+| `set_removed_terms()` stores the whole starter list | 7 of 34 red |
+| `pre_check()` ignores the two toggles | 4 of 34 red |
+| The override forgets `! $analysis->ok()` | 1 of 34 red — the failed call becomes an allow |
+
+> **The assertion that earns its place is "a neighbouring term still blocks".**
+> Everything else about removal also passes if `set_removed_terms()` wiped the
+> list, which is the mistake worth catching: a shop switching off one term
+> would silently stop screening anything.
+
+Looked at in a real browser, not only asserted. Unticking **Batman** and the
+**AI classifier** and saving: the count reads „85 active (1 switched off)", the
+built-in list re-opens itself because something is off, and `Batmano tortas`
+— blocked a moment earlier — comes back **„Passed the free layers"**. Re-ticking
+both puts it back to 86 and `blocklist:batman`.
+
+One thing that only the browser showed: the try-it box promised „The AI
+classifier would still check it" while the classifier was switched off. Fixed —
+a screen that lies about its own settings is worse than no screen.
+
+> **The testbed already had one custom term, `elsa`, that Ruslan added.** It is
+> why the browser check uses Batman: with a custom `elsa` present, removing the
+> built-in `Elsa` changes nothing observable, and the check would have read as
+> a failure of a feature that works.
+
+---
+
+<!-- Next: D-050 -->
