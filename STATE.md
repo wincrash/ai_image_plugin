@@ -458,7 +458,7 @@ on that server.
 | URL | `http://100.127.55.45:8080` (also `localhost:8080` on the server) |
 | Containers | `wordpress-test-wordpress-1`, `-db-1`, `-mailpit-1` — all up |
 | WordPress | 7.0.2 · WooCommerce 10.9.4 |
-| Theme | Blocksy 2.1.49 + `valgomos` child |
+| Theme | Blocksy 2.1.49 (parent) + **`valgomos` child 2.7.38** — the live theme, copied 2026-08-07. See below |
 | Cart / checkout | **Classic shortcode**, not blocks (`/krepselis/`) |
 | PHP memory | **512M** (was 128M) |
 | Imagick | **Present** — but see below, we do not build against it |
@@ -467,6 +467,31 @@ on that server.
 | Mailpit | `http://100.127.55.45:8025` |
 | DB | `wp_user` / `wp_password` / `wordpress` |
 | Other plugins | **WC Fields Factory 4.1.9** (D-036), WooPayments, PayPal, MailPoet, Jetpack, Pinterest, Reddit, Snapchat, Google Listings & Ads, LithuaniaPost, YITH AJAX nav |
+
+### The testbed now runs the live theme — baseline `valgomos` **2.7.38**, 2026-08-07
+
+**Write this number down; it is the merge base.** Whatever the wizard needs from the theme will
+eventually be merged back into the live theme, and that diff is only meaningful against the
+version we started from. That version is **2.7.38**.
+
+| | |
+|---|---|
+| Source of truth | `C:\VALGOMOS_DEKORACIJOS\themes\valgomos` — a **monorepo** that will also hold this plugin under `plugins\` |
+| Was on the testbed | 2.7.0 (22 July) — 38 versions stale, backed up before overwriting |
+| Now on the testbed | **2.7.38**, active, `style.css?ver=2.7.38` served |
+| Production | **2.7.38 as well** — so the testbed and the live shop now match on the child theme |
+| Parent | Blocksy **2.1.49** on the testbed vs **2.1.51** live — still a two-patch gap, not closed |
+
+Copied with `robocopy /MIR`, 22 files. Verified from inside the container: version 2.7.38, **no
+dotfiles and no `.git` in the theme directory**, front page / wizard page / cart all 200, no fatals
+in the log.
+
+> **The `.git`-in-the-theme rule is the monorepo's reason for existing.** On 2026-08-07 an uploaded
+> `.git` was found publicly readable at `/wp-content/themes/valgomos/.git/` on the live shop — full
+> history, owner's name and e-mail. Git now lives only at the monorepo root. **The same rule will
+> apply to this plugin when it merges in:** no `.git`, no changelog, no dotfiles inside the
+> uploaded folder. The merge itself is `git subtree add --prefix=plugins/<name>`, which preserves
+> our history, so developing here separately costs nothing later.
 
 ### WC Fields Factory on the testbed — read from the database 2026-08-03
 
