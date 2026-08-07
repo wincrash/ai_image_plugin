@@ -27,6 +27,22 @@
 > It also found the thing nobody was looking for: **production has no sodium**, so the openssl
 > branch of the key store is the only one that will ever run there. That is D-052.
 
+> **👉 Current work: Ruslan is updating the wizard** (from 2026-08-07). The migration is paused
+> on purpose until that lands — the code review (D-053) has to read the code that ships, so
+> reviewing a wizard that is about to change would be wasted.
+>
+> **A session picking up the wizard** wants D-033 → D-045 for how it got its present shape, then
+> `Frontend/Wizard.php`, `templates/wizard.php`, `assets/js/wizard.js`, `editor.js` and
+> `generation.js`. `tools/wizard-check.php` (39) and `tools/text-check.php` (30) are the gates;
+> `tools/rest-check.sh` is the only one that authenticates, and D-025/D-026 are what happens
+> without it. Deploy with `tools\sync.ps1` before running any of them — they test the deployed
+> copy.
+>
+> **Two standing rules that bite here.** Functional CSS only, no cosmetics against the testbed
+> theme (Ruslan does those at ship time on the real theme, and the live theme is a separate
+> project). And a 429 in any check is the throttle, not the thing under test — see the
+> testbed-state warning further down, which has now cost time twice.
+
 > **M0.1 and M0.2 are done (D-050, D-051).** There is a settings screen —
 > **AI Cake Topper → Nustatymai** — carrying API keys (encrypted, constants still win), the
 > throttle and budget limits, the house style suffix, a read-only host panel, and the
