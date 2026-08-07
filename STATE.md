@@ -32,6 +32,24 @@
 > — text only, uploaded photo, AI, and image search — as **one wizard branching at one step**
 > (D-054 → D-062). Everything below describing the wizard as an AI-only flow is v1.
 >
+> **✅ Step 1 is done (2026-08-07) — `source`, schema 5, and retention without cron.**
+> `aicake_designs` gains **`source`** (`ai` | `upload` | `search` | `none`), D-054's spine.
+> It defaults to `'ai'` so **the column default *is* the backfill** — every row that existed
+> before schema 5 was an AI generation — and no migration query was needed.
+> `Storage/Retention.php` collects expired unpurchased designs **opportunistically from the job
+> runner**, 1-in-4, bounded batch, no Action Scheduler and no wp-cron (D-061). New index
+> `sweep (order_id, updated_at)`; `retention_days` 14 and `retention_batch` 20 in settings, and
+> **0 days switches it off**.
+> `tools/retention-check.php` is new — **11 assertions**, falsified by removing `order_id IS NULL`,
+> which turns 3 red including the paid design's row *and* its files.
+>
+> **Expiry slides for free, and finding that out cost a debugging round.**
+> `DesignRepository::update()` stamps `updated_at` on every call, so any touch of a design pushes
+> its expiry out — which is exactly what Ruslan asked for, and which also means **that method
+> cannot be used to fabricate an old row in a fixture.** The first run of the check aged three
+> designs through it, got three fresh ones, and reported a sweep that correctly collected nothing.
+> The fixture ages rows with a direct `$wpdb->update()` now, and says why.
+
 > **✅ Step 0 is done (2026-08-07).** The empty-layer refusal now says two different things.
 > `editor.js` probes the export canvas in two corners before drawing and remembers whether the
 > device held them; `TextLayerEndpoint` tells a customer who typed nothing that their text is

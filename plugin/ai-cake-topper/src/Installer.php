@@ -22,7 +22,7 @@ class Installer {
 	 * Bumped whenever the SQL below changes. Separate from the plugin version
 	 * so a plugin release with no schema change costs nothing on upgrade.
 	 */
-	public const SCHEMA_VERSION = 4;
+	public const SCHEMA_VERSION = 5;
 
 	public const SCHEMA_OPTION = 'aicake_schema_version';
 
@@ -111,6 +111,18 @@ class Installer {
 		 * delete a design belonging to an order, and answering "does an order
 		 * reference this design?" from the WooCommerce side means a query per
 		 * candidate row every time the cleanup job runs.
+		 *
+		 * `source` is D-054's spine — where the picture came from: 'ai',
+		 * 'upload', 'search', or 'none' for text on a blank sheet. It defaults
+		 * to 'ai' because every row that existed before schema 5 was an AI
+		 * generation, so the default *is* the backfill and no migration query
+		 * is needed. Code always sets it explicitly; the default exists for
+		 * history, not for new rows.
+		 *
+		 * `sweep (order_id, updated_at)` is the retention query's index and
+		 * nothing else reads it. It is deliberately on `updated_at` rather than
+		 * `created_at`: expiry slides with the last touch, so a customer who
+		 * comes back to an old design keeps it (D-061).
 		 */
 		$sql = array();
 
@@ -124,6 +136,7 @@ class Installer {
 			variation_id BIGINT UNSIGNED DEFAULT NULL,
 			format_type VARCHAR(16) DEFAULT NULL,
 			format_mm DECIMAL(6,2) DEFAULT NULL,
+			source VARCHAR(16) NOT NULL DEFAULT 'ai',
 			prompt_raw TEXT NOT NULL,
 			prompt_en TEXT DEFAULT NULL,
 			prompt_final TEXT DEFAULT NULL,
@@ -152,7 +165,8 @@ class Installer {
 			KEY user_created (user_id, created_at),
 			KEY status_created (status, created_at),
 			KEY created_cost (created_at, cost_usd),
-			KEY order_id (order_id)
+			KEY order_id (order_id),
+			KEY sweep (order_id, updated_at)
 		) {$charset};";
 
 		$sql[] = "CREATE TABLE {$jobs} (

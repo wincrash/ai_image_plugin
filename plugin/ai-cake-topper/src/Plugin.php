@@ -47,6 +47,7 @@ use AiCake\Rest\TextLayerEndpoint;
 use AiCake\Rest\SessionEndpoint;
 use AiCake\Storage\OrderArchive;
 use AiCake\Storage\PrivateStorage;
+use AiCake\Storage\Retention;
 use AiCake\Support\Http;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
@@ -119,6 +120,8 @@ class Plugin {
 
 	private OrderArchive $archive;
 
+	private Retention $retention;
+
 	private Fulfilment $fulfilment;
 
 	/**
@@ -162,6 +165,8 @@ class Plugin {
 			$this->logger
 		);
 
+		$this->retention = new Retention( $this->storage, $this->settings, $this->logger );
+
 		$this->runner = new Runner(
 			$this->jobs,
 			$this->designs,
@@ -173,7 +178,8 @@ class Plugin {
 			$this->budget_guard,
 			$this->dispatcher,
 			$this->settings,
-			$this->logger
+			$this->logger,
+			$this->retention
 		);
 
 		$this->prints  = new FulfilPipeline( $this->images, $this->providers, $this->logger );
@@ -496,6 +502,13 @@ class Plugin {
 	 */
 	public function prints(): FulfilPipeline {
 		return $this->prints;
+	}
+
+	/**
+	 * Collection of expired, unpurchased designs (D-061).
+	 */
+	public function retention(): Retention {
+		return $this->retention;
 	}
 
 	/**

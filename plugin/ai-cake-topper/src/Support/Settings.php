@@ -111,6 +111,22 @@ class Settings {
 			'moderation_blocklist' => true,
 			'moderation_ai'        => true,
 
+			/*
+			 * Retention — D-061. Storage grows with every generation, bought or
+			 * not, and production is a managed host with no shell.
+			 *
+			 * Days are counted from the design's last touch, not its creation,
+			 * so a customer who comes back to an old design keeps it. Zero
+			 * switches collection off entirely, which is the setting to reach
+			 * for while diagnosing something rather than editing code.
+			 *
+			 * The batch is small on purpose: the sweep runs inside a request
+			 * that is already doing something else, and a big batch would turn
+			 * one unlucky customer's generation into a filesystem job.
+			 */
+			'retention_days'       => 14,
+			'retention_batch'      => 20,
+
 			// Operational.
 			'log_level'            => 'info', // debug | info | warning | error | off.
 			'generation_enabled'   => true,

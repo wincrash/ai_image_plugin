@@ -19,6 +19,7 @@ use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Storage\PrivateStorage;
+use AiCake\Storage\Retention;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
@@ -67,17 +68,21 @@ class Runner {
 
 	private Logger $logger;
 
+	private Retention $retention;
+
 	/**
 	 * @param JobRepository    $jobs       Queue.
 	 * @param DesignRepository $designs    Designs.
 	 * @param ProviderRegistry $providers  Providers.
 	 * @param Moderator        $moderator  Moderation layers.
 	 * @param PromptBuilder    $prompts    Style suffix.
+	 * @param PreviewPipeline  $previews   Preview building.
 	 * @param PrivateStorage   $storage    Files.
 	 * @param BudgetGuard      $budget     Spend ceiling.
 	 * @param Dispatcher       $dispatcher Loopback, for token verification.
 	 * @param Settings         $settings   Configuration.
 	 * @param Logger           $logger     Logging.
+	 * @param Retention        $retention  Expired-design collection (D-061).
 	 */
 	public function __construct(
 		JobRepository $jobs,
@@ -90,7 +95,8 @@ class Runner {
 		BudgetGuard $budget,
 		Dispatcher $dispatcher,
 		Settings $settings,
-		Logger $logger
+		Logger $logger,
+		Retention $retention
 	) {
 		$this->jobs       = $jobs;
 		$this->designs    = $designs;
@@ -103,6 +109,7 @@ class Runner {
 		$this->dispatcher = $dispatcher;
 		$this->settings   = $settings;
 		$this->logger     = $logger;
+		$this->retention  = $retention;
 	}
 
 	/**
@@ -192,6 +199,30 @@ class Runner {
 				)
 			);
 			$this->fail( $job_id, $job->design_id, 'exception', $e->getMessage() );
+		}
+
+		/*
+		 * Collect a little expired storage on the way out (D-061).
+		 *
+		 * Here rather than anywhere a visitor can reach: this method runs in
+		 * the background worker, after the customer's picture is already
+		 * finished, and it is reached once per generation rather than once per
+		 * page view — which is the side of D-056's line this belongs on.
+		 *
+		 * After the try/catch, not inside it, so a failed generation still
+		 * sweeps: a run of failures is exactly when nobody is buying and the
+		 * expired rows pile up.
+		 *
+		 * Wrapped, because reclaiming disk must never be the reason a job that
+		 * otherwise succeeded reports a failure to the customer.
+		 */
+		try {
+			$this->retention->maybe_sweep();
+		} catch ( \Throwable $e ) {
+			$this->logger->warning(
+				'Retention sweep failed.',
+				array( 'detail' => $e->getMessage() )
+			);
 		}
 
 		return self::RAN;
