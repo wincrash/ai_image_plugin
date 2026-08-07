@@ -14,6 +14,19 @@
 > **`memory_limit` is 256M against our 339 MB measured peak**, and **Really Simple Security may
 > block the REST API for logged-out visitors**, which is the wizard's entire audience.
 >
+> **🛑 The first upload to production is gated on a full code review in a fresh session**
+> (D-053). Ruslan's instruction, and it is not a formality — there is no staging copy. See
+> `CLAUDE.md`, top of file.
+
+> **The preflight has been run against the live shop (2026-08-07) and both blockers are gone.**
+> `ini_set( 'memory_limit', '512M' )` **sticks**, `open_basedir` is `/home/vaijos/:/tmp:/usr/share/pear`
+> so the storage target **is writable**, GD FreeType is **confirmed** (668 samples of
+> `ĄČĘĖĮŠŲŪŽ`), loopback works, and anonymous `/wp-json/` returns **200** — Really Simple
+> Security is not blocking it. Full output in `docs/migration.md` §1.
+>
+> It also found the thing nobody was looking for: **production has no sodium**, so the openssl
+> branch of the key store is the only one that will ever run there. That is D-052.
+
 > **M0.1 and M0.2 are done (D-050, D-051).** There is a settings screen —
 > **AI Cake Topper → Nustatymai** — carrying API keys (encrypted, constants still win), the
 > throttle and budget limits, the house style suffix, a read-only host panel, and the

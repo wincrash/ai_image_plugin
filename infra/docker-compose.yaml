@@ -84,6 +84,12 @@ services:
            customer never runs (D-013/D-015). */
         define('AICAKE_FORCE_GD', true);
 
+        /* Same rule, second instance (D-052). Production's PHP 8.4 has no
+           sodium, so the live shop encrypts API keys with openssl. Without
+           this the testbed would exercise the sodium branch and the only
+           branch that ever runs on production would be untested. */
+        define('AICAKE_FORCE_OPENSSL', true);
+
         /* WP_HOME is the Docker host's Tailscale address, which the container
            has no route back through, so loopback dispatch to admin_url()
            times out. Point it at the container itself instead. Production

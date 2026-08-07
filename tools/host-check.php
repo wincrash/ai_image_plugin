@@ -70,11 +70,33 @@ $after_raise = ini_get( 'memory_limit' );
 row( 'ini_set(memory_limit, 512M) sticks', $after_raise, '512M' === $after_raise );
 
 /*
- * Decides whether storage can live outside the webroot at all (§2.3). Empty
- * means unrestricted, which is the answer we want.
+ * Decides whether storage can live outside the webroot at all (§2.3).
+ *
+ * The question is not "is it empty" — a restricted open_basedir that still
+ * covers the intended storage path is a perfectly good answer, and reporting it
+ * as a failure sends someone arguing with their host about nothing. What
+ * matters is whether one of its roots is an ancestor of where the files go.
  */
 $basedir = (string) ini_get( 'open_basedir' );
-row( 'open_basedir', '' === $basedir ? '(none — unrestricted)' : $basedir, '' === $basedir );
+
+if ( '' === $basedir ) {
+	row( 'open_basedir', '(none — unrestricted)', true );
+} else {
+	$target  = dirname( $_SERVER['DOCUMENT_ROOT'] ?? __DIR__ ) . '/aicake-files';
+	$covered = false;
+
+	foreach ( explode( PATH_SEPARATOR, $basedir ) as $root ) {
+		$root = rtrim( trim( $root ), '/' );
+
+		if ( '' !== $root && str_starts_with( $target, $root . '/' ) ) {
+			$covered = true;
+			break;
+		}
+	}
+
+	row( 'open_basedir', $basedir, $covered );
+	row( 'covers the storage target', $covered ? $target : "$target is OUTSIDE it", $covered );
+}
 
 /*
  * If timestamps are not validated, a file replaced over FTP keeps running the
@@ -99,9 +121,19 @@ if ( function_exists( 'opcache_get_configuration' ) ) {
 
 /*
  * D-050 — the settings screen refuses to store a key it cannot encrypt.
+ *
+ * Report the cipher that will actually be used rather than ticking "sodium".
+ * The first run of this printed `OK sodium (key encryption) NO`, which is both
+ * contradictory and buries the finding that mattered: production has no sodium,
+ * so the openssl branch is the only one that ever runs there (D-052).
  */
-row( 'sodium (key encryption)', function_exists( 'sodium_crypto_secretbox' ), function_exists( 'sodium_crypto_secretbox' ) || function_exists( 'openssl_encrypt' ) );
-row( 'openssl (fallback cipher)', function_exists( 'openssl_encrypt' ) );
+$has_sodium  = function_exists( 'sodium_crypto_secretbox' );
+$has_openssl = function_exists( 'openssl_encrypt' );
+$cipher      = $has_sodium ? 'sodium/xsalsa20-poly1305' : ( $has_openssl ? 'openssl/aes-256-gcm' : 'NONE' );
+
+row( 'API key cipher', $cipher, $has_sodium || $has_openssl );
+row( 'sodium present', $has_sodium );
+row( 'openssl present', $has_openssl );
 
 $limit_bytes = (int) preg_replace_callback(
 	'/^(\d+)([KMG])?$/i',

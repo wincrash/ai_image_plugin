@@ -17,6 +17,19 @@ Guidance for Claude Code working in this repository.
 `idea.md` is the original brief. It is **superseded** — `PLAN.md` §23 lists where it is wrong.
 Do not follow it.
 
+## 🛑 Before anything is uploaded to the live shop
+
+**The first upload to `valgomosdekoracijos.lt` is blocked until a full, hard code review has
+been done in a dedicated fresh session** (D-053, Ruslan's instruction, 2026-08-07).
+
+The live shop has ~2500 products, 11 133 users and **no staging copy**. There is nowhere to be
+wrong cheaply. The suites passing is not the review, and `DECISIONS.md` is not the review — one
+records coverage, the other records intent. The review reads the code.
+
+Its acceptance criterion is Ruslan's: **"don't disturb users."** Not *does the wizard work*, but
+*does activating this change anything for the other products, ordinary orders, the cart, the
+checkout, or a customer who never touches it.*
+
 ## What this project is
 
 A WooCommerce plugin for valgomosdekoracijos.lt, a Lithuanian shop selling edible cake

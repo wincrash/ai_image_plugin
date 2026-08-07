@@ -68,7 +68,16 @@ $snapshot = get_option( SecretStore::OPTION, null );
 echo "\n== host\n";
 
 aicake_check( 'a cipher is available', true, SecretStore::available() );
-aicake_check( 'the cipher is sodium', 'sodium/xsalsa20-poly1305', SecretStore::cipher() );
+
+/*
+ * Not "the cipher is sodium". Production has no sodium (host-check, 2026-08-07)
+ * so the live shop writes with openssl, and asserting the testbed's preference
+ * would pin the check to the one host that does not matter. What is asserted is
+ * that the testbed runs *production's* cipher — D-052, the same rule as
+ * AICAKE_FORCE_GD.
+ */
+aicake_check( 'the testbed is forced onto production\'s cipher', 'openssl/aes-256-gcm', SecretStore::cipher() );
+printf( "  note  sodium present on this host: %s\n", function_exists( 'sodium_crypto_secretbox' ) ? 'yes' : 'no' );
 
 /*
  * Not an assertion about the testbed so much as a reminder: if this is false on
@@ -105,7 +114,7 @@ aicake_check(
 	str_contains( wp_json_encode( $raw ) ?: '', $secret )
 );
 
-aicake_check( 'the stored value declares its cipher', true, str_starts_with( (string) ( $raw['openai'] ?? '' ), 's1:' ) );
+aicake_check( 'the stored value declares its cipher', true, str_starts_with( (string) ( $raw['openai'] ?? '' ), 'o1:' ) );
 
 /*
  * A fresh nonce per write. Without it, two shops with the same key produce the
@@ -150,6 +159,34 @@ aicake_check( 'a stored value does not override the constant', true, AICAKE_FAL_
 aicake_check( 'and the source still reads constant', 'constant', ( new Settings() )->secret_source( 'fal' ) );
 
 $store->forget( 'fal' );
+
+/* ----------------------------------------------------- the other cipher */
+
+echo "\n== a value written by the other cipher still opens\n";
+
+/*
+ * Writing is forced to openssl, so nothing in this run exercises the sodium
+ * read path — and a shop that stored keys on a host with sodium and later moved
+ * to one without (or the reverse) depends on it entirely. The value is built
+ * here with sodium directly, using the same key derivation the store uses, and
+ * handed to the store to open.
+ *
+ * This is also why key() is plain SHA-256 on every host: if derivation varied
+ * with the extensions present, this test could not be written at all.
+ */
+if ( function_exists( 'sodium_crypto_secretbox' ) ) {
+	$key   = hash( 'sha256', 'aicake-secret-v1|' . wp_salt( 'secure_auth' ), true );
+	$nonce = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
+	$other = 'sk-written-by-sodium';
+
+	$cross           = get_option( SecretStore::OPTION, array() );
+	$cross['openai'] = 's1:' . base64_encode( $nonce . sodium_crypto_secretbox( $other, $nonce, $key ) );
+	update_option( SecretStore::OPTION, $cross, false );
+
+	aicake_check( 'a sodium-written value decrypts', $other, ( new Settings() )->secret( 'openai' ) );
+} else {
+	echo "  SKIP  no sodium on this host — production is like this too\n";
+}
 
 /* ------------------------------------------------------------- unreadable */
 

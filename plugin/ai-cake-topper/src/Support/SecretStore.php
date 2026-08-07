@@ -167,7 +167,7 @@ class SecretStore {
 	 * Which cipher this host will use. For the diagnostics panel.
 	 */
 	public static function cipher(): string {
-		if ( function_exists( 'sodium_crypto_secretbox' ) ) {
+		if ( self::use_sodium() ) {
 			return 'sodium/xsalsa20-poly1305';
 		}
 
@@ -176,6 +176,31 @@ class SecretStore {
 		}
 
 		return '';
+	}
+
+	/**
+	 * Whether to write with sodium.
+	 *
+	 * **Production has no sodium.** PHP 8.4 normally bundles it and
+	 * valgomosdekoracijos.lt does not have it, so the live shop encrypts with
+	 * openssl — which means the openssl branch is not a fallback there, it is
+	 * the only branch that ever runs.
+	 *
+	 * `AICAKE_FORCE_OPENSSL` therefore exists for the same reason
+	 * `AICAKE_FORCE_GD` does (D-013): a testbed that quietly runs a better
+	 * implementation than production tests the one path the customer never
+	 * takes. The constant is set on the testbed, so development runs what the
+	 * shop runs.
+	 *
+	 * Reading is unaffected — decrypt() dispatches on the stored prefix, so a
+	 * value written either way still opens.
+	 */
+	private static function use_sodium(): bool {
+		if ( defined( 'AICAKE_FORCE_OPENSSL' ) && constant( 'AICAKE_FORCE_OPENSSL' ) && function_exists( 'openssl_encrypt' ) ) {
+			return false;
+		}
+
+		return function_exists( 'sodium_crypto_secretbox' );
 	}
 
 	/**
@@ -243,13 +268,14 @@ class SecretStore {
 	 * to put one.
 	 */
 	private function key(): string {
-		$material = 'aicake-secret-v1|' . wp_salt( 'secure_auth' );
-
-		if ( function_exists( 'sodium_crypto_generichash' ) ) {
-			return sodium_crypto_generichash( $material, '', 32 );
-		}
-
-		return hash( 'sha256', $material, true );
+		/*
+		 * Plain SHA-256 rather than sodium's generichash even where sodium
+		 * exists. Both produce a fine 32-byte key, but deriving it differently
+		 * on different hosts means the testbed and production disagree about
+		 * what the key *is* — so a value encrypted on one could never be read
+		 * on the other, and no test would ever notice.
+		 */
+		return hash( 'sha256', 'aicake-secret-v1|' . wp_salt( 'secure_auth' ), true );
 	}
 
 	/**
@@ -259,7 +285,7 @@ class SecretStore {
 	private function encrypt( string $value ): string {
 		$key = $this->key();
 
-		if ( function_exists( 'sodium_crypto_secretbox' ) ) {
+		if ( self::use_sodium() ) {
 			$nonce  = random_bytes( SODIUM_CRYPTO_SECRETBOX_NONCEBYTES );
 			$cipher = sodium_crypto_secretbox( $value, $nonce, $key );
 

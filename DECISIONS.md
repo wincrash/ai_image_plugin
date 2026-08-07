@@ -2414,4 +2414,74 @@ This is the D-049 switches doing their job and the shop's own settings quietly
 disabling the tests that prove they work. Worth checking the option before
 debugging either suite again.
 
-<!-- Next: D-052 -->
+## D-052 · Production has no sodium, so the testbed stops using it
+
+**2026-08-07. `host-check.php` run against the live shop.** PHP 8.4.14 normally
+bundles sodium. valgomosdekoracijos.lt does not have it.
+
+D-050 was written a few hours earlier with sodium as the cipher and openssl as
+a fallback "in case". That has it exactly backwards: **on the machine that
+matters, the fallback is the only branch that ever runs** — and it was code I
+had written and never once executed. `settings-check.php` asserted the cipher
+*was* sodium, so it would have failed on production, and every one of its 34
+assertions was exercising a code path the live shop will never take.
+
+This is D-013 again, one layer down. `AICAKE_FORCE_GD` exists because the
+testbed has Imagick and production does not, so without it we would develop
+against an engine the customer never runs. `AICAKE_FORCE_OPENSSL` now exists for
+the identical reason and is set in `infra/docker-compose.yaml`.
+
+Three things fell out of doing it properly:
+
+- **Key derivation is plain SHA-256 on every host.** It used to prefer sodium's
+  `crypto_generichash` where available, which means the testbed and production
+  would have derived *different keys from the same salt* — a value encrypted on
+  one could never be opened on the other, and nothing would have reported it.
+  A host-dependent branch inside a key derivation is a trap, not an
+  optimisation.
+- **Reading stays cipher-agnostic.** `decrypt()` dispatches on the stored
+  prefix, so a value written either way still opens. `settings-check` proves it
+  by building an `s1:` value with sodium directly and handing it to the store —
+  which is the only reason the sodium path still has any coverage at all.
+- **The preflight now reports the cipher that will be used**, not whether
+  sodium is present. Its first run printed `OK sodium (key encryption) NO`,
+  which is self-contradictory and buries the finding underneath a tick.
+
+Falsified: shifting the openssl IV/tag offsets by four bytes turns **4 of the
+35** red. Before this decision, that same break turned **nothing** red.
+
+> **The general rule, now stated twice in this log:** where the testbed is
+> better equipped than production, the testbed must be made worse on purpose.
+> Anything else tests a shop that does not exist.
+
+---
+
+## D-053 · Nothing reaches the live shop without a full code review first
+
+**2026-08-07. Ruslan, planning the migration:** *"make strict NOTE, it is
+important not to brake the live system. so before first upload, we will do FULL
+code hard review (it will be on fresh session)."*
+
+Recorded as a gate rather than a preference. `valgomosdekoracijos.lt` is a
+working shop with ~2500 products, 11 133 registered users and no staging copy —
+there is nowhere to be wrong cheaply.
+
+**The rule: the first upload to production is blocked until a full review of the
+plugin has been done in a dedicated fresh session, from the code rather than
+from this log.** A fresh session is the point — the sessions that wrote the code
+are the worst possible reviewers of it, because they already believe it works.
+
+Two things this deliberately does not rely on:
+
+- **The suites passing is not the review.** 617 committed assertions is good
+  coverage of what we thought to check, and every bug D-051 found was found by
+  falsification rather than by a passing test.
+- **This log is not the review either.** `DECISIONS.md` records what was
+  intended. The review is about what the code does.
+
+The review's own acceptance criterion is Ruslan's: **"don't disturb users."**
+Not "does the wizard work" — that is what M5 is for — but *does activating this
+change anything for the other ~2500 products, ordinary orders, the cart, the
+checkout, or a customer who never touches it.*
+
+<!-- Next: D-054 -->

@@ -43,17 +43,33 @@ what order, what has to be built first, and what to do when a step goes wrong.
 WC Fields Factory are the same builds; GD-without-Imagick is the path we have been developing on
 since D-013. The theme differs by two patch versions of Blocksy and a much-modified child.
 
-### What the dump does *not* answer
+### The preflight — run 2026-08-07, and it answered everything
 
-Five things, all needed before install. §M1 is the one file that answers them.
+`tools/host-check.php` against the live shop. **Both §2 blockers are retired.**
 
-| Unknown | Why it matters |
+| Question | Answer |
 |---|---|
-| `open_basedir` | Decides whether storage can live outside the webroot at all |
-| Whether `ini_set( 'memory_limit', '512M' )` sticks | Decides whether §2.1 is solved by configuration or only by code |
-| GD **FreeType** | The watermark is the last thing the server draws with a font (D-045). No FreeType, no watermark |
-| Loopback | Job dispatch layer 1. We have two fallbacks, but we want to know which path is live |
-| Anonymous REST reachability | **Really Simple Security 9.7.0 is active** — see §2.2 |
+| `ini_set( 'memory_limit', '512M' )` | **Sticks.** §2.1 is solvable by configuration |
+| `open_basedir` | `/home/vaijos/:/tmp:/usr/share/pear` — restricted but **covers the target** |
+| Storage outside the webroot | `/home/vaijos/domains/valgomosdekoracijos.lt/aicake-files` — **writable**, confirmed by a real probe write |
+| GD **FreeType** | **Yes**, and `ĄČĘĖĮŠŲŪŽ` rendered — 668 dark samples |
+| Loopback | **Works** — the host reaches itself |
+| Anonymous `/wp-json/` | **HTTP 200.** Really Simple Security is not blocking the REST API |
+| Outbound to fal.run and Google | **Reachable** |
+| A4 300 DPI and 4096² canvases | **Both allocate**, 120 MB peak in the probe |
+| `opcache.validate_timestamps` | **On**, `revalidate_freq` 2 — a file replaced over FTP is picked up |
+
+**One finding nobody was looking for: production has no sodium.** PHP 8.4 normally bundles it.
+So the plugin encrypts API keys with **openssl/aes-256-gcm** on the live shop, which was written
+as a fallback and had never been executed. That is D-052, and the testbed now runs the same
+branch on purpose.
+
+Two items remain amber rather than red:
+
+- **OPcache is full** (33 MB of 33 MB, hit rate 19.5%) — a pre-existing site-wide condition, not
+  ours. Our files will largely not be cached. Slower, not broken.
+- The canonical host is **`www.valgomosdekoracijos.lt`**; the bare domain 301s to it. Worth
+  remembering wherever a URL is constructed.
 
 ---
 
@@ -61,7 +77,12 @@ Five things, all needed before install. §M1 is the one file that answers them.
 
 ### 2.1 `memory_limit` is 256M and our measured peak is 339M
 
-This is the headline risk and it is not close. D-023 measured **339 MB peak** rendering the A4
+> **Retired 2026-08-07 — `ini_set( 'memory_limit', '512M' )` sticks on this host.** The plugin
+> raises the limit for the render and the ceiling stops being a launch blocker. Response 3 below
+> is still worth doing, because a host setting we do not control should not be the only thing
+> between a paid order and a failed render — but it is now hardening, not a blocker.
+
+This was the headline risk and it is not close. D-023 measured **339 MB peak** rendering the A4
 4× path. Production allows **256M**. A print render that hits the ceiling dies *after the
 customer has paid*, which is the worst possible place for it.
 
@@ -88,6 +109,11 @@ Three responses, and we do all three because the first two are not ours to guara
 
 ### 2.2 Really Simple Security may block the REST API for logged-out visitors
 
+> **Retired 2026-08-07 — anonymous `/wp-json/` returns HTTP 200 with a namespace list.** The
+> REST API is reachable logged out. Still worth a glance at its Hardening screen before install,
+> because the setting exists and could be switched on later by an update or by a well-meaning
+> click.
+
 The wizard's entire audience is anonymous. It calls `/wp-json/aicake/v1/session`, `/generate` and
 `/jobs/{id}` before anyone logs in. Really Simple Security has a hardening option that disables
 the REST API for logged-out users, and if it is on, the wizard is dead for exactly the people it
@@ -102,10 +128,11 @@ what the loopback dispatcher and the print-file download both use.
 
 ### 2.3 Storage outside the webroot
 
+> **Settled 2026-08-07.** `open_basedir` is `/home/vaijos/:/tmp:/usr/share/pear` and the
+> preflight wrote a probe file into the target successfully. The fallback below is not needed.
+
 Target: `/home/vaijos/domains/valgomosdekoracijos.lt/aicake-files/` — a sibling of `public_html`,
-created over FTP, so nothing generated is ever reachable by URL. Whether PHP may write there
-depends on `open_basedir`, which the dump does not report. DirectAdmin usually sets it to
-`/home/vaijos/:/tmp/`, which would allow it.
+created over FTP, so nothing generated is ever reachable by URL.
 
 **Fallback if it cannot:** `wp-content/uploads/aicake/` with a `deny from all` `.htaccess` and
 unguessable filenames (`PLAN.md` §12.4). It works, but it leans entirely on the web server
@@ -139,8 +166,9 @@ live shop.
 | **M0.3** | **Peak memory under 256M**, proven with the limit pinned (§2.1) | A paid order that cannot render |
 | **M0.4** | **Retention cleanup job** (§12.5) | §2.4 |
 | **M0.5** | **Inertness proof** — the plugin changes nothing for the other ~2500 products, ordinary orders, cart or checkout | "Don't disturb users" is the acceptance criterion |
-| **M0.6** | **Packaging** — `tools/package.ps1` builds a versioned, installable `.zip` | §4 — the install route is the wp-admin uploader, not FTP |
-| **M0.7** | **Preflight** — extend `tools/host-check.php` to answer the five unknowns in §1 | M1 |
+| **M0.6** | ~~Packaging~~ | **Dropped.** Ruslan uploads the folder over FTP himself each time (2026-08-07) |
+| **M0.7** | ~~Preflight~~ | **Done and run** — see §1 |
+| **M0.8** | **🛑 Full code review, fresh session** (D-053) | **The gate on the first upload.** Nothing goes to the live shop before it |
 
 Not blocking, deliberately deferred: the i18n `.pot` file (every customer-facing string is already
 written in Lithuanian, so the shop reads correctly with no translation loaded), and the decorative
@@ -195,8 +223,9 @@ fallback.
 
 ### M2 · Install, inert
 
-1. Build the zip: `powershell -File C:\AI_IMAGE\tools\package.ps1`.
-2. wp-admin → Plugins → Add New → Upload Plugin → activate.
+1. **The code review (D-053) must be done first.** This is the gate, not a formality.
+2. Upload `plugin/ai-cake-topper/` over FTP to `wp-content/plugins/`, then activate it in
+   wp-admin. Upload before activating, never the other way round.
 3. **Verify nothing changed.** Front page, a normal product page, add that product to the cart,
    open the cart and the checkout, open a recent existing order in wp-admin. All must be
    indistinguishable from before.
