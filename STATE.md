@@ -493,6 +493,44 @@ in the log.
 > uploaded folder. The merge itself is `git subtree add --prefix=plugins/<name>`, which preserves
 > our history, so developing here separately costs nothing later.
 
+### Phones — the canvas ceiling, measured 2026-08-07
+
+**Ruslan's Android phone builds a 35 MP canvas and encodes it. The wizard needs 8.3 MP.**
+
+The wizard has always asked the browser for a canvas at the **true print size** — `editor.js`
+`exportLayer()` allocates `2481 × 3331` for a cupcake sheet and calls `toDataURL()` on it — and
+every browser check in this project until now ran on a desktop. Most of the shop's customers are
+on phones, so this was an unmeasured assumption sitting under shipped code.
+
+| Size | MP | Draw | PNG | ms |
+|---|---|---|---|---|
+| 1843 × 1843 · ⌀15 cm topper | 3.4 | ok | ok | 45 |
+| **2481 × 3331 · A4 sheet / cupcakes — what the wizard builds** | **8.3** | **ok** | **ok** | **117** |
+| 2552 × 3579 · largest current format | 9.1 | ok | ok | 89 |
+| 3000 × 4000 | 12.0 | ok | ok | 119 |
+| 4000 × 5000 | 20.0 | ok | ok | 126 |
+| 5000 × 7000 | 35.0 | ok | ok | 223 |
+
+Device: Android, Chrome 150, 8 cores, 393 × 873 @ DPR 2.75. Tested with
+`tools/phone-canvas-check.html`.
+
+> **⚠ This is Android Chrome, and Android Chrome was never the risk.** **iOS Safari is untested**
+> and it is the one with a hard canvas-area ceiling — and its failure mode is silent: it returns a
+> canvas that reads back transparent, and `toDataURL()` then produces a valid, blank PNG. The
+> check is built around exactly that (three corner markers written and read back, plus a byte-size
+> floor on the PNG), so it will catch it — but only when it is finally run on an iPhone.
+>
+> **Do not read this row as "phones are fine."** Read it as "Android is fine, iOS is unknown."
+
+> **The byte figures are not representative of a real payload.** The test canvas is white with
+> three squares, so it compresses to almost nothing. A real text layer is mostly transparent and
+> lands in the same range, but a composited photo would be megabytes.
+
+**What it unlocks:** client-side rendering is viable on Android with room to spare — the format
+diagrams, the proof, photo decode/downscale/crop, and in principle even the 300 DPI print file.
+The print file stays on the server anyway, by Ruslan's decision: a spike once per *order* is not
+the same problem as a spike per *visitor*.
+
 ### WC Fields Factory on the testbed — read from the database 2026-08-03
 
 Installed and active at **4.1.9**, matching production. Ruslan created one field group,
