@@ -1,0 +1,87 @@
+# A clean-room WordPress, for proving the plugin installs from nothing.
+#
+#   Source of truth : C:\AI_IMAGE\infra\fresh\docker-compose.yaml   (git-tracked)
+#   Deployed to     : Z:\ruslan\wordpress-test\fresh\docker-compose.yaml
+#   Driven by       : tools/fresh-install.sh
+#
+# Ruslan asked for this before the migration, and the reason is good: the main
+# testbed has been running for weeks. Its tables were created by an older schema
+# version and migrated forward, its options carry settings from manual browser
+# testing (D-049's moderation switches were found switched off in exactly this
+# way), and its storage directories already exist with the right ownership.
+#
+# Production has none of that. It gets one upload and one activation, once, on a
+# live shop with 2500 products and no staging copy. **This stack is the only
+# place that rehearsal happens.**
+#
+# It is destroyed and rebuilt on every run — `down -v`, not `restart`. A
+# clean-room that accumulates state is just a second testbed.
+#
+# Deliberately unlike the main testbed in three ways:
+#
+#   - **The stock `wordpress` image**, not our Dockerfile. Production has no
+#     Imagick, and here we do not even have it available to force off, which is
+#     the honest arrangement (D-013).
+#   - **No .env and no API keys.** A fresh production install has none either,
+#     and "cannot spend money before it is configured" is a property worth
+#     proving rather than assuming (docs/migration.md §M2).
+#   - **No AICAKE_STORAGE_DIR.** The uploads fallback is what an unconfigured
+#     install uses, so that is the path this exercises.
+
+name: aicake-fresh
+
+services:
+  db:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: fresh_root
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp_user
+      MYSQL_PASSWORD: wp_password
+    volumes:
+      - fresh_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  wordpress:
+    # Pinned to production's WordPress and PHP major, not `latest`.
+    image: wordpress:6.9-php8.3-apache
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8081:80"
+    volumes:
+      - fresh_wp:/var/www/html
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
+      WORDPRESS_DB_NAME: wordpress
+      # Errors must be visible: the whole point is catching an activation
+      # notice that the main testbed's older install would never emit.
+      WORDPRESS_CONFIG_EXTRA: |
+        define('WP_DEBUG',         true);
+        define('WP_DEBUG_LOG',     '/var/www/html/wp-content/debug.log');
+        define('WP_DEBUG_DISPLAY', false);
+
+  cli:
+    image: wordpress:cli-php8.3
+    depends_on:
+      - wordpress
+    user: "33:33"
+    volumes:
+      - fresh_wp:/var/www/html
+    environment:
+      WORDPRESS_DB_HOST: db
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
+      WORDPRESS_DB_NAME: wordpress
+    entrypoint: ["tail", "-f", "/dev/null"]
+
+volumes:
+  fresh_db:
+  fresh_wp:

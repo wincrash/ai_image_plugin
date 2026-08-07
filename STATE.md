@@ -1105,7 +1105,15 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-- **Eight suites, all committed and all green — 616 assertions** (re-verified 2026-08-07,
+- **`tools/fresh-install.sh` rehearses the production install** (Ruslan's idea, 2026-08-07).
+  Destroys and rebuilds a clean WordPress + WooCommerce + WCFF stack in `infra/fresh/` on
+  port **8081**, installs the plugin from the git working copy, activates it once, and runs
+  `tools/fresh-check.php` — **36 assertions**. The main testbed cannot answer this: its
+  tables were migrated forward from an older schema and its options carry weeks of manual
+  testing. Falsified by chowning `sessions/` to root, which turns 3 red — the D-003/D-031
+  bug that has broken this project twice.
+
+- **Nine suites, all committed and all green — 658 assertions** (re-verified 2026-08-07,
   after D-050/D-051; `tools/settings-check.php` is the new one, 34 assertions): `tests/run.php` 368, `tools/rest-check.sh` (12, over real HTTP, logged out *and* in),
   `tools/order-check.php` (63, a real order end to end, including a D-033 layer and the cut
   line), `tools/wcff-check.php` (30, the money path, the D-044 hand-off and the D-045 thumbnail),
