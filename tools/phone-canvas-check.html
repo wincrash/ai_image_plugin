@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas ceiling check — ai-cake-topper</title>
+<!--
+  Does this phone survive what the wizard already asks of it?
+
+  editor.js:633 allocates a canvas at the TRUE PRINT SIZE and calls
+  toDataURL('image/png') on it. For a 4.5 cm cupcake sheet that is
+  2481 x 3331 = 8.3 megapixels. Every browser check in this project has been
+  on a desktop, so this has never been answered for the audience that matters.
+
+  The failure mode this is built around: iOS Safari does NOT throw when a
+  canvas exceeds its area limit. It returns a canvas that reads back as
+  transparent black, and toDataURL yields a valid-looking blank PNG. A test
+  that only checks "did it throw" reports success on a broken device, which is
+  exactly the kind of check this project has learned not to write.
+
+  So every size is verified by writing known pixels and reading them back.
+
+  Self-contained on purpose: no network, no plugin code, nothing to install.
+-->
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+         margin: 0; padding: 16px; max-width: 780px; }
+  h1 { font-size: 19px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 24px 0 8px; text-transform: uppercase;
+       letter-spacing: .06em; opacity: .65; }
+  .sub { opacity: .7; margin: 0 0 20px; font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid rgba(128,128,128,.28);
+           vertical-align: top; }
+  th { font-weight: 600; opacity: .7; font-size: 11px; text-transform: uppercase;
+       letter-spacing: .05em; }
+  td.n { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .ok   { color: #1a7f37; font-weight: 700; }
+  .bad  { color: #b3261e; font-weight: 700; }
+  .warn { color: #8a6100; font-weight: 700; }
+  #env td:first-child { opacity: .7; width: 45%; }
+  #verdict { margin: 24px 0 8px; padding: 14px 16px; border-radius: 8px;
+             border: 2px solid currentColor; font-weight: 600; }
+  #verdict.pending { opacity: .55; font-weight: 400; }
+  textarea { width: 100%; height: 190px; margin-top: 8px; font: 12px/1.45 ui-monospace,
+             SFMono-Regular, Menlo, Consolas, monospace; padding: 8px; box-sizing: border-box; }
+  button { font: inherit; padding: 9px 16px; margin-top: 8px; border-radius: 6px;
+           border: 1px solid currentColor; background: transparent; color: inherit; }
+  .note { font-size: 12px; opacity: .7; margin-top: 6px; }
+</style>
+</head>
+<body>
+
+<h1>Canvas ceiling check</h1>
+<p class="sub">Finds the largest canvas this device can actually produce a PNG from.
+Runs by itself — takes a few seconds. Do not close the page until the verdict appears.</p>
+
+<h2>This device</h2>
+<table id="env"><tbody></tbody></table>
+
+<h2>Canvas sizes</h2>
+<table id="results">
+  <thead><tr>
+    <th>What it is</th><th>Pixels</th><th>MP</th><th>Draw</th><th>PNG</th><th>Size</th><th>ms</th>
+  </tr></thead>
+  <tbody></tbody>
+</table>
+<p class="note">„Draw" = the canvas held the pixels we wrote. „PNG" = an image
+came back that is genuinely not blank. A device can pass Draw and fail PNG.</p>
+
+<div id="verdict" class="pending">Running…</div>
+
+<h2>Send this back</h2>
+<textarea id="report" readonly></textarea>
+<button id="copy" type="button">Copy</button>
+
+<script>
+(function () {
+	'use strict';
+
+	/* The sizes that matter. The first three are what the plugin builds today;
+	   the rest are headroom, so the result is a ceiling rather than pass/fail. */
+	var SIZES = [
+		{ w: 1843, h: 1843, label: '⌀15 cm topper (live today)' },
+		{ w: 2481, h: 3331, label: 'A4 sheet / cupcakes (live today)' },
+		{ w: 2552, h: 3579, label: 'largest current format' },
+		{ w: 3000, h: 4000, label: 'headroom probe' },
+		{ w: 4000, h: 5000, label: 'headroom probe' },
+		{ w: 5000, h: 7000, label: 'headroom probe' }
+	];
+
+	var envBody = document.querySelector( '#env tbody' );
+	var resBody = document.querySelector( '#results tbody' );
+	var verdict = document.getElementById( 'verdict' );
+	var report  = document.getElementById( 'report' );
+	var lines   = [];
+
+	function log( s ) { lines.push( s ); report.value = lines.join( '\n' ); }
+
+	function env( k, v ) {
+		var tr = document.createElement( 'tr' );
+		var a = document.createElement( 'td' ); a.textContent = k;
+		var b = document.createElement( 'td' ); b.textContent = v;
+		tr.appendChild( a ); tr.appendChild( b ); envBody.appendChild( tr );
+		log( k + ': ' + v );
+	}
+
+	env( 'User agent', navigator.userAgent );
+	env( 'Screen', screen.width + ' x ' + screen.height +
+		' @ DPR ' + ( window.devicePixelRatio || 1 ) );
+	env( 'Device memory', ( navigator.deviceMemory || '?' ) + ' GB (reported)' );
+	env( 'CPU cores', navigator.hardwareConcurrency || '?' );
+	log( '' );
+
+	/*
+	 * One size. Returns a plain object rather than throwing, because a device
+	 * that dies here should still leave its earlier rows on screen.
+	 *
+	 * Three markers in three corners: a canvas that silently failed reads back
+	 * transparent everywhere, and a single marker could coincide with real ink.
+	 */
+	function measure( size ) {
+		var out = { drew: false, png: false, bytes: 0, ms: 0, note: '' };
+		var c = document.createElement( 'canvas' );
+
+		try {
+			c.width  = size.w;
+			c.height = size.h;
+
+			if ( c.width !== size.w || c.height !== size.h ) {
+				out.note = 'clamped to ' + c.width + 'x' + c.height;
+				return out;
+			}
+
+			var ctx = c.getContext( '2d', { willReadFrequently: false } );
+			if ( ! ctx ) { out.note = 'no 2d context'; return out; }
+
+			ctx.fillStyle = '#ffffff';
+			ctx.fillRect( 0, 0, size.w, size.h );
+			ctx.fillStyle = '#ff0000';
+			ctx.fillRect( 0, 0, 40, 40 );                       // top-left
+			ctx.fillRect( size.w - 40, 0, 40, 40 );             // top-right
+			ctx.fillRect( 0, size.h - 40, 40, 40 );             // bottom-left
+
+			/* Read back. THIS is the test — iOS returns transparent, not an error. */
+			var corners = [ [ 5, 5 ], [ size.w - 5, 5 ], [ 5, size.h - 5 ] ];
+			out.drew = corners.every( function ( p ) {
+				var d = ctx.getImageData( p[ 0 ], p[ 1 ], 1, 1 ).data;
+				return d[ 0 ] > 200 && d[ 1 ] < 60 && d[ 3 ] > 200;
+			} );
+
+			if ( ! out.drew ) { out.note = 'canvas read back blank'; return out; }
+
+			var t0  = ( performance || Date ).now();
+			var url = c.toDataURL( 'image/png' );
+			out.ms  = Math.round( ( performance || Date ).now() - t0 );
+
+			/* A blank 8 MP PNG compresses to a few KB. Real ink does not. */
+			out.bytes = Math.round( url.length * 0.75 );
+			out.png   = url.indexOf( 'data:image/png' ) === 0 && out.bytes > 3000;
+
+			if ( ! out.png ) { out.note = 'PNG came back empty or wrong type'; }
+		} catch ( e ) {
+			out.note = ( e && e.name ? e.name + ': ' : '' ) + ( e && e.message ? e.message : 'threw' );
+		} finally {
+			c.width = 0; c.height = 0;   /* release before the next allocation */
+		}
+
+		return out;
+	}
+
+	function kb( b ) {
+		if ( ! b ) { return '—'; }
+		return b > 1048576 ? ( b / 1048576 ).toFixed( 1 ) + ' MB'
+		                   : Math.round( b / 1024 ) + ' KB';
+	}
+
+	function mark( good, text ) {
+		return '<span class="' + ( good ? 'ok' : 'bad' ) + '">' + text + '</span>';
+	}
+
+	var index = 0;
+	var biggestOk = null;
+
+	function step() {
+		if ( index >= SIZES.length ) { return finish(); }
+
+		var size = SIZES[ index++ ];
+		var mp   = ( size.w * size.h / 1e6 );
+		var r    = measure( size );
+
+		if ( r.drew && r.png ) { biggestOk = size; }
+
+		var tr = document.createElement( 'tr' );
+		tr.innerHTML =
+			'<td>' + size.label + '</td>' +
+			'<td class="n">' + size.w + ' × ' + size.h + '</td>' +
+			'<td class="n">' + mp.toFixed( 1 ) + '</td>' +
+			'<td>' + mark( r.drew, r.drew ? 'ok' : 'FAIL' ) + '</td>' +
+			'<td>' + mark( r.png, r.png ? 'ok' : 'FAIL' ) + '</td>' +
+			'<td class="n">' + kb( r.bytes ) + '</td>' +
+			'<td class="n">' + ( r.ms || '—' ) + '</td>';
+		resBody.appendChild( tr );
+
+		log( size.w + 'x' + size.h + '  ' + mp.toFixed( 1 ) + ' MP  draw=' +
+			( r.drew ? 'ok' : 'FAIL' ) + '  png=' + ( r.png ? 'ok' : 'FAIL' ) +
+			'  ' + kb( r.bytes ) + '  ' + r.ms + 'ms' +
+			( r.note ? '  [' + r.note + ']' : '' ) );
+
+		/* Yield so the row paints before the next allocation. If the tab is
+		   killed mid-run, everything up to here is still on screen. */
+		setTimeout( step, 120 );
+	}
+
+	function finish() {
+		/* 2481 x 3331 is the one the wizard actually builds today. */
+		var need = 2481 * 3331;
+		var ok   = biggestOk && ( biggestOk.w * biggestOk.h ) >= need;
+
+		verdict.className = '';
+		verdict.style.color = ok ? '#1a7f37' : '#b3261e';
+		verdict.textContent = ok
+			? 'PASS — this device handles the sheet the wizard builds today (' +
+			  biggestOk.w + ' × ' + biggestOk.h + ' was the largest that worked).'
+			: 'FAIL — this device CANNOT produce the sheet the wizard builds today. ' +
+			  ( biggestOk ? 'Largest that worked: ' + biggestOk.w + ' × ' + biggestOk.h + '.'
+			              : 'Nothing worked.' );
+
+		log( '' );
+		log( 'VERDICT: ' + ( ok ? 'PASS' : 'FAIL' ) );
+		log( 'largest working: ' + ( biggestOk ? biggestOk.w + 'x' + biggestOk.h : 'none' ) );
+	}
+
+	document.getElementById( 'copy' ).addEventListener( 'click', function () {
+		report.select();
+		try { document.execCommand( 'copy' ); } catch ( e ) {}
+		if ( navigator.clipboard ) { navigator.clipboard.writeText( report.value ); }
+		this.textContent = 'Copied';
+	} );
+
+	setTimeout( step, 200 );
+}());
+</script>
+</body>
+</html>
