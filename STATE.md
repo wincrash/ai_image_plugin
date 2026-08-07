@@ -1,9 +1,21 @@
 # Project state
 
-**Updated:** 2026-08-06
-**Phase:** Phases 1–7 built. **The wizard track is finished** (D-033 → D-045). **Phase 8 is
-almost entirely cut** — Ruslan deleted the review queue and four of the five screens (D-047),
-then the background worker as well (D-048). Phase 0 deferred to a later calibration step (D-018).
+**Updated:** 2026-08-07
+**Phase:** **Migrating to production.** Phases 1–7 built, the wizard track finished
+(D-033 → D-045), Phase 8 almost entirely cut (D-047, D-048). Phase 0 deferred (D-018).
+
+> **🚚 The current work is the migration to `valgomosdekoracijos.lt`, and
+> `docs/migration.md` is the plan.** Ruslan's decision on 2026-08-07: **straight to live**, no
+> staging copy (the site is 17.8 GB), with the wizard page hidden behind an unguessable slug.
+> *"dont disturb users"* is therefore the acceptance criterion for every step until a real order
+> has been placed.
+>
+> Two blockers came out of production's Site Health dump and both are in §2 of that file:
+> **`memory_limit` is 256M against our 339 MB measured peak**, and **Really Simple Security may
+> block the REST API for logged-out visitors**, which is the wizard's entire audience.
+>
+> The first build item is **D-050 — API keys entered in the admin screen** instead of
+> `wp-config.php`, which reverses a `CLAUDE.md` rule at Ruslan's request.
 
 > **A reset session picking this up:** read D-033 → D-045, then **D-047 and D-048**, which
 > between them reverse D-046 and §13.4 and are what changes how you should think about this
@@ -489,22 +501,51 @@ the field.** `CartIntegration` must derive the value from whether the design act
 generated image and overwrite what was posted, because a posted flag about whether money was
 spent can never be trusted. Hiding is cosmetic; the server-side derivation is the control.
 
-### Production — capabilities confirmed 2026-08-02
+### Production — full Site Health dump read 2026-08-07
 
-`valgomosdekoracijos.lt` — **~2500 products** (Ruslan, 2026-08-03; the ~265 figure used up to and
-including D-034 was wrong). A **managed platform, not a Linux machine**: PHP
-libraries and WordPress plugins can be added, system packages cannot.
+> **We are migrating. `docs/migration.md` is the authoritative plan** — production's verified
+> facts, the four things that can stop us, and the ordered steps M0 → M6. Read it before doing
+> anything production-shaped. What follows is the summary.
 
-From wp-admin → Site Health → Media Handling:
+`valgomosdekoracijos.lt` — **~2500 products**, **11 133 registered users**. A **managed platform,
+not a Linux machine**: PHP libraries and WordPress plugins can be added, system packages cannot.
+Ruslan has **FTP and wp-admin only** — no shell, no WP-CLI.
 
 | | |
 |---|---|
-| Active image editor | `WP_Image_Editor_GD` |
-| Imagick / ImageMagick | **none** |
-| GD | bundled (2.1.0 compatible) |
-| GD formats | GIF, JPEG, PNG, **WebP**, BMP |
-| Ghostscript | not detected (irrelevant — PNG only) |
-| Max upload | 64 MB |
+| Path | `/home/vaijos/domains/valgomosdekoracijos.lt/public_html` — DirectAdmin layout |
+| PHP | **8.4.14**, `cgi-fcgi`, Apache · `max_execution_time` 300 s · upload 64M |
+| `memory_limit` | **256M** — ⚠ our measured peak is **339 MB** (D-023). See below |
+| WordPress | **7.0.2**, `lt_LT`, https, `environment_type: production` |
+| WooCommerce / WCFF | **10.9.4** / **4.1.9** — both exactly the testbed's builds |
+| Theme | `valgomos` **2.7.38**, child of Blocksy **2.1.51** (testbed: 2.1.49) |
+| Database | MariaDB 10.6.17, **742 MB** |
+| Disk | uploads **15.87 GB**, total **17.81 GB** |
+| Image editor | `WP_Image_Editor_GD` — **no Imagick**, GD bundled 2.1.0, formats include **WebP** |
+| OPcache | on and **full** — 33 MB of 33 MB, interned strings 100%, hit rate 19.5% |
+| `WP_DEBUG` / `WP_DEBUG_LOG` | false / false — **plugin errors surface in WooCommerce → Status → Logs**, nowhere else |
+| Filesystem | `wp-content`, `plugins`, `uploads`, `mu-plugins` all writable |
+| Backups | Installatron is present (mu-plugin), so a one-click full backup exists |
+
+**Production matches the testbed on everything that decides behaviour.** Same WP, same
+WooCommerce, same WC Fields Factory, same GD-without-Imagick path we have developed on since
+D-013. The theme is the real difference, and that is cosmetic work that belongs to the theme
+project (`docs/migration.md` §6).
+
+> **⚠ `memory_limit` 256M against a 339 MB measured peak is the one hard blocker.** A render that
+> hits the ceiling dies *after the customer has paid*. Three responses, and only the third is
+> ours to guarantee: ask the host to raise it, probe whether `ini_set()` can raise it, and **cut
+> the peak below ~200 MB and prove it with the limit pinned at 256M on the testbed**.
+> `docs/migration.md` §2.1.
+
+> **⚠ Really Simple Security 9.7.0 is active on production.** If its hardening disables the REST
+> API for logged-out users, the wizard is dead for exactly its audience, and it will look like our
+> bug. Check before installing. `docs/migration.md` §2.2.
+
+Three other active plugins worth knowing about: **Code Snippets 3.9.6** (an escape hatch for
+one-off PHP where there is no WP-CLI), **Complianz** cookie consent (our session cookie is
+functional/necessary — document it), and **All in One SEO** (how the wizard page gets its
+`noindex` while it is hidden).
 
 > **The testbed has Imagick; production does not.** GD is the target engine and
 > `AICAKE_FORCE_GD` defaults on, so development happens on the production path.
@@ -513,9 +554,14 @@ From wp-admin → Site Health → Media Handling:
 **No external render server is needed** — GD + pure PHP + the AI APIs cover everything
 (`PLAN.md` §9.1.3, D-015).
 
-**GD FreeType: assumed present, not yet verified.** Site Health does not report it and the text
-layer depends on it. The client declined to upload a diagnostic to the live shop — reasonable,
-and it is not needed yet.
+**GD FreeType: still assumed present, still not verified — and the stake is much smaller now.**
+Site Health does not report it. D-045 deleted all server-side text rendering, so the only thing
+left that draws a glyph is the **watermark**. No FreeType means no watermark, not a product with
+no text on it.
+
+It is answered in the migration preflight (`docs/migration.md` §M1) along with `open_basedir`,
+whether `ini_set()` can raise memory, loopback, and anonymous REST reachability — one upload of
+`tools/host-check.php`, read, delete.
 
 Confidence is high on indirect evidence: **the reported GD build supports WebP**, which requires
 an explicit `--with-webp` at compile time. That is a *rarer* flag than FreeType, so a build with

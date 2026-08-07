@@ -2267,4 +2267,67 @@ a screen that lies about its own settings is worse than no screen.
 
 ---
 
-<!-- Next: D-050 -->
+## D-050 · API keys move into the admin screen, encrypted
+
+**2026-08-07. Ruslan, opening the migration to production:** *"first
+modifications, api keys should be entered in plugin environment, not in files."*
+
+This **reverses a rule in `CLAUDE.md`** — "API keys come from constants, never
+`wp_options`" — and D-002 before it, which resolved `PLAN.md` §16's optional
+database fallback in favour of constants only. That rule was mine, not the
+shop's, and D-047 and D-049 are the same shape: where the shop has said how it
+wants to work, the plugin does not get a vote.
+
+It is also the right call on the facts. Production is
+`/home/vaijos/domains/valgomosdekoracijos.lt/`, reachable only by FTP. Under
+the old rule, rotating a leaked key means editing `wp-config.php` — the one
+file whose corruption takes the whole shop offline — over FTP, without a
+staging copy, on a live store. A masked field and a Save button is not merely
+more convenient than that, it is *safer*.
+
+#### What is actually built
+
+`Support/SecretStore.php`, and one changed method in `Settings::secret()`.
+
+**Resolution order: constant, then the encrypted store, then empty.** A
+constant still wins where one exists, so the testbed keeps running off `.env`
+and nothing about the Docker setup changes. A stored value that a constant
+silently overrode would be the worst of both, so the screen does not offer to
+edit a secret that a constant already provides — it says where it comes from
+and disables the field.
+
+**Encrypted at rest with `sodium_crypto_secretbox`**, the key derived from
+`wp_salt( 'secure_auth' )`, in a **non-autoloaded** option of its own rather
+than inside `aicake_settings`.
+
+#### Two honest limits, both surfaced in the UI rather than in a comment
+
+- **This protects a database dump, not a compromised filesystem.** Anyone who
+  can read `wp-config.php` can derive the key. That is a real and worthwhile
+  threat model — the backup a client downloads to their laptop is the exposure
+  D-002 was actually about — but it is not the same guarantee constants give,
+  and calling it "encrypted" without saying so would be dishonest.
+- **`wp_salt()` falls back to the database** when the salt constants are
+  absent from `wp-config.php`. If that is the case, the key and the ciphertext
+  sit in the same table and the encryption is decoration. The screen checks
+  `SECURE_AUTH_KEY` and says so plainly when it is missing, because a security
+  measure that quietly does nothing is worse than a visibly absent one.
+
+**Salts changing breaks decryption**, which is what a site move looks like.
+That is handled as "not set" plus an admin notice asking for the keys again —
+not as an error, and never as a silent fall-through to an unauthenticated call.
+
+#### `AICAKE_IP_SALT` stops being something to configure
+
+It was in the same list, but it is not a secret with any value outside this
+site: it exists so stored IP hashes cannot be reversed with a rainbow table.
+With no constant and nothing stored it currently hashes with an empty string,
+which is the weakest possible answer and needs no misconfiguration to happen.
+
+It is now **derived from `wp_salt( 'nonce' )` when nothing else provides it**,
+which is strictly better than a stored value — that salt lives in
+`wp-config.php`, so it is not in the database dump at all. Changing it resets
+every stored identity, so per-IP counters restart once; that is a one-time
+effect on a rate limit, not data loss.
+
+<!-- Next: D-051 -->

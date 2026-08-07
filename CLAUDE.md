@@ -11,6 +11,7 @@ Guidance for Claude Code working in this repository.
 | `PLAN.md` | The design. 23 sections, authoritative. |
 | `docs/pipeline.md` | **The built system** — what runs where, what costs money, what is local PHP. |
 | `DECISIONS.md` | Why things are the way they are. Append-only. |
+| `docs/migration.md` | **Going live.** Production's verified facts, what blocks us, the ordered steps. |
 | `docs/api-evaluation.md` | Phase 0 plan. |
 
 `idea.md` is the original brief. It is **superseded** — `PLAN.md` §23 lists where it is wrong.
@@ -60,5 +61,6 @@ Never rewrite git history.
 - Every user-facing string in `__()` with the `ai-cake-topper` text domain, from the first line
   written.
 - Escape on output, sanitise on input, `$wpdb->prepare()` always.
-- API keys come from constants, never `wp_options`.
+- API keys resolve **constant first, then the encrypted store** (D-050). They are never written
+  to `wp_options` in plaintext, and never logged — `Settings::secret()` is the only seam.
 - Comments explain *why*. The code already says what.
