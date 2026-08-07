@@ -27,6 +27,17 @@
 > It also found the thing nobody was looking for: **production has no sodium**, so the openssl
 > branch of the key store is the only one that will ever run there. That is D-052.
 
+> **👉 WIZARD v2 IS DESIGNED AND NOT BUILT (2026-08-07). Read `docs/wizard-v2.md` first.**
+> The wizard stops being "an AI generator" and becomes **a decoration designer with four sources**
+> — text only, uploaded photo, AI, and image search — as **one wizard branching at one step**
+> (D-054 → D-062). Everything below describing the wizard as an AI-only flow is v1.
+>
+> **Start at step 0 of §14, and it is not part of the refactor:** `editor.js` allocates an 8.3 MP
+> canvas and `toDataURL()`s it, and **a silent canvas failure today produces a blank text layer, a
+> completed order and a sheet printed with no names on it.** iOS is the majority mobile platform
+> here (16.1% against Android's 11.1%) and iOS is exactly where that failure is silent. Fix it on
+> its own, first (D-057).
+
 > **👉 Current work: Ruslan is updating the wizard** (from 2026-08-07). The migration is paused
 > on purpose until that lands — the code review (D-053) has to read the code that ships, so
 > reviewing a wizard that is about to change would be wasted.

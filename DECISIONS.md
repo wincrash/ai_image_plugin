@@ -2484,4 +2484,271 @@ Not "does the wizard work" — that is what M5 is for — but *does activating t
 change anything for the other ~2500 products, ordinary orders, the cart, the
 checkout, or a customer who never touches it.*
 
-<!-- Next: D-054 -->
+---
+
+## D-054 · One wizard with four sources, branching at exactly one step
+
+**2026-08-07, Ruslan:** *"as user i want to have just cupcakes with my only custom text, so here is
+no ai image at all. next case user may upload his image, cut circle from it. the third user may
+want to generate ai image."* And on the structure: *"about multiple wizards, i agree it can be one
+(really one final product). from ui perspective it looks like diffirent wizards."*
+
+**The product stops being "an AI generator" and becomes a decoration designer with four ways of
+getting a picture into it** — `none`, `upload`, `ai`, `search`.
+
+**Built as one wizard, not four.** The paths differ in where the picture comes from and in nothing
+else: same formats, same editor, same proof, same cart, same print file. Four wizards would mean
+four cart hand-offs and four copies of the same bugs, in a codebase where the cart hand-off has
+already been the source of two.
+
+So: five steps, and **step 3 is the only branch**. Steps 4 and 5 are the code that already exists
+and is verified, and they survive untouched.
+
+`source` becomes a column on `aicake_designs` and is the spine — pricing reads it (D-058), the
+toggles gate it (D-059), and the print path ignores it entirely, because by step 4 there is either
+a master bitmap or there is not.
+
+Design in `docs/wizard-v2.md`.
+
+---
+
+## D-055 · Format is shape plus size, and the chooser is drawn
+
+**2026-08-07, Ruslan:** *"from my perspective, a4, circle, cupcakes, really almost the same, so i
+dont like treat it seperatly like we do now."*
+
+He is right, and the code already half agreed — `SheetLayout` derives every count from geometry and
+nothing is tabulated (D-038). What was wrong was the **exposure**: `FormatCatalogue` published
+three *types* with three separate size lists, which was the old ten-product model (pre-D-035)
+showing through the seams.
+
+**One axis: shape ∈ {circle, rectangle} plus a size. Count is always derived.** A4 is one
+rectangle, ⌀15 cm is one circle, ⌀4,5 cm is 24 circles. Same model throughout.
+
+**And the chooser is drawn rather than described** — a grid of cards each showing the real sheet
+layout with its count. `Admin/FormatsPage::diagram()` already renders exactly this from
+`SheetLayout::plan()`, so this is Ruslan's parked "live diagram beside the size choice" idea
+becoming the primary UI, not new machinery.
+
+**The diagrams are drawn client-side** from a small JSON layout plan — they are on the page for
+every visitor, which by D-056 puts them on the browser's side.
+
+The rule that does not bend: the diagram keeps deriving from `SheetLayout`. Fixed pictures let the
+preview and the print drift apart silently, which is D-038's whole argument — the ⌀4.0 cm case
+really did move 35 → 30 → 35 in one afternoon as the usable area was corrected twice.
+
+Ruslan's instruction: **build it, then he reviews the representation.** If it is wrong it is wrong
+in presentation only.
+
+---
+
+## D-056 · The client/server seam is drawn by what the work scales with
+
+**2026-08-07, Ruslan, and this is his rule rather than a restatement of mine:** *"i just dont want
+to load too much the server while clients are surfing, because server itself is not big, and often
+the site is working slow. the final, or in oders based work it is ok (it just very small spike),
+but if it depends on users counts, that need to think what to move to user side."*
+
+> **Work that scales with the number of browsing users moves to the client.
+> Work that scales with the number of orders stays on the server.**
+
+This is sharper than "heavy work goes to the client" and it gives different — better — answers.
+The 300 DPI print file is by far the heaviest thing the plugin does, and it **stays on the
+server**, because it runs once per order in wp-admin (D-048). The format diagrams are trivially
+cheap and they **move to the client**, because they render for everyone who looks at the page.
+
+Client: format diagrams · photo decode, downscale and crop · proof compositing · text layer
+rasterisation (already, D-033).
+
+Server: anything holding a key · moderation, because a verdict that does not bind is not a verdict
+· ownership, throttle, budget · the preview, because the master is never servable and a
+client-composited watermark means handing over the unwatermarked master · the final print file.
+
+> **A number this decision leans on has never actually been measured for the product.** The 339 MB
+> peak (D-023) came from rendering **a 15 cm round and a 24-up sheet in one pass** — the check
+> doing two formats in one process. A real order item is one sheet. The per-item peak is unknown
+> and may already be under production's 256 MB. **Measure it before treating M0.3 as work.**
+
+---
+
+## D-057 · The browser is never trusted to have drawn anything
+
+**The wizard has always asked the browser for a canvas at the true print size** — `editor.js`
+`exportLayer()` allocates 2481 × 3331, **8.3 megapixels**, for a cupcake sheet, and calls
+`toDataURL()` on it. Every browser check in this project until 2026-08-07 ran on a desktop.
+
+**Measured on 2026-08-07** with `tools/phone-canvas-check.html`: a POCO X3 Pro — 2021 mid-range,
+deliberately not a flagship — cleared **35 megapixels** and encoded the real sheet in 117 ms.
+
+**But that measured the wrong half of the audience.** The live shop's own statistics: **iOS 16.1%
+against Android 11.1%**, and on mobile **Mobile Safari beats Chrome Mobile close to two to one**.
+Desktop's 67% is inflated by crawlers (GNU/Linux 14%, IE 1.5%), so mobile is a floor, not an
+estimate. Facebook's in-app browser adds 2.2% and on iOS that is WKWebView — same engine, same
+ceiling, tighter memory budget.
+
+A previous session had reasoned that Android dominates in Lithuania and therefore Android was the
+case to check. **For this shop that is false**, and it means the one engine nobody has tested is
+the one most mobile customers use. Ruslan has no iPhone, so it stays unmeasured.
+
+**The decision: assume iOS cannot build the sheet, and treat Android's headroom as a bonus.** A
+measurement arriving later can only relax constraints, never add them.
+
+**The contract.** Every canvas the browser produces is verified before it is trusted: known pixels
+written into three corners and read back, plus a byte floor on the encoded image. Then, if it
+fails, probe downward once per session for the largest canvas the device can do, and cache it.
+**Never send a blank layer.**
+
+This is not defensive programming for its own sake. **Safari on iOS does not throw when a canvas
+exceeds its area budget** — it hands back one that reads as transparent, and `toDataURL()` then
+produces a perfectly valid blank PNG. A check that asks "did it throw" reports success on a broken
+device, which is precisely the class of check this project has learned not to write.
+
+> **This is a live bug, not a future one, and it is fixed first.** Today a silent canvas failure
+> produces a blank text layer, the order completes, and the sheet prints with no names on it —
+> discovered when a customer complains about a birthday cake with no birthday on it. Same shape as
+> D-027 and D-043: the end-to-end result *looks* correct. Given iOS is the majority mobile
+> platform, this potentially affects most phone customers. It ships as its own change, ahead of
+> the refactor.
+
+**There is deliberately no renderer-level fallback.** Sending a recipe for the server to rasterise
+is the design D-033 deleted — two renderers that must agree pixel-for-pixel and drift apart the
+moment either changes. The fallback is *degrade the canvas*, never *move the renderer*.
+
+---
+
+## D-058 · Price follows the source, and the plugin still owns no pricing
+
+**2026-08-07, Ruslan:** *"the base price the same, then using fields update the prices just like
+laksto tipas"* and *"base for now is 3.5, while depending on what you use ai/search/blank/uploaded
+can have diffirent additional cost like +1 or more eur."*
+
+D-036 does not move: **WC Fields Factory prices everything**, and Ruslan edits amounts in wp-admin
+where he edits every other price.
+
+Today's binary „AI paveikslėlis: taip/ne" becomes a four-option **„Piešinio tipas"** — `none` /
+`upload` / `ai` / `search` — each with its own price rule. **The amounts are Ruslan's and are not
+in this repository.**
+
+**The value is derived server-side from the design's `source` and is never posted.** That is
+D-044's control and the reason it exists: a posted flag about whether money was spent cannot be
+trusted, and hiding the field is not a control.
+
+Field keys stay resolved by label at runtime — WCFF generates them randomly, so nothing may
+hardcode one.
+
+Sheet type is asked at step 2, Ruslan's call and explicitly revisitable: *"laksto tipas can be in
+begining or in the end ... for now lets do in beginign, later we will see."*
+
+---
+
+## D-059 · A disabled source does not exist, in the UI and at the endpoint
+
+**2026-08-07, Ruslan:** *"in plugin settings, i want settings enable disable, ai generation, search
+options, just in case i want disable it, or like marketing trick, firstly publish
+editor/custumizer, and later ai/search."* And, clarifying: *"if i want disable, that means it just
+disapears from wizard to use ... it should dont show in wizard meniu at all."*
+
+**Absent, not greyed out and not "coming soon."**
+
+**And the endpoint refuses it as well.** Both, not either. The missing button is the interface; the
+endpoint check is the lock behind it. Hiding a control is not a control — the same lesson as the
+WCFF field a customer could answer themselves, which this project has now learned twice.
+
+Two consequences worth stating because they are easy to get wrong:
+
+- **One source enabled → step 1 does not render at all**, and the wizard opens on format. A wizard
+  whose first screen offers a single card is worse than no step.
+- **Zero sources enabled → a plain Lithuanian "not available" message**, not a broken wizard.
+
+Switches live beside the moderation switches in `Support/Settings` and `Admin/SettingsPage` — the
+D-049 pattern, already built and already tested.
+
+---
+
+## D-060 · Image search is accepted, with the licensing exposure recorded
+
+**2026-08-07, Ruslan:** *"image search will be done in future, but lets like this, you can even
+make now, really, you have access to llm."*
+
+**Built, behind its own switch, off by default (D-059).**
+
+**The concern was raised before the decision and is recorded rather than re-argued.** An
+image-search result is somebody else's copyrighted work, and this shop would be **printing it and
+selling it**. Search APIs licence results for display, not for commercial reproduction. It differs
+in kind from a franchise character in an AI prompt: there, moderation blocks it; here the software
+*fetches* the material deliberately.
+
+Ruslan has decided. It is his shop and his exposure, the switch makes it reversible in one click,
+and this entry is where the reasoning lives if it is ever revisited.
+
+**One consequence that belongs to the design rather than the law.** `search` joins `upload` as a
+source **no software layer can moderate** — layers 0–2 read prompts, and neither of these has one
+that describes the picture that actually arrives. The control is Ruslan looking at every sheet
+before he prints it. That is real and he already does it (D-047), but it is a person and not code,
+and it holds only as long as he prints personally. Worth saying out loud before anyone assumes
+moderation covers all four paths.
+
+---
+
+## D-061 · Retention by opportunistic sweep, not by cron
+
+**2026-08-07, Ruslan:** *"what about for all temporal files use files with experation (and if need
+with sliding expiration), so lots of multiple files would deleted itself after some time, so that
+way we dont need even cron jobs?"*
+
+**Nothing on a filesystem deletes itself — but the sweep does not have to be cron.**
+
+**Opportunistic sweep**, the pattern PHP's own session GC uses: on a small fraction of generation
+requests, delete a bounded batch (≈20) of expired designs. No Action Scheduler, no wp-cron,
+bounded work per request, and it self-regulates — no traffic means no growth to clean either.
+
+The **database row is the authority, not the file**. A candidate is `created_at + N days` old and
+`order_id IS NULL`. Sliding expiry is a timestamp touched on access. `order_id` exists on the
+design row precisely so this is answerable without a query per candidate.
+
+> **The first assertion written and the first one falsified: an ordered design is never
+> collected. Ever.** Everything else here is tuning; this one is a paying customer's order
+> disappearing.
+
+This is Phase 8's item (d), the last thing Phase 8 had left, and it closes it.
+
+**Ruslan's other half of the same question was already true:** *"i hope all these final order
+images is in seperate folder, not in global upload."* Everything lives in `/var/lib/aicake/` with
+`sessions/` and `orders/` zones, outside the webroot. Nothing of this plugin has ever been written
+to the media library.
+
+---
+
+## D-062 · Uploads are re-encoded, not validated
+
+**2026-08-07, Ruslan:** *"User can upload what he wants (must be image, maybe need think only on
+security (for some exploits if there are any)), thats it."* No gating, no review step, no rights
+workflow.
+
+**The customer never hears the word "format."** Ruslan: *"lots users have now idea what is png, so
+maybe accept other formats also."* The client loads the chosen file into a canvas and uploads PNG
+or JPEG from there, so we accept anything **the browser** can decode — including **HEIC, which is
+what iPhones shoot by default** and which GD could never read. The conversion is free because the
+client is already downscaling and cropping (D-056).
+
+**The security decision: re-encode rather than validate.** Decode to pixels and re-save, discarding
+the original. That strips EXIF, ICC, embedded payloads and PHP hidden in a comment chunk — what
+survives is provably pixels. Validation asks "does this look like an image"; re-encoding *makes* it
+one.
+
+**The control that actually protects the site is a dimension check before decoding.** A 200 KB PNG
+can decode to 30000 × 30000 and kill the worker on memory — a decompression bomb, and the only
+item on this list that could take the shop down. `getimagesize()` first, refuse absurd dimensions,
+*then* decode.
+
+Also: **SVG rejected outright** — it is a document, not a bitmap, with script and external
+entities. `finfo` MIME rather than the filename. Stored in `sessions/` outside the webroot and
+served only through the ownership-checked `FileEndpoint`, which is already how everything works.
+A byte cap before anything is read.
+
+**The client downscales before uploading and the server never trusts that it did.**
+
+A one-line "you have the rights to this image" checkbox was proposed and declined — it is a
+checkbox rather than a workflow, and the offer stands.
+
+<!-- Next: D-063 -->
