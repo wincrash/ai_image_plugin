@@ -2330,4 +2330,88 @@ which is strictly better than a stored value — that salt lives in
 every stored identity, so per-IP counters restart once; that is a one-time
 effect on a rate limit, not data loss.
 
-<!-- Next: D-051 -->
+## D-051 · The settings screen, and a reset that is a date rather than a number
+
+**2026-08-07. Ruslan, during the migration planning:** *"add one small
+functionality, it is number ai generation limitations count and the reset
+button. for example i want to set 10 ai gens per user, and if i want i can just
+reset the counter."*
+
+The first half already existed — `free_per_user` has been a setting since Phase
+1 — but only reachable through `wp eval`. That is fine on a Docker testbed and
+useless on production, which has FTP and wp-admin and nothing else. So the
+screen came first (**AI Cake Topper → Nustatymai**): keys, limits, budget, the
+house style suffix, and a read-only host panel.
+
+#### The reset cannot be a counter, because there is no counter
+
+`RateLimiter` derives usage by counting rows in `aicake_designs` (§11.1 — the
+table is both the audit log and the rate-limit source, precisely so that a
+limiter cannot silently stop limiting). There is no number anywhere to set back
+to zero, and the two obvious ways to make one are both wrong: deleting rows
+destroys the audit log and the link to orders, and a separate counter column
+would be a second source of truth that can disagree with the first.
+
+**A reset is therefore a timestamp** — `throttle_epoch` globally, a user meta
+per customer — and counting starts from it. Nothing is deleted, the history is
+intact, and the shop's own "how many did we make today" is unaffected.
+
+Two consequences that are in the code and on the screen:
+
+- **The displayed totals do not move when you press reset**, because they are
+  history. Left unsaid, a working reset looks exactly like a broken button, so
+  the per-user notice reports what was actually forgiven — „buvo 7 iš 10".
+- **A per-user reset does not lift the per-IP daily ceiling.** That one is the
+  abuse backstop, and forgiving one customer must not forgive everyone behind
+  the same address. Only a global reset clears it. The screen says so.
+
+**The epoch is one second in the future, and that is not an off-by-one.**
+`created_at` is a DATETIME with no fractional part, so a generation in the same
+second as the reset is indistinguishable from it. Written as `now`, pressing
+the button left behind whatever had just happened.
+
+#### Verified — `tools/settings-check.php`, 34 assertions, no network
+
+Falsified four ways, and two of them found real bugs rather than confirming
+good ones:
+
+| Change | Result |
+|---|---|
+| `secret()` stops preferring a constant | 3 red |
+| An unprefixed plaintext value in the option is honoured | 1 red |
+| `since()` ignores the global epoch | 4 red |
+| `since()` ignores the per-user epoch | 2 red |
+
+> **Both bugs were the same bug, and falsification is the only thing that found
+> them.** `secret_source()` walked the resolution order itself instead of
+> sharing it with `secret()`; `used_by()` worked out its own bounds instead of
+> sharing `since()`. In each case breaking the rule turned *fewer* assertions
+> red than it should have, because the screen was reading one copy of the rule
+> and the code another. That is not a tidiness complaint — it is a screen that
+> can report „set in wp-config.php" while the code uses the stored value, and a
+> reset button that visibly works and changes nothing for the customer who rang
+> up about it. Both now delegate to one private method.
+
+> **The live path is asserted, not just the admin display.** The first version
+> of the check only ever called `used_by()`, which is what the screen shows.
+> It now also becomes the customer with `wp_set_current_user()` and asks
+> `used()` — the method that actually refuses a generation.
+
+#### Found while running the suites, and worth knowing
+
+Two committed gates were **already red before any of this was written**:
+`text-check` 29/30 and `moderation-check` 32/34. Not a regression — stashing
+every change and re-running against `HEAD` reproduced them exactly.
+
+The cause was testbed *state*: `moderation_blocklist` and `moderation_ai` were
+both switched **off**, and the throttles were at 100000 rather than the 500
+`STATE.md` records. Left over from D-049's browser check and a day of manual
+testing. Restoring the two layers put both suites back to 34 and 30, and
+`free_per_session` back to 5 restored `rest-check`'s twelfth assertion — the
+exact failure `STATE.md` already warns that raising it causes.
+
+This is the D-049 switches doing their job and the shop's own settings quietly
+disabling the tests that prove they work. Worth checking the option before
+debugging either suite again.
+
+<!-- Next: D-052 -->

@@ -14,8 +14,13 @@
 > **`memory_limit` is 256M against our 339 MB measured peak**, and **Really Simple Security may
 > block the REST API for logged-out visitors**, which is the wizard's entire audience.
 >
-> The first build item is **D-050 — API keys entered in the admin screen** instead of
-> `wp-config.php`, which reverses a `CLAUDE.md` rule at Ruslan's request.
+> **M0.1 and M0.2 are done (D-050, D-051).** There is a settings screen —
+> **AI Cake Topper → Nustatymai** — carrying API keys (encrypted, constants still win), the
+> throttle and budget limits, the house style suffix, a read-only host panel, and the
+> generation counters with a reset button. `tools/settings-check.php`, 34 assertions, falsified
+> four ways.
+>
+> **Next: M0.3, cutting peak memory below 256M.** It is the one blocker that is ours to fix.
 
 > **A reset session picking this up:** read D-033 → D-045, then **D-047 and D-048**, which
 > between them reverse D-046 and §13.4 and are what changes how you should think about this
@@ -608,6 +613,7 @@ C:\AI_IMAGE\
 ├── tools\rest-check.sh      REST over real HTTP, logged out and logged in
 ├── tools\order-check.php    a real order through to print files (Phase 7's gate)
 ├── tools\moderation-check.php  the moderation switches (D-049), no network
+├── tools\settings-check.php    the encrypted key store and the counter reset (D-050/051)
 └── plugin\                  the plugin itself
 ```
 
@@ -1086,13 +1092,14 @@ bash tools/rest-check.sh
 
 `layer-check.php` is a diagnostic, not a gate, and takes a design id (or picks the newest layer).
 
-- **Seven suites, all committed and all green — 556 assertions** (verified 2026-08-04, after
-  D-048): `tests/run.php` 368, `tools/rest-check.sh` (12, over real HTTP, logged out *and* in),
+- **Eight suites, all committed and all green — 616 assertions** (re-verified 2026-08-07,
+  after D-050/D-051; `tools/settings-check.php` is the new one, 34 assertions): `tests/run.php` 368, `tools/rest-check.sh` (12, over real HTTP, logged out *and* in),
   `tools/order-check.php` (63, a real order end to end, including a D-033 layer and the cut
   line), `tools/wcff-check.php` (30, the money path, the D-044 hand-off and the D-045 thumbnail),
   `tools/proof-check.php` (18, printable proofs — also writes them), `tools/wizard-check.php`
   (39, steps 1–2, the D-043 layout key and D-048's entry points), `tools/text-check.php` (30,
-  including the D-045 proof). `tools/review-check.php` is deleted with the screen it tested.
+  including the D-045 proof), `tools/settings-check.php` (34, the encrypted key store and the
+  counter reset). `tools/review-check.php` is deleted with the screen it tested.
   All but the first test the *deployed* copy, so sync first. Falsified rather than merely passed:
   reintroducing D-025 turns 5 of the 12 red; trusting the posted AI flag turns 3 of the 30 red
   and restoring the old product-meta gate turns 13 red; keying the wizard's layouts independently
@@ -1106,7 +1113,23 @@ bash tools/rest-check.sh
 > red in a way that looks exactly like having broken D-026. The page is now argument 1
 > (`/ai-paveikslelis-vedlys/`) and the product id is argument 2.
 
-> **The testbed's limits are currently lifted for manual testing (2026-08-04):**
+> **⚠ The shop's own settings can turn committed gates red, and did (2026-08-07).**
+> `text-check` (29/30) and `moderation-check` (32/34) were both failing before any migration
+> work started, and stashing every change and re-running against `HEAD` reproduced them exactly
+> — so not a regression. The cause was **`moderation_blocklist` and `moderation_ai` both
+> switched off** in `aicake_settings`, left over from D-049's browser check, plus throttles at
+> **100000**. Turning the two layers back on restored 34 and 30; `free_per_session` back to 5
+> restored `rest-check`'s twelfth assertion.
+>
+> **Read the option before debugging either suite.** D-049 made moderation the shop's decision,
+> which means the shop can switch off the thing its own tests assert:
+>
+> ```
+> wp eval 'var_dump( get_option( "aicake_settings" ) );'
+> ```
+
+> **The testbed's limits are currently lifted for manual testing (2026-08-04, re-checked
+> 2026-08-07 — `free_per_user` and `ip_daily_ceiling` are at 100000, not the 500 below):**
 > `free_per_user` **500** (default 20) and `ip_daily_ceiling` **500** (default 30).
 > `free_per_session` is still **5**, deliberately — raising it breaks „logged-in allowance
 > exceeds anonymous" in `rest-check`, correctly. Put them back with:

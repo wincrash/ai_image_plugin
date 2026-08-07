@@ -27,6 +27,12 @@ require_once __DIR__ . '/../src/Moderation/LtNormaliser.php';
  * touches WordPress. Settings only reaches for `get_option()` inside `get()`,
  * which neither of them calls, so a real Logger constructs fine standalone.
  */
+/*
+ * SecretStore comes with Settings whether this suite wants it or not: since
+ * D-050 the resolution order runs through it, and Logger's redaction asks
+ * Settings for every configured secret on the first line it writes.
+ */
+require_once __DIR__ . '/../src/Support/SecretStore.php';
 require_once __DIR__ . '/../src/Support/Settings.php';
 require_once __DIR__ . '/../src/Support/Logger.php';
 require_once __DIR__ . '/../src/Imaging/GdEngine.php';
@@ -48,6 +54,19 @@ if ( ! function_exists( 'get_option' ) ) {
 	 */
 	function get_option( string $option, $default = false ) { // phpcs:ignore
 		return $default;
+	}
+}
+
+/*
+ * The IP salt is derived from wp_salt() when nothing configures it (D-050), and
+ * Logger asks for every secret in order to redact them.
+ */
+if ( ! function_exists( 'wp_salt' ) ) {
+	/**
+	 * @param string $scheme Salt scheme.
+	 */
+	function wp_salt( string $scheme = 'auth' ): string { // phpcs:ignore
+		return 'test-salt-' . $scheme;
 	}
 }
 

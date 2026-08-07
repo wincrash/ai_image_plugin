@@ -12,6 +12,7 @@ namespace AiCake;
 use AiCake\Admin\BlocklistPage;
 use AiCake\Admin\FormatsPage;
 use AiCake\Admin\OrderScreen;
+use AiCake\Admin\SettingsPage;
 use AiCake\Admin\TestProviderPage;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\JobRepository;
@@ -303,6 +304,13 @@ class Plugin {
 				$this->logger
 			) )->register();
 
+			( new SettingsPage(
+				$this->settings,
+				$this->capabilities,
+				$this->dispatcher,
+				$this->rate_limiter,
+				$this->budget_guard
+			) )->register();
 			( new BlocklistPage( $this->moderator, $this->settings ) )->register();
 			( new FormatsPage( $this->images, $this->fonts ) )->register();
 

@@ -44,6 +44,26 @@ class Settings {
 	private ?array $cache = null;
 
 	/**
+	 * Encrypted storage for keys entered in the admin screen (D-050).
+	 *
+	 * Constructed lazily rather than injected: Settings is a configuration
+	 * primitive that half the object graph depends on, and the store is its own
+	 * storage detail rather than a collaborator anyone else should be handed.
+	 */
+	private ?SecretStore $store = null;
+
+	/**
+	 * The encrypted secret store.
+	 */
+	public function secrets(): SecretStore {
+		if ( null === $this->store ) {
+			$this->store = new SecretStore();
+		}
+
+		return $this->store;
+	}
+
+	/**
 	 * Defaults for everything that is not a secret.
 	 *
 	 * Money is in USD throughout: providers bill in USD and the designs table
@@ -59,6 +79,14 @@ class Settings {
 			'free_per_user'        => 20,
 			'ip_daily_ceiling'     => 30,
 			'min_interval_seconds' => 3,
+
+			/*
+			 * When the shop last reset everybody's counters. Generations before
+			 * this moment do not count against anyone's allowance. Empty means
+			 * never — see RateLimiter::since() for why a reset is a timestamp
+			 * and not a number.
+			 */
+			'throttle_epoch'       => '',
 
 			// Budget guard — PLAN.md §11.4.
 			'budget_daily_usd'     => 5.0,
@@ -126,21 +154,79 @@ class Settings {
 	/**
 	 * Read a secret.
 	 *
-	 * Constants only. CLAUDE.md is stricter than PLAN.md §16 here: there is no
-	 * option fallback, because anything in wp_options is in every database
-	 * backup the client ever downloads. A missing key is a configuration error
-	 * the settings screen reports, not something to paper over.
+	 * Resolution order, and the order is the whole design (D-050):
+	 *
+	 * 1. **A constant**, if wp-config.php defines one. Still the strongest
+	 *    answer — nothing in the database at all — and it is why the testbed
+	 *    keeps running off .env unchanged.
+	 * 2. **The encrypted store**, written by the settings screen. Production is
+	 *    reachable only by FTP, and editing wp-config.php on a live shop to
+	 *    rotate a key is the riskier of the two operations.
+	 * 3. **Empty**, which every provider reports as "not configured" rather
+	 *    than attempting an unauthenticated call.
+	 *
+	 * A stored value that a constant silently overrode would be the worst of
+	 * both, so the screen refuses to edit a secret a constant already provides.
 	 *
 	 * @param string $name One of the SECRETS keys.
 	 */
 	public function secret( string $name ): string {
+		return $this->resolve( $name )[1];
+	}
+
+	/**
+	 * Where a secret's value comes from, for the settings screen.
+	 *
+	 * @param string $name One of the SECRETS keys.
+	 * @return string constant | stored | derived | unset
+	 */
+	public function secret_source( string $name ): string {
+		return $this->resolve( $name )[0];
+	}
+
+	/**
+	 * The one place the resolution order lives.
+	 *
+	 * Both public methods delegate here rather than each walking the order
+	 * themselves. They did, briefly, and falsifying the constant-first branch
+	 * turned exactly one assertion red instead of two — which is the same bug
+	 * in miniature as the thing it would cause: a screen reporting "set in
+	 * wp-config.php" while the code quietly used the stored value. Two copies
+	 * of a precedence rule are two chances to disagree about it.
+	 *
+	 * @param string $name One of the SECRETS keys.
+	 * @return array{0: string, 1: string} Source and value.
+	 */
+	private function resolve( string $name ): array {
 		$constant = self::SECRETS[ $name ] ?? null;
 
-		if ( null === $constant || ! defined( $constant ) ) {
-			return '';
+		if ( null === $constant ) {
+			return array( 'unset', '' );
 		}
 
-		return (string) constant( $constant );
+		if ( defined( $constant ) && '' !== (string) constant( $constant ) ) {
+			return array( 'constant', (string) constant( $constant ) );
+		}
+
+		$stored = $this->secrets()->get( $name );
+
+		if ( '' !== $stored ) {
+			return array( 'stored', $stored );
+		}
+
+		/*
+		 * The IP salt is not a secret with any value outside this site: it
+		 * exists so stored IP hashes cannot be reversed with a rainbow table.
+		 * Unconfigured it used to hash with an empty string — the weakest
+		 * possible answer, reached by doing nothing. Deriving it from the
+		 * site's own salts is strictly better than storing one, because those
+		 * live in wp-config.php and so are not in the database dump at all.
+		 */
+		if ( 'ip_salt' === $name ) {
+			return array( 'derived', hash( 'sha256', 'aicake-ip-salt-v1|' . wp_salt( 'nonce' ) ) );
+		}
+
+		return array( 'unset', '' );
 	}
 
 	/**
