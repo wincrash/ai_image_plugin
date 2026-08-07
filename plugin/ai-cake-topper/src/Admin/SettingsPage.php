@@ -278,6 +278,10 @@ class SettingsPage {
 			'budget_daily_usd'     => $this->posted_float( 'budget_daily_usd', 0.0, 10000.0 ),
 			'budget_monthly_usd'   => $this->posted_float( 'budget_monthly_usd', 0.0, 100000.0 ),
 			'generation_enabled'   => isset( $_POST['generation_enabled'] ),
+			'source_none'          => isset( $_POST['source_none'] ),
+			'source_upload'        => isset( $_POST['source_upload'] ),
+			'source_ai'            => isset( $_POST['source_ai'] ),
+			'source_search'        => isset( $_POST['source_search'] ),
 		);
 
 		$email = isset( $_POST['budget_notify_email'] ) ? sanitize_email( wp_unslash( $_POST['budget_notify_email'] ) ) : '';
@@ -561,6 +565,48 @@ class SettingsPage {
 			esc_html__( 'įjungtas', 'ai-cake-topper' ),
 			esc_html__( 'Išjungus, vedlys mandagiai atsisako generuoti. Biudžeto sargas išjungia tai automatiškai.', 'ai-cake-topper' )
 		);
+
+		/*
+		 * The four ways a picture can get into the wizard (D-059).
+		 *
+		 * Worth being explicit in the description: switching one off removes
+		 * the card from the wizard *and* makes the endpoint refuse it. Hiding
+		 * a control is not a control, and this project has now learned that
+		 * twice — once with the WCFF field a customer could answer themselves.
+		 */
+		$sources = array(
+			'source_none'   => array(
+				__( 'tik užrašas, be paveikslėlio', 'ai-cake-topper' ),
+				__( 'Pigiausias kelias — pirkėjas rašo tik tekstą.', 'ai-cake-topper' ),
+			),
+			'source_upload' => array(
+				__( 'pirkėjo nuotrauka', 'ai-cake-topper' ),
+				__( 'Pirkėjas įkelia savo nuotrauką ir išsikerpa iš jos apskritimą.', 'ai-cake-topper' ),
+			),
+			'source_ai'     => array(
+				__( 'AI generavimas', 'ai-cake-topper' ),
+				__( 'Kainuoja pinigus už kiekvieną piešinį.', 'ai-cake-topper' ),
+			),
+			'source_search' => array(
+				__( 'paieška internete', 'ai-cake-topper' ),
+				__( 'Rastos nuotraukos yra svetimas autorinis darbas — įjunkite sąmoningai.', 'ai-cake-topper' ),
+			),
+		);
+
+		$first = true;
+
+		foreach ( $sources as $key => $copy ) {
+			printf(
+				'<tr><th scope="row">%s</th><td><label><input type="checkbox" name="%s" value="1" %s> %s</label><p class="description">%s</p></td></tr>',
+				$first ? esc_html__( 'Iš kur paveikslėlis', 'ai-cake-topper' ) : '',
+				esc_attr( $key ),
+				checked( (bool) $this->settings->get( $key, 'source_search' !== $key ), true, false ),
+				esc_html( $copy[0] ),
+				esc_html( $copy[1] )
+			);
+
+			$first = false;
+		}
 
 		echo '</tbody></table>';
 	}

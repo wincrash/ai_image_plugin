@@ -13,8 +13,10 @@ use AiCake\Domain\DesignRepository;
 use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Moderation\Moderator;
 use AiCake\Queue\Dispatcher;
+use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
 use AiCake\Throttle\IdentityResolver;
 use AiCake\Throttle\RateLimiter;
@@ -58,6 +60,8 @@ class GenerateEndpoint {
 
 	private Moderator $moderator;
 
+	private Settings $settings;
+
 	/**
 	 * @param DesignRepository $designs    Designs.
 	 * @param JobRepository    $jobs       Queue.
@@ -66,6 +70,7 @@ class GenerateEndpoint {
 	 * @param BudgetGuard      $budget     Spend ceiling.
 	 * @param IdentityResolver $identity   Identity.
 	 * @param Moderator        $moderator  Moderation layers 0 and 1.
+	 * @param Settings         $settings   Configuration, for the source switch.
 	 */
 	public function __construct(
 		DesignRepository $designs,
@@ -74,7 +79,8 @@ class GenerateEndpoint {
 		RateLimiter $limiter,
 		BudgetGuard $budget,
 		IdentityResolver $identity,
-		Moderator $moderator
+		Moderator $moderator,
+		Settings $settings
 	) {
 		$this->designs    = $designs;
 		$this->jobs       = $jobs;
@@ -83,6 +89,7 @@ class GenerateEndpoint {
 		$this->budget     = $budget;
 		$this->identity   = $identity;
 		$this->moderator  = $moderator;
+		$this->settings   = $settings;
 	}
 
 	/**
@@ -92,6 +99,27 @@ class GenerateEndpoint {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function handle( WP_REST_Request $request ) {
+		/*
+		 * The lock behind the missing button (D-059).
+		 *
+		 * When the shop switches AI generation off, the card vanishes from the
+		 * wizard — but a card is markup, and markup is a suggestion. Anything
+		 * that costs money has to be refused here as well, or "switched off"
+		 * means nothing more than "harder to find". This project has already
+		 * shipped that mistake once, with a WCFF field a customer could answer
+		 * for themselves.
+		 *
+		 * First, before the prompt is even read: a refusal that costs nothing
+		 * should also do nothing.
+		 */
+		if ( ! SourceCatalogue::enabled( SourceCatalogue::AI, $this->settings ) ) {
+			return new WP_Error(
+				'aicake_source_disabled',
+				__( 'Šiuo metu piešinių kūrimas išjungtas.', 'ai-cake-topper' ),
+				array( 'status' => 403 )
+			);
+		}
+
 		$aspect = (string) $request->get_param( 'aspect' );
 
 		// Layer 0: strip control characters, collapse whitespace, cap length.
@@ -165,6 +193,14 @@ class GenerateEndpoint {
 			'variation_id' => (int) $request->get_param( 'variation_id' ) ?: null,
 			'format_type'  => null === $format ? null : (string) $format['type'],
 			'format_mm'    => null === $format ? null : (float) $format['diameter_mm'],
+			/*
+			 * Not read from the request. This endpoint *is* the AI path — it is
+			 * the only thing that spends money on a picture — so the source is
+			 * a fact about which door was used, not a claim the client gets to
+			 * make. A posted source would be a posted answer to "did the shop
+			 * pay for this?", which is D-044's whole lesson (D-058).
+			 */
+			'source'       => SourceCatalogue::AI,
 		);
 
 		/*

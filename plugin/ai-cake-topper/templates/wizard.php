@@ -36,6 +36,25 @@ defined( 'ABSPATH' ) || exit;
 
 		<?php
 		/*
+		 * Where the picture comes from (D-054), asked on the same screen as the
+		 * format because Ruslan described the opening page as *"user choose
+		 * type, and format"* — one page, two questions, not two steps.
+		 *
+		 * Built by the browser from `config.sources`, which contains only the
+		 * sources this shop has switched on. When exactly one is on, the whole
+		 * block is left out: a choice with one option is not a choice (D-059).
+		 */
+		?>
+		<div
+			class="aicake-sources"
+			role="radiogroup"
+			aria-label="<?php esc_attr_e( 'Iš kur paveikslėlis', 'ai-cake-topper' ); ?>"
+			data-role="sources"
+			hidden
+		></div>
+
+		<?php
+		/*
 		 * One question, not two (D-055). This used to ask for a type — sheet,
 		 * circle, cupcake — and then reveal a size list for the type chosen.
 		 * Ruslan's read was that those are one thing seen three ways, and the

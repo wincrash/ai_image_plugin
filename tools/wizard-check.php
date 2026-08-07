@@ -21,6 +21,7 @@
 // phpcs:disable WordPress.WP.AlternativeFunctions, WordPress.PHP.DevelopmentFunctions
 
 use AiCake\Domain\FormatCatalogue;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Frontend\Wizard;
 use AiCake\WooCommerce\FieldsFactory;
 
@@ -220,6 +221,67 @@ aicake_check(
 	strpos( $html, 'id="aicake-size"' )
 );
 
+/* -------------------------------------- D-059: switching a source off */
+
+/*
+ * A switched-off source has to disappear from the wizard AND be refused by the
+ * endpoint. Ruslan asked for the first; the second is what makes it a control
+ * rather than a hidden button, and it is the half a check has to hold onto,
+ * because the missing card is visible and the missing lock is not.
+ */
+
+/*
+ * The *same* Settings instance the wizard holds. It caches the option and
+ * clears that cache on update, so a second instance would go on answering from
+ * a stale copy and the switch would look as though it did nothing.
+ */
+$settings = $plugin->settings();
+
+$was_ai = (bool) $settings->get( 'source_ai', true );
+
+aicake_check( 'AI is one of the offered sources by default', true, in_array(
+	SourceCatalogue::AI,
+	array_column( $wizard->sources(), 'value' ),
+	true
+) );
+
+aicake_check( 'search is not, unless the shop turns it on', false, in_array(
+	SourceCatalogue::SEARCH,
+	array_column( $wizard->sources(), 'value' ),
+	true
+) );
+
+$settings->update( array( 'source_ai' => false ) );
+
+aicake_check( 'switching AI off removes it from the wizard', false, in_array(
+	SourceCatalogue::AI,
+	array_column( $wizard->sources(), 'value' ),
+	true
+) );
+
+$off = new WP_REST_Request( 'POST', '/aicake/v1/generate' );
+$off->set_header( 'X-WP-Nonce', wp_create_nonce( 'wp_rest' ) );
+$off->set_body_params(
+	array(
+		'prompt'      => 'katinas',
+		'format_type' => FormatCatalogue::TYPE_SHEET,
+		'format_mm'   => 0,
+		'product_id'  => $product->get_id(),
+	)
+);
+
+$off_response = rest_do_request( $off );
+
+// Restored before anything can fail and skip it.
+$settings->update( array( 'source_ai' => $was_ai ) );
+
+aicake_check( 'and the endpoint refuses it too, not just the page', 403, $off_response->get_status() );
+aicake_check(
+	'with a reason of its own, not a throttle or a moderation refusal',
+	'aicake_source_disabled',
+	$off_response->is_error() ? $off_response->as_error()->get_error_code() : ''
+);
+
 /*
  * D-025: this markup is cacheable, so it must never carry a nonce for an
  * anonymous visitor. A cached nonce 403s every generation, and it took two
@@ -261,7 +323,7 @@ wp_set_current_user( 1 );
  * re-run from nothing on any day (D-031's principle), and that includes a busy
  * one.
  */
-$settings  = $plugin->settings();
+// Already resolved above, for the source switches.
 $throttled = array(
 	'free_per_user'        => $settings->get( 'free_per_user' ),
 	'free_per_session'     => $settings->get( 'free_per_session' ),

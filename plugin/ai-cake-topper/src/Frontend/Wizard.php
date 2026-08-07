@@ -10,6 +10,7 @@ declare( strict_types=1 );
 namespace AiCake\Frontend;
 
 use AiCake\Domain\FormatCatalogue;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Imaging\FontCatalogue;
 use AiCake\Imaging\LayerInspector;
 use AiCake\Imaging\SheetLayout;
@@ -304,6 +305,37 @@ class Wizard {
 	}
 
 	/**
+	 * The ways into the wizard this shop currently offers (D-059).
+	 *
+	 * Only the enabled ones are here at all. A disabled source is not sent to
+	 * the browser greyed out or marked unavailable — it does not exist, which
+	 * is what Ruslan asked for: *"it should dont show in wizard meniu at all."*
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function sources(): array {
+		$sources = array();
+
+		foreach ( SourceCatalogue::available( $this->settings ) as $source ) {
+			$copy = SourceCatalogue::copy( $source );
+
+			$sources[] = array(
+				'value' => $source,
+				'title' => $copy['title'],
+				'note'  => $copy['note'],
+				/*
+				 * Whether choosing this leads to an artwork step at all. Only
+				 * `none` skips it, and the browser needs to know before the
+				 * customer presses Toliau or step 2 opens on an empty screen.
+				 */
+				'needsArtwork' => SourceCatalogue::NONE !== $source,
+			);
+		}
+
+		return $sources;
+	}
+
+	/**
 	 * Every format, as one list the browser can draw.
 	 *
 	 * **Flat, not grouped by type** (D-055). It used to hand back three buckets
@@ -529,6 +561,7 @@ class Wizard {
 				// stale nonce 403s every generation (§7, D-025).
 				'nonce'     => is_user_logged_in() ? wp_create_nonce( 'wp_rest' ) : '',
 				'formats'   => $this->formats(),
+				'sources'   => $this->sources(),
 				'sheets'    => $this->sheet_types(),
 				/*
 				 * Which field name the sheet type posts under. Resolved at
@@ -560,6 +593,7 @@ class Wizard {
 					'onePiece'   => __( 'Gausite: 1 vnt.', 'ai-cake-topper' ),
 					'pickFormat' => __( 'Pasirinkite, ką gaminsime.', 'ai-cake-topper' ),
 					'pickSize'   => __( 'Pasirinkite dydį.', 'ai-cake-topper' ),
+					'pickSource' => __( 'Pasirinkite, iš kur bus paveikslėlis.', 'ai-cake-topper' ),
 					'pickDesign' => __( 'Sukurkite piešinį, kad galėtumėte tęsti.', 'ai-cake-topper' ),
 					/*
 					 * Said plainly, because it costs the customer a generation.

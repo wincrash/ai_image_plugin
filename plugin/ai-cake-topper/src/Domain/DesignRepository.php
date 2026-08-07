@@ -180,6 +180,7 @@ class DesignRepository {
 			'variation_id',
 			'format_type',
 			'format_mm',
+			'source',
 			'prompt_raw',
 			'prompt_en',
 			'prompt_final',

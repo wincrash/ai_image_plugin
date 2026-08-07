@@ -209,7 +209,8 @@ class Plugin {
 				$this->rate_limiter,
 				$this->budget_guard,
 				$this->identity,
-				$this->moderator
+				$this->moderator,
+				$this->settings
 			),
 			new JobStatusEndpoint( $this->jobs, $this->designs, $this->runner, $this->dispatcher, $this->identity ),
 			new FileEndpoint( $this->designs, $this->identity, $this->settings ),

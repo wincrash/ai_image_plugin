@@ -112,6 +112,24 @@ class Settings {
 			'moderation_ai'        => true,
 
 			/*
+			 * Where a picture may come from — D-054, D-059.
+			 *
+			 * Each way in is switchable on its own, and a switched-off source
+			 * **does not appear in the wizard at all**. Ruslan asked for that
+			 * twice, and for two reasons: insurance if a provider misbehaves,
+			 * and a rollout lever — ship the editor first, turn AI on later as
+			 * its own moment.
+			 *
+			 * Search is off by default. It is the only one that reaches out to
+			 * the open internet for a picture nobody has licensed (D-060), so
+			 * the shop turns it on deliberately or not at all.
+			 */
+			'source_none'          => true,
+			'source_upload'        => true,
+			'source_ai'            => true,
+			'source_search'        => false,
+
+			/*
 			 * Retention — D-061. Storage grows with every generation, bought or
 			 * not, and production is a managed host with no shell.
 			 *
