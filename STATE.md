@@ -530,6 +530,34 @@ margin is not a top-end artefact.
 > three squares, so it compresses to almost nothing. A real text layer is mostly transparent and
 > lands in the same range, but a composited photo would be megabytes.
 
+**And the live shop's own statistics say iOS is the platform that matters** (read 2026-08-07 from
+the statistics plugin on production, ~97 000 visitors):
+
+| OS | Share | | Browser | Share |
+|---|---|---|---|---|
+| Windows | 36.1% | | Chrome | 55.4% |
+| **iOS** | **16.1%** | | **Mobile Safari** | **12.7%** |
+| Mac | 16.0% | | **Chrome Mobile** | **6.6%** |
+| GNU/Linux | 14.0% | | Firefox | 4.1% |
+| **Android** | **11.1%** | | Safari | 3.4% |
+
+**iOS outnumbers Android, and on mobile specifically Mobile Safari beats Chrome Mobile roughly
+two to one.** Devices: desktop 67.3%, smartphone 24.6%, phablet 1.1%, unset 6.2%.
+
+> **This inverts the assumption this project has been carrying.** A previous session reasoned that
+> Android dominates in Lithuania and therefore Android was the case to check. For *this shop* that
+> is simply false — **the one browser engine we have never tested is the one most mobile customers
+> use.** The POCO result is real, but it measures the smaller half of the mobile audience.
+
+Two caveats on the figures, both pushing the same way:
+
+- **Desktop is inflated by crawlers.** GNU/Linux at 14% and Internet Explorer at 1.5% are not
+  Lithuanian cake decorators. Strip the bots and the mobile share rises — so 24.6% is a floor,
+  not an estimate.
+- **Facebook's in-app browser is 2.2%**, and the shop actively drives traffic from Facebook. On
+  iOS that is WKWebView — the same engine as Safari, with the same canvas ceiling and usually a
+  tighter memory budget. It is not a separate, safer bucket.
+
 **What it unlocks:** client-side rendering is viable on Android with room to spare — the format
 diagrams, the proof, photo decode/downscale/crop, and in principle even the 300 DPI print file.
 The print file stays on the server anyway, by Ruslan's decision: a spike once per *order* is not
