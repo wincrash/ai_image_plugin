@@ -117,7 +117,48 @@ class CartIntegration {
 			return false;
 		}
 
+		/*
+		 * The row can outlive its files. Retention deletes what is in
+		 * `sessions/` — by cron or, on this shop, by Ruslan over FTP — and the
+		 * design row is deliberately kept for its prompt and verdict. A cart
+		 * that survived the deletion would otherwise be charged the AI
+		 * surcharge for a picture that no longer exists and fail to render
+		 * *after payment*, which is the worst place to discover it.
+		 *
+		 * This is not hypothetical: a logged-in customer's cart persists
+		 * indefinitely, and `woocommerce_add_to_cart_validation` runs on the
+		 * session restore, so this is the hook that sees it.
+		 */
+		if ( ! $this->master_is_intact( $design ) ) {
+			// Same message as above, for the same reason.
+			wc_add_notice(
+				__( 'Šis piešinys nerastas. Sukurkite jį iš naujo.', 'ai-cake-topper' ),
+				'error'
+			);
+
+			return false;
+		}
+
 		return true;
+	}
+
+	/**
+	 * Does this design still have the file it claims to have?
+	 *
+	 * A design that never claimed a master is **not** broken — that is what a
+	 * text-only design would look like, which Ruslan expects to become its own
+	 * product. Only a claim that is no longer true is a problem, so an empty
+	 * path passes and a dead path does not.
+	 *
+	 * `Fulfilment` has always asked `is_readable()`. Only the cart trusted the
+	 * string, and the two disagreeing is the whole bug.
+	 *
+	 * @param array<string, mixed> $design The design row.
+	 */
+	private function master_is_intact( array $design ): bool {
+		$master = (string) ( $design['file_master'] ?? '' );
+
+		return '' === $master || is_readable( $master );
 	}
 
 	/**
@@ -184,7 +225,12 @@ class CartIntegration {
 	 */
 	private function used_ai( array $design ): bool {
 		return '' !== (string) ( $design['provider'] ?? '' )
-			&& '' !== (string) ( $design['file_master'] ?? '' );
+			&& '' !== (string) ( $design['file_master'] ?? '' )
+			// And the file is still there. Charging for a generation whose
+			// image has since been deleted is charging for nothing — see
+			// master_is_intact(). Routes into the cart that skip validation
+			// reach this without passing validate() first.
+			&& $this->master_is_intact( $design );
 	}
 
 	/**

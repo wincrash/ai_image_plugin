@@ -39,6 +39,7 @@ use AiCake\WooCommerce\FieldsFactory;
  * plain assignment is a local that `global` in the helper can never see —
  * which shows up as a run where every check passes and the total is zero.
  */
+$GLOBALS['aicake_fake_masters'] = array();
 $GLOBALS['aicake_pass'] = 0;
 $GLOBALS['aicake_fail'] = 0;
 
@@ -231,6 +232,26 @@ function aicake_reset_native_flag(): void {
  * @param float  $mm      Format size.
  * @param int    $user_id Owner.
  */
+/**
+ * Write a throwaway master file and return its absolute path.
+ *
+ * Under the storage root so it looks like the real thing, and tracked so the
+ * run cleans up after itself.
+ */
+function aicake_fake_master(): string {
+	$dir = AiCake\Plugin::instance()->settings()->storage_dir() . '/sessions/wcff-check';
+
+	wp_mkdir_p( $dir );
+
+	$path = $dir . '/master-' . wp_generate_password( 8, false ) . '.png';
+
+	file_put_contents( $path, base64_decode( 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==' ) );
+
+	$GLOBALS['aicake_fake_masters'][] = $path;
+
+	return $path;
+}
+
 function aicake_design( bool $with_ai, string $format = 'circle', float $mm = 150.0, int $user_id = 1 ): string {
 	$designs = AiCake\Plugin::instance()->designs();
 
@@ -247,7 +268,15 @@ function aicake_design( bool $with_ai, string $format = 'circle', float $mm = 15
 			'status'       => AiCake\Domain\DesignRepository::STATUS_DONE,
 			'file_preview' => 'wcff-check-preview.webp',
 			'provider'     => $with_ai ? 'fal' : null,
-			'file_master'  => $with_ai ? 'wcff-check-master.png' : null,
+			/*
+			 * A real file on disk, not just a path. The cart now asks whether
+			 * the master is readable rather than whether the column is
+			 * non-empty, because Fulfilment always did and the two disagreeing
+			 * is how a customer gets charged for a picture that was deleted
+			 * (see "a design whose files were deleted" below). A fixture whose
+			 * master never existed cannot tell those apart.
+			 */
+			'file_master'  => $with_ai ? aicake_fake_master() : null,
 		)
 	);
 
@@ -425,6 +454,50 @@ foreach ( WC()->cart->get_cart() as $item ) {
 
 aicake_check( 'the cart line records the derived answer', 'ne', $charged );
 
+/* --------------------------------------------- a design whose files are gone */
+
+echo "
+A design whose files were deleted
+";
+
+/*
+ * Retention deletes what is in `sessions/`, and on this shop Ruslan does it by
+ * hand over FTP. The design row is deliberately kept — it holds the prompt and the
+ * moderation verdict — so a row can outlive its files, and a logged-in
+ * customer's cart persists indefinitely.
+ *
+ * Before this was fixed the cart read the `file_master` *column* while
+ * `Fulfilment` read the *file*, so this exact case charged the AI surcharge,
+ * took the money, and then could not render. There is no worse moment to find
+ * out.
+ */
+$orphan = aicake_design( true );
+$gone   = (string) ( AiCake\Plugin::instance()->designs()->find_by_public_id( $orphan )['file_master'] ?? '' );
+
+aicake_check( 'the fixture really wrote a master', true, '' !== $gone && is_readable( $gone ) );
+
+unlink( $gone );
+
+aicake_check( 'and it is now gone, as after a cleanup', false, is_readable( $gone ) );
+
+aicake_check(
+	'the real add-to-cart route refuses it',
+	false,
+	aicake_validates( $product_id, $orphan )
+);
+
+/*
+ * And through a route that never runs validation — `WC_Cart::add_to_cart()`
+ * does not apply the filter — the line must at least not carry the AI fee.
+ * 3.50 rather than 4.50 is the assertion: the customer is not charged for a
+ * picture that no longer exists.
+ */
+aicake_check(
+	'and no route can charge the AI fee for it',
+	3.50,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $orphan )
+);
+
 echo "\nWhat the AI product refuses\n";
 
 /*
@@ -554,6 +627,25 @@ foreach ( WC()->cart->get_cart() as $key => $item ) {
 aicake_check( 'and falls back to the preview with no proof', true, false !== strpos( $fallback, '/' . $plain_design . '/preview' ) );
 
 WC()->cart->empty_cart();
+
+/*
+ * The fixtures write real PNGs now, so the run has to take them away again.
+ * A check that leaves files behind is a check that slowly fills the inode
+ * budget — which on this host is the binding limit, not disk space.
+ */
+foreach ( $GLOBALS['aicake_fake_masters'] as $fake ) {
+	if ( is_readable( $fake ) ) {
+		unlink( $fake );
+	}
+}
+
+@rmdir( AiCake\Plugin::instance()->settings()->storage_dir() . '/sessions/wcff-check' );
+
+aicake_check(
+	'the run leaves no fixture files behind',
+	0,
+	count( array_filter( $GLOBALS['aicake_fake_masters'], 'is_readable' ) )
+);
 
 printf(
 	"\n%d passed, %d failed\n\n",
