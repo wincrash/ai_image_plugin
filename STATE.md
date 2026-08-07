@@ -511,8 +511,12 @@ on phones, so this was an unmeasured assumption sitting under shipped code.
 | 4000 × 5000 | 20.0 | ok | ok | 126 |
 | 5000 × 7000 | 35.0 | ok | ok | 223 |
 
-Device: Android, Chrome 150, 8 cores, 393 × 873 @ DPR 2.75. Tested with
-`tools/phone-canvas-check.html`.
+Device: **POCO X3 Pro** (2021 mid-range, Snapdragon 860), Android, Chrome 150, 8 cores,
+393 × 873 @ DPR 2.75. Tested with `tools/phone-canvas-check.html`.
+
+The model matters to how much this result is worth: it is **not** a flagship. A four-year-old
+mid-range phone clearing 35 MP puts the Android floor well below the 8.3 MP we need, so the
+margin is not a top-end artefact.
 
 > **⚠ This is Android Chrome, and Android Chrome was never the risk.** **iOS Safari is untested**
 > and it is the one with a hard canvas-area ceiling — and its failure mode is silent: it returns a
