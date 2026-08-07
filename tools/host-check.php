@@ -56,6 +56,53 @@ row( 'cURL extension', extension_loaded( 'curl' ), extension_loaded( 'curl' ) );
 row( 'allow_url_fopen', (bool) ini_get( 'allow_url_fopen' ) );
 row( 'JSON extension', extension_loaded( 'json' ), extension_loaded( 'json' ) );
 
+/*
+ * docs/migration.md §2.1. Production reports 256M and the measured render peak
+ * is 339 MB. Whether PHP may raise its own limit decides whether that is solved
+ * by configuration or only by cutting the peak. On cgi-fcgi with a per-user
+ * php.ini this usually works; php_admin_value would forbid it.
+ */
+$before_raise = ini_get( 'memory_limit' );
+@ini_set( 'memory_limit', '512M' );
+$after_raise = ini_get( 'memory_limit' );
+@ini_set( 'memory_limit', $before_raise );
+
+row( 'ini_set(memory_limit, 512M) sticks', $after_raise, '512M' === $after_raise );
+
+/*
+ * Decides whether storage can live outside the webroot at all (§2.3). Empty
+ * means unrestricted, which is the answer we want.
+ */
+$basedir = (string) ini_get( 'open_basedir' );
+row( 'open_basedir', '' === $basedir ? '(none — unrestricted)' : $basedir, '' === $basedir );
+
+/*
+ * If timestamps are not validated, a file replaced over FTP keeps running the
+ * old bytecode until the pool restarts — which reads exactly like an edit that
+ * did nothing. Production's OPcache is also already full.
+ */
+if ( function_exists( 'opcache_get_configuration' ) ) {
+	$oc = @opcache_get_configuration();
+
+	if ( is_array( $oc ) ) {
+		$validate = ! empty( $oc['directives']['opcache.validate_timestamps'] );
+		row( 'opcache.validate_timestamps', $validate, $validate );
+		row( 'opcache.revalidate_freq', $oc['directives']['opcache.revalidate_freq'] ?? '?' );
+	}
+
+	$status = @opcache_get_status( false );
+
+	if ( is_array( $status ) ) {
+		row( 'opcache cache full', ! empty( $status['cache_full'] ), empty( $status['cache_full'] ) );
+	}
+}
+
+/*
+ * D-050 — the settings screen refuses to store a key it cannot encrypt.
+ */
+row( 'sodium (key encryption)', function_exists( 'sodium_crypto_secretbox' ), function_exists( 'sodium_crypto_secretbox' ) || function_exists( 'openssl_encrypt' ) );
+row( 'openssl (fallback cipher)', function_exists( 'openssl_encrypt' ) );
+
 $limit_bytes = (int) preg_replace_callback(
 	'/^(\d+)([KMG])?$/i',
 	static fn( $m ) => (int) $m[1] * array( '' => 1, 'K' => 1024, 'M' => 1048576, 'G' => 1073741824 )[ strtoupper( $m[2] ?? '' ) ],
@@ -139,9 +186,16 @@ if ( extension_loaded( 'gd' ) ) {
 
 // ------------------------------------------------------------ storage ----
 section( 'Storage' );
+
+/*
+ * The first candidate is the real target from docs/migration.md §2.3: a sibling
+ * of public_html on this host's DirectAdmin layout, so nothing generated is ever
+ * reachable by URL. The others are fallbacks worth knowing about.
+ */
+$docroot    = $_SERVER['DOCUMENT_ROOT'] ?? __DIR__;
 $candidates = array(
-	dirname( __DIR__ ) . '/aicake-private',      // one level above the webroot
-	dirname( $_SERVER['DOCUMENT_ROOT'] ?? __DIR__ ) . '/aicake-private',
+	dirname( $docroot ) . '/aicake-files',       // the intended location
+	dirname( __DIR__ ) . '/aicake-private',
 	sys_get_temp_dir() . '/aicake-test',
 );
 foreach ( array_unique( $candidates ) as $dir ) {
@@ -159,7 +213,8 @@ row( 'DOCUMENT_ROOT', $_SERVER['DOCUMENT_ROOT'] ?? '(unknown)' );
 // The job dispatcher fires a non-blocking request back at this same host. Some
 // shared hosts block that; the plugin has a fallback, but we want to know.
 section( 'Loopback' );
-$self = ( ( $_SERVER['HTTPS'] ?? '' ) === 'on' ? 'https' : 'http' ) . '://' . ( $_SERVER['HTTP_HOST'] ?? 'localhost' ) . '/';
+$self        = ( ( $_SERVER['HTTPS'] ?? '' ) === 'on' ? 'https' : 'http' ) . '://' . ( $_SERVER['HTTP_HOST'] ?? 'localhost' ) . '/';
+$loopback_ok = false;
 if ( extension_loaded( 'curl' ) ) {
 	$ch = curl_init( $self );
 	curl_setopt_array( $ch, array( CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 10, CURLOPT_NOBODY => true, CURLOPT_SSL_VERIFYPEER => false ) );
@@ -167,6 +222,7 @@ if ( extension_loaded( 'curl' ) ) {
 	$code = curl_getinfo( $ch, CURLINFO_HTTP_CODE );
 	$err  = curl_error( $ch );
 	curl_close( $ch );
+	$loopback_ok = (bool) $code;
 	row( 'self request ' . $self, $code ? "HTTP $code" : "failed: $err", (bool) $code );
 } else {
 	row( 'self request', 'skipped — no cURL' );
@@ -185,6 +241,58 @@ foreach ( array( 'https://fal.run', 'https://generativelanguage.googleapis.com' 
 	$err  = curl_error( $ch );
 	curl_close( $ch );
 	row( $host, $code ? "reachable (HTTP $code)" : "BLOCKED: $err", (bool) $code );
+}
+
+/* ------------------------------------------------------- REST for visitors --
+ * docs/migration.md §2.2. The wizard's entire audience is logged out, and Really
+ * Simple Security has a hardening option that disables the REST API for exactly
+ * those people. If this is not a 200 with a JSON body, the wizard cannot work
+ * for a customer no matter what the plugin does — and it will look like our bug.
+ */
+section( 'REST API, as a logged-out visitor' );
+
+/*
+ * This probe is the server calling itself, which is the loopback path. If
+ * loopback is blocked, a failure here says nothing whatsoever about the REST
+ * API — and reporting "the wizard cannot work" on that basis would be a false
+ * alarm on the single most alarming line in this file. So when loopback is
+ * down, the honest answer is that a browser has to decide it.
+ */
+$rest_url = ( ( $_SERVER['HTTPS'] ?? '' ) === 'on' ? 'https' : 'http' ) . '://' . ( $_SERVER['HTTP_HOST'] ?? 'localhost' ) . '/wp-json/';
+
+echo "  Open this in a private browser window, logged out. You should see JSON,\n";
+echo "  not a 401 or an error page:\n\n      $rest_url\n\n";
+
+if ( ! $loopback_ok ) {
+	row( 'server-side probe', 'skipped — loopback is blocked, so it would prove nothing' );
+} elseif ( extension_loaded( 'curl' ) ) {
+	$ch = curl_init( $rest_url );
+	curl_setopt_array(
+		$ch,
+		array(
+			CURLOPT_RETURNTRANSFER => true,
+			CURLOPT_TIMEOUT        => 12,
+			CURLOPT_SSL_VERIFYPEER => false,
+			// No cookies, no auth: this is what a first-time visitor is.
+			CURLOPT_COOKIEFILE     => '',
+		)
+	);
+	$body = (string) curl_exec( $ch );
+	$code = curl_getinfo( $ch, CURLINFO_HTTP_CODE );
+	curl_close( $ch );
+
+	$ok = 200 === (int) $code && str_contains( $body, '"namespaces"' );
+
+	row( $rest_url, "HTTP $code", $ok );
+	row( 'anonymous REST usable  <-- CRITICAL', $ok ? 'yes' : 'NO — the wizard cannot work logged out', $ok );
+
+	if ( ! $ok ) {
+		echo "      Check Really Simple Security -> Hardening for a REST API restriction.\n";
+		echo "      The fix is an allowance for the aicake/v1 namespace, not switching\n";
+		echo "      the hardening off site-wide.\n";
+	}
+} else {
+	row( 'REST probe', 'skipped — no cURL' );
 }
 
 echo "\n\nDone. Delete this file now.\n";
