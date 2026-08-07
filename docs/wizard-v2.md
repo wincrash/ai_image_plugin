@@ -191,14 +191,26 @@ Then, in order:
 
 ### 7.2 · This is a live bug, and it is fixed first
 
-**Today a silent canvas failure produces a blank text layer, the order completes, and the sheet
-prints with no names on it.** Nobody finds out until a customer complains about a birthday cake
-with no birthday on it. Same shape as D-027 and D-043 — the end-to-end result *looks* correct.
+**Corrected 2026-08-07 by reading the code.** An earlier draft of this section said a silent
+canvas failure would print a sheet with no names on it. That is **wrong**: `LayerInspector`
+already refuses a zero-ink layer (`empty` → 422), and `wizard.js`'s `finishText()` does not
+advance on a failed save. Nothing bad prints and no order completes.
 
-Given that iOS is the majority mobile platform, this potentially affects most phone customers.
+**The real failure is a dead end with a message that blames the customer.** They type a name,
+press save, and are told **„Užrašas tuščias."** — *your text is empty* — while looking at their
+text on the screen. They cannot proceed, cannot fix it, and nothing they can change is the
+problem. On what the statistics say is the majority mobile platform, that is a silently lost sale
+reported as "the wizard is broken", with nothing in the logs pointing at the cause.
 
-**It is fixed as its own small change, before the refactor starts** (§14, step 0). It is a few
-lines, it is independently testable, and it should not wait behind a rewrite.
+**Fixed as its own small change, before the refactor starts** (§14, step 0), and scoped to three
+things: **detect** the device failure in the browser, **say something true** about it, and **log
+it** so it stops being invisible.
+
+> **Recovery is deliberately not in step 0.** Rendering the layer smaller and letting the server
+> scale it up collides with `FulfilPipeline`'s rule that a layer is *never* scaled — stretching
+> one puts text across a cut line while still producing a plausible file. Trading that for
+> slightly soft text is a real decision and it is **Ruslan's**, not a detail to settle inside a
+> bug fix. See §15.6.
 
 ### 7.3 · Why there is no cheap fallback
 
@@ -417,3 +429,9 @@ Stage 0 is independent of everything else and ships on its own.
    person rather than code.
 5. **The migration stays paused** until this lands. D-053's review must read the code that ships,
    and this changes the code that ships.
+6. **How an affected device recovers is undecided, and it is Ruslan's call.** If a phone cannot
+   build the 8.3 MP layer, the only route to a completed sale is rendering it smaller and letting
+   the server scale it up — which breaks `FulfilPipeline`'s never-scale rule and costs sharpness
+   in the printed text. The alternative is that those customers buy artwork without text. Neither
+   is obviously right; step 0 makes the failure *visible* so the decision can be made on evidence
+   instead of guesses.

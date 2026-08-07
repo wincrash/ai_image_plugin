@@ -2603,12 +2603,22 @@ exceeds its area budget** — it hands back one that reads as transparent, and `
 produces a perfectly valid blank PNG. A check that asks "did it throw" reports success on a broken
 device, which is precisely the class of check this project has learned not to write.
 
-> **This is a live bug, not a future one, and it is fixed first.** Today a silent canvas failure
-> produces a blank text layer, the order completes, and the sheet prints with no names on it —
-> discovered when a customer complains about a birthday cake with no birthday on it. Same shape as
-> D-027 and D-043: the end-to-end result *looks* correct. Given iOS is the majority mobile
-> platform, this potentially affects most phone customers. It ships as its own change, ahead of
-> the refactor.
+> **This is a live bug, and it is fixed first — but it is not the bug this entry first claimed.**
+>
+> The first draft of D-057 said a silent canvas failure would print a sheet with no names on it.
+> **That is wrong, and reading the code is what corrected it.** `LayerInspector` already refuses a
+> zero-ink layer (`empty` → 422), and `wizard.js`'s `finishText()` does not advance on a failed
+> save. Nothing bad gets printed and no order completes.
+>
+> **What actually happens is a dead end with a message that blames the customer.** They type a
+> name, press save, and are told **„Užrašas tuščias."** — *your text is empty* — while looking at
+> their text on the screen. They cannot proceed and cannot fix it, because nothing they can change
+> is the problem. On what the statistics say is the majority mobile platform, that is a silently
+> lost sale, and it would be reported as "the wizard is broken" with nothing in the logs pointing
+> at the cause.
+>
+> Better than a wrong print, worse commercially, and still worth fixing before anything else —
+> because we currently cannot even see it happening.
 
 **There is deliberately no renderer-level fallback.** Sending a recipe for the server to rasterise
 is the design D-033 deleted — two renderers that must agree pixel-for-pixel and drift apart the

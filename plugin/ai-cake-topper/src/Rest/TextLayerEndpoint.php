@@ -227,9 +227,42 @@ class TextLayerEndpoint {
 		if ( ! $verdict['ok'] ) {
 			$this->images->free( $layer );
 
+			/*
+			 * An empty layer is logged with the user agent, and the others are
+			 * not, because the two mean opposite things.
+			 *
+			 * `off_palette` and `too_much_ink` are the gate working: someone
+			 * pushed artwork through the text endpoint and was refused. Nothing
+			 * to investigate.
+			 *
+			 * `empty` with text alongside it is a *device* failure (D-057) —
+			 * the browser was asked for an 8.3 megapixel canvas and silently
+			 * returned one that reads as transparent, which is how Safari on
+			 * iOS behaves past its area budget. The customer sees their text on
+			 * screen and is told it is empty, so they abandon the purchase and
+			 * the shop never hears why. The user agent is the whole point: it
+			 * turns "the wizard is broken" into a device we can name.
+			 *
+			 * Only when text was typed. An empty layer with no text is somebody
+			 * pressing save on an untouched editor, which is not a fault.
+			 */
+			if ( 'empty' === $verdict['reason'] && '' !== $text ) {
+				$this->logger->warning(
+					'Text layer arrived empty although text was typed — the browser could not build the canvas.',
+					array(
+						'design' => $public_id,
+						'canvas' => $canvas_w . 'x' . $canvas_h,
+						'chars'  => mb_strlen( $text ),
+						'agent'  => isset( $_SERVER['HTTP_USER_AGENT'] )
+							? sanitize_text_field( wp_unslash( $_SERVER['HTTP_USER_AGENT'] ) )
+							: '',
+					)
+				);
+			}
+
 			return new WP_Error(
 				'aicake_layer_refused',
-				$this->refusal_message( $verdict['reason'] ),
+				$this->refusal_message( $verdict['reason'], '' !== $text ),
 				array( 'status' => 422 )
 			);
 		}
@@ -431,11 +464,31 @@ class TextLayerEndpoint {
 	 * blocked prompts, for the same reason: a precise refusal is a tutorial in
 	 * getting past it.
 	 *
-	 * @param string $reason Machine-readable cause from the inspector.
+	 * @param string $reason    Machine-readable cause from the inspector.
+	 * @param bool   $had_text  Whether the customer actually typed something.
 	 */
-	private function refusal_message( string $reason ): string {
+	private function refusal_message( string $reason, bool $had_text = false ): string {
 		if ( 'empty' === $reason ) {
-			return __( 'Užrašas tuščias.', 'ai-cake-topper' );
+			/*
+			 * The same empty bitmap means two different things, and saying the
+			 * wrong one costs a sale (D-057).
+			 *
+			 * No text typed: the customer pressed save on an untouched editor.
+			 * „Užrašas tuščias." is exactly right and tells them what to do.
+			 *
+			 * Text typed: their words are on the screen and the *browser*
+			 * failed to draw them — Safari past its canvas budget returns a
+			 * transparent canvas without complaining. Telling that customer
+			 * their text is empty sends them round a loop with no exit, because
+			 * nothing they can change is the problem.
+			 *
+			 * The browser says this itself when it detects the failure. This is
+			 * the same sentence from the other side, for a customer running
+			 * cached JavaScript that predates the check.
+			 */
+			return $had_text
+				? __( 'Jūsų telefonas ar naršyklė nepajėgė paruošti užrašo šiam dydžiui. Pabandykite kitu įrenginiu arba pasirinkite mažesnį formatą.', 'ai-cake-topper' )
+				: __( 'Užrašas tuščias.', 'ai-cake-topper' );
 		}
 
 		return __( 'Užrašo išsaugoti nepavyko. Naudokite tik tekstą ir pasirinktas spalvas.', 'ai-cake-topper' );

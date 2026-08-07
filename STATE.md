@@ -32,11 +32,30 @@
 > — text only, uploaded photo, AI, and image search — as **one wizard branching at one step**
 > (D-054 → D-062). Everything below describing the wizard as an AI-only flow is v1.
 >
-> **Start at step 0 of §14, and it is not part of the refactor:** `editor.js` allocates an 8.3 MP
-> canvas and `toDataURL()`s it, and **a silent canvas failure today produces a blank text layer, a
-> completed order and a sheet printed with no names on it.** iOS is the majority mobile platform
-> here (16.1% against Android's 11.1%) and iOS is exactly where that failure is silent. Fix it on
-> its own, first (D-057).
+> **✅ Step 0 is done (2026-08-07).** The empty-layer refusal now says two different things.
+> `editor.js` probes the export canvas in two corners before drawing and remembers whether the
+> device held them; `TextLayerEndpoint` tells a customer who typed nothing that their text is
+> empty, and a customer who typed something that **their device could not build the image** —
+> because for that second customer the words are on the screen and nothing they can change is the
+> problem. The refusal is now logged **with the user agent**, so this stops being invisible.
+> `text-check` is **35**, was 30; falsified by collapsing the two messages back into one, which
+> turns exactly 2 red.
+>
+> **What step 0 deliberately did *not* do: recovery.** An affected customer still cannot buy text.
+> Rendering the layer smaller and letting the server scale it breaks `FulfilPipeline`'s never-scale
+> rule and costs sharpness — that is Ruslan's call, and `docs/wizard-v2.md` §15.6 holds it open.
+>
+> **And the client-side probe has never been seen returning false on a real device.** It uses the
+> identical technique `tools/phone-canvas-check.html` used to return *true* on the POCO, so the
+> mechanism works; the failing branch is reasoned, not witnessed. It needs an iPhone to witness.
+
+> **Original finding, kept because it is what to look for:** `editor.js` allocates an 8.3 MP
+> canvas and `toDataURL()`s it. On a device that cannot, the customer is told **„Užrašas
+> tuščias."** — *your text is empty* — while looking at their text, and cannot proceed. Nothing
+> prints wrong (`LayerInspector` refuses zero ink and `finishText()` does not advance), so this is
+> **a silently lost sale, not a bad print** — an earlier draft of D-057 got that backwards and
+> reading the code corrected it. iOS is the majority mobile platform here (16.1% against Android's
+> 11.1%) and iOS is exactly where the canvas fails silently. Fix on its own, first (D-057).
 
 > **👉 Current work: Ruslan is updating the wizard** (from 2026-08-07). The migration is paused
 > on purpose until that lands — the code review (D-053) has to read the code that ships, so

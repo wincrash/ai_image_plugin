@@ -48,6 +48,15 @@
 		var preview = null;
 		var bound   = false;
 
+		/*
+		 * Set by the last exportLayer(): true when this device could not give us
+		 * a canvas the size of the print sheet. Kept here rather than returned
+		 * because save() needs it to tell a device failure apart from a refusal
+		 * about the text itself — the two produce the same 422 and must not
+		 * produce the same sentence (D-057).
+		 */
+		var exportFailed = false;
+
 		var state = {
 			layout: null,
 			font: config.fonts && config.fonts.length ? config.fonts[ 0 ].handle : '',
@@ -635,6 +644,25 @@
 			out.width  = state.layout.canvas.w;
 			out.height = state.layout.canvas.h;
 
+			/*
+			 * Whether the device actually gave us the canvas we asked for.
+			 *
+			 * It may not have. A cupcake sheet is 2481 x 3331 — 8.3 megapixels —
+			 * and Safari on iOS does NOT throw when a canvas exceeds its area
+			 * budget: it hands back one that reads as transparent, and
+			 * toDataURL() then produces a perfectly valid BLANK png. The shop's
+			 * own statistics put iOS at 16.1% against Android's 11.1%, so the
+			 * one engine this was never tested on is the one most phone
+			 * customers use (D-057).
+			 *
+			 * Before this check, that failure surfaced as „Užrašas tuščias." —
+			 * the server refusing a zero-ink layer, correctly, but telling the
+			 * customer their text was empty while it sat on the screen in front
+			 * of them. Nothing printed wrong; the sale was simply lost, quietly,
+			 * and nothing in the logs said why.
+			 */
+			exportFailed = ! canvasHolds( out );
+
 			var target = out.getContext( '2d' );
 
 			state.layout.pieces.forEach( function ( piece, index ) {
@@ -644,6 +672,65 @@
 			} );
 
 			return out.toDataURL( 'image/png' );
+		}
+
+		/**
+		 * Does this canvas keep what is written to it?
+		 *
+		 * Written and read back rather than inferred, because every cheaper
+		 * signal lies on the device that matters: the width and height
+		 * properties report what was asked for, getContext returns a context,
+		 * and nothing throws. Only the pixels tell the truth.
+		 *
+		 * Probed in two far-apart corners — a canvas can be allocated and still
+		 * be short of the bottom of a tall sheet, and the bottom row of cupcakes
+		 * is exactly where a customer's last name would go.
+		 *
+		 * The probe is erased before the caller draws, so it can never reach the
+		 * exported bitmap and be mistaken for ink by `LayerInspector`.
+		 *
+		 * @param {HTMLCanvasElement} canvasEl The canvas about to be drawn on.
+		 * @return {boolean} True when the pixels came back.
+		 */
+		function canvasHolds( canvasEl ) {
+			var w = canvasEl.width;
+			var h = canvasEl.height;
+
+			if ( w < 1 || h < 1 ) {
+				return false;
+			}
+
+			try {
+				var probe = canvasEl.getContext( '2d' );
+
+				if ( ! probe ) {
+					return false;
+				}
+
+				var spots = [ [ 0, 0 ], [ w - 4, h - 4 ] ];
+				var held  = spots.every( function ( at ) {
+					probe.fillStyle = '#ff0000';
+					probe.fillRect( at[ 0 ], at[ 1 ], 4, 4 );
+
+					var px = probe.getImageData( at[ 0 ] + 1, at[ 1 ] + 1, 1, 1 ).data;
+
+					return px[ 0 ] > 200 && px[ 3 ] > 200;
+				} );
+
+				spots.forEach( function ( at ) {
+					probe.clearRect( at[ 0 ], at[ 1 ], 4, 4 );
+				} );
+
+				return held;
+			} catch ( e ) {
+				/*
+				 * getImageData throws on a tainted canvas. This one never
+				 * receives the preview image so it cannot be tainted — but a
+				 * throw here still means we cannot verify, and an unverifiable
+				 * canvas is treated exactly like a failed one.
+				 */
+				return false;
+			}
 		}
 
 		/**
@@ -945,6 +1032,19 @@
 					headers['X-WP-Nonce'] = config.nonce;
 				}
 
+				/*
+				 * Exported before the request is built, because doing so sets
+				 * `exportFailed` and the catch below needs it.
+				 *
+				 * A failed export is still posted rather than abandoned. It
+				 * costs almost nothing — a blank 8.3 megapixel PNG compresses
+				 * to a couple of kilobytes — and it is the only way the shop
+				 * ever finds out this is happening: the server logs the refusal
+				 * with the user agent, so an unanswerable "the wizard is broken"
+				 * complaint becomes a device name in wc-logs (D-057).
+				 */
+				var layer = exportLayer();
+
 				return window.fetch( config.root + 'text-layer', {
 					method: 'POST',
 					credentials: 'same-origin',
@@ -953,7 +1053,7 @@
 						design: designId,
 						text: plainText(),
 						colours: palette(),
-						layer: exportLayer()
+						layer: layer
 					} )
 				} ).then( function ( response ) {
 					return response.json().then( function ( body ) {
@@ -965,7 +1065,20 @@
 					} );
 				} ).catch( function ( error ) {
 					if ( hooks.onError ) {
-						hooks.onError( error.message || config.i18n.textFailed );
+						/*
+						 * The device's failure outranks whatever the server
+						 * said. Both arrive as the same 422, but the server can
+						 * only see a bitmap with no ink in it and will honestly
+						 * report „Užrašas tuščias." — which is true of the
+						 * bitmap and false about the customer, who is looking at
+						 * their text on the screen. Telling them to retype it
+						 * sends them round a loop that cannot end.
+						 */
+						hooks.onError(
+							exportFailed
+								? ( config.i18n.canvasTooBig || config.i18n.textFailed )
+								: ( error.message || config.i18n.textFailed )
+						);
 					}
 
 					throw error;

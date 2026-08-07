@@ -409,6 +409,53 @@ aicake_check( 'the first upload is accepted', 200, $status );
 list( $status ) = aicake_post_layer( $circle['public_id'], $good, array( '#c62828', '#ffffff' ) );
 aicake_check( 'an immediate second is throttled', 429, $status );
 
+/* ------------------------------------- D-057: an empty layer means two things */
+
+/*
+ * The same zero-ink bitmap arrives for two completely different reasons, and
+ * the endpoint must not answer them with the same sentence.
+ *
+ * Someone who pressed save on an untouched editor should be told their text is
+ * empty — it is, and that tells them what to do. Someone whose *browser*
+ * failed to build the canvas is looking at their text on the screen, and
+ * telling them it is empty sends them round a loop they cannot leave. That is
+ * the case Safari on iOS produces past its canvas area budget, and the shop's
+ * own statistics make iOS the majority mobile platform.
+ */
+
+aicake_clear_cooldown();
+
+$blank = aicake_fixture_layer( 1843, 1843, array(), 0 );
+
+list( $status, $body ) = aicake_post_layer( $circle['public_id'], $blank, array( '#c62828' ), '' );
+aicake_check( 'a blank layer is refused', 422, $status );
+
+$untouched = isset( $body['message'] ) ? (string) $body['message'] : '';
+aicake_check(
+	'with no text typed, the customer is told the text is empty',
+	true,
+	false !== mb_strpos( $untouched, 'tuščias' )
+);
+
+aicake_clear_cooldown();
+
+list( $status, $body ) = aicake_post_layer( $circle['public_id'], $blank, array( '#c62828' ), 'Ąžuolas' );
+aicake_check( 'a blank layer is still refused when text was typed', 422, $status );
+
+$device = isset( $body['message'] ) ? (string) $body['message'] : '';
+aicake_check(
+	'with text typed, the customer is told the device failed, not that their text is empty',
+	true,
+	false !== mb_strpos( $device, 'nepajėgė' ) && false === mb_strpos( $device, 'tuščias' )
+);
+
+/*
+ * The two sentences being different is the whole point, and it is asserted
+ * separately: collapsing them back into one is exactly the "simplification" a
+ * later reader would make, and every other assertion here would stay green.
+ */
+aicake_check( 'the two refusals do not say the same thing', true, $untouched !== $device );
+
 /* --------------------------------------------------------------- cleanup */
 
 aicake_clear_cooldown();

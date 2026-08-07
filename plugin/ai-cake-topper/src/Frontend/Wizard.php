@@ -557,6 +557,15 @@ class Wizard {
 					'savingText' => __( 'Išsaugome užrašą…', 'ai-cake-topper' ),
 					'textSaved'  => __( 'Užrašas išsaugotas.', 'ai-cake-topper' ),
 					'textFailed' => __( 'Nepavyko išsaugoti užrašo. Bandykite dar kartą.', 'ai-cake-topper' ),
+					/*
+					 * Shown only when the browser itself could not build the
+					 * image — not when the text is wrong (D-057). It must not
+					 * read like the customer did something, because they did
+					 * not: the previous behaviour told them „Užrašas tuščias."
+					 * while their text was on the screen in front of them, and
+					 * nothing they could change was the problem.
+					 */
+					'canvasTooBig' => __( 'Jūsų telefonas ar naršyklė nepajėgė paruošti užrašo šiam dydžiui. Pabandykite kitu įrenginiu arba pasirinkite mažesnį formatą.', 'ai-cake-topper' ),
 					'tooManyColours' => __( 'Per daug spalvų. Galima rinktis iki %d.', 'ai-cake-topper' ),
 					'colour'     => __( 'Spalva', 'ai-cake-topper' ),
 					'suggesting' => __( 'Kuriame dizainą…', 'ai-cake-topper' ),
