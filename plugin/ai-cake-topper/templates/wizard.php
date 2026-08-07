@@ -34,41 +34,33 @@ defined( 'ABSPATH' ) || exit;
 
 		<h2 class="aicake-wizard__heading"><?php esc_html_e( 'Ką gaminsime?', 'ai-cake-topper' ); ?></h2>
 
-		<div class="aicake-formats" role="radiogroup" aria-label="<?php esc_attr_e( 'Formatas', 'ai-cake-topper' ); ?>">
-			<?php
-			$types = array(
-				AiCake\Domain\FormatCatalogue::TYPE_SHEET   => array(
-					'title' => __( 'Visas A4 lapas', 'ai-cake-topper' ),
-					'note'  => __( 'Vienas didelis paveikslėlis per visą lapą.', 'ai-cake-topper' ),
-				),
-				AiCake\Domain\FormatCatalogue::TYPE_CIRCLE  => array(
-					'title' => __( 'Apvalus paveikslėlis', 'ai-cake-topper' ),
-					'note'  => __( 'Tortui. Pasirinkite skersmenį.', 'ai-cake-topper' ),
-				),
-				AiCake\Domain\FormatCatalogue::TYPE_CUPCAKE => array(
-					'title' => __( 'Keksiukams', 'ai-cake-topper' ),
-					'note'  => __( 'Daug mažų apskritimų viename lape.', 'ai-cake-topper' ),
-				),
-			);
+		<?php
+		/*
+		 * One question, not two (D-055). This used to ask for a type — sheet,
+		 * circle, cupcake — and then reveal a size list for the type chosen.
+		 * Ruslan's read was that those are one thing seen three ways, and the
+		 * geometry had been saying so all along.
+		 *
+		 * The cards are filled in by the browser, from `SheetLayout`'s own plan
+		 * shipped in `config.formats`, because each one draws the real
+		 * arrangement of the real sheet. Rendering them here would mean
+		 * building the same picture twice — and a diagram that is not derived
+		 * from `SheetLayout` drifts away from the print the first time a margin
+		 * changes (D-038).
+		 */
+		?>
+		<div
+			class="aicake-formats"
+			role="radiogroup"
+			aria-label="<?php esc_attr_e( 'Formatas', 'ai-cake-topper' ); ?>"
+			data-role="formats"
+		></div>
 
-			foreach ( $types as $type => $copy ) :
-				if ( empty( $formats[ $type ] ) ) {
-					continue;
-				}
-				?>
-				<label class="aicake-format-card">
-					<input type="radio" name="aicake_format_type" value="<?php echo esc_attr( $type ); ?>">
-					<span class="aicake-format-card__title"><?php echo esc_html( $copy['title'] ); ?></span>
-					<span class="aicake-format-card__note"><?php echo esc_html( $copy['note'] ); ?></span>
-				</label>
-			<?php endforeach; ?>
-		</div>
+		<noscript>
+			<p><?php esc_html_e( 'Norėdami kurti piešinį, įjunkite JavaScript.', 'ai-cake-topper' ); ?></p>
+		</noscript>
 
-		<p class="aicake-field" data-role="size" hidden>
-			<label for="aicake-size"><?php esc_html_e( 'Dydis', 'ai-cake-topper' ); ?></label>
-			<select id="aicake-size" name="aicake_format_mm"></select>
-			<span class="aicake-field__note" data-role="pieces"></span>
-		</p>
+		<p class="aicake-field__note" data-role="pieces" role="status"></p>
 
 		<fieldset class="aicake-field aicake-sheets">
 			<legend><?php esc_html_e( 'Lakšto tipas', 'ai-cake-topper' ); ?></legend>

@@ -304,27 +304,61 @@ class Wizard {
 	}
 
 	/**
-	 * Every format, grouped the way the wizard asks about them.
+	 * Every format, as one list the browser can draw.
 	 *
-	 * @return array<string, array<int, array<string, mixed>>>
+	 * **Flat, not grouped by type** (D-055). It used to hand back three buckets
+	 * — sheet, circle, cupcake — and the wizard asked for a type before it
+	 * asked for a size. Ruslan's point was that those are the same thing seen
+	 * three ways, and the arithmetic had been agreeing all along: circles and
+	 * cupcakes come out of one builder and differ in their label.
+	 *
+	 * So there is one question now, largest first, and each entry carries the
+	 * geometry the browser needs to **draw** the sheet rather than describe it.
+	 * `cols`/`rows`/`mm` against `sheetW`/`sheetH` is enough to lay out the real
+	 * arrangement, and it all still comes from `SheetLayout` — no fixed
+	 * pictures, or the drawing and the print would drift apart the first time a
+	 * margin moved (D-038, and it moved twice in one afternoon).
+	 *
+	 * @return array<int, array<string, mixed>>
 	 */
 	public function formats(): array {
-		$grouped = array(
-			FormatCatalogue::TYPE_SHEET   => array(),
-			FormatCatalogue::TYPE_CIRCLE  => array(),
-			FormatCatalogue::TYPE_CUPCAKE => array(),
-		);
+		$formats = array();
 
 		foreach ( FormatCatalogue::offerable() as $option ) {
-			$grouped[ (string) $option['type'] ][] = array(
-				'type'      => (string) $option['type'],
-				'mm'        => (float) $option['diameter_mm'],
-				'label'     => (string) $option['label'],
-				'perSheet'  => (int) $option['per_sheet'],
+			$formats[] = array(
+				'type'     => (string) $option['type'],
+				'mm'       => (float) $option['diameter_mm'],
+				'label'    => (string) $option['label'],
+				'perSheet' => (int) $option['per_sheet'],
+				'shape'    => (string) $option['shape'],
+				'cols'     => (int) $option['cols'],
+				'rows'     => (int) $option['rows'],
+				'sheetW'   => SheetLayout::USABLE_WIDTH_MM,
+				'sheetH'   => SheetLayout::USABLE_HEIGHT_MM,
+				'key'      => FormatCatalogue::layout_key(
+					(string) $option['type'],
+					(float) $option['diameter_mm']
+				),
 			);
 		}
 
-		return $grouped;
+		/*
+		 * Largest piece first, so the list reads as one scale from a whole
+		 * sheet down to the smallest cupcake. The whole sheet sorts first
+		 * because its diameter is zero, which would otherwise put it last.
+		 */
+		usort(
+			$formats,
+			static function ( array $a, array $b ): int {
+				if ( ( $a['mm'] <= 0.0 ) !== ( $b['mm'] <= 0.0 ) ) {
+					return $a['mm'] <= 0.0 ? -1 : 1;
+				}
+
+				return $b['mm'] <=> $a['mm'];
+			}
+		);
+
+		return $formats;
 	}
 
 	/**

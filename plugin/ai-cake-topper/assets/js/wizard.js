@@ -20,8 +20,7 @@
 		return;
 	}
 
-	var sizeField = root.querySelector( '[data-role="size"]' );
-	var sizeInput = root.querySelector( '#aicake-size' );
+	var formatGrid = root.querySelector( '[data-role="formats"]' );
 	var pieces    = root.querySelector( '[data-role="pieces"]' );
 	var sheets    = root.querySelector( '[data-role="sheets"]' );
 	var price     = root.querySelector( '[data-role="price"]' );
@@ -87,42 +86,142 @@
 		} );
 	}
 
-	/* ------------------------------------------------------------- sizes */
+	/* ----------------------------------------------------------- formats */
 
-	function renderSizes( type ) {
-		var options = config.formats[ type ] || [];
+	/**
+	 * The sheet, drawn to scale, with the pieces where they really fall.
+	 *
+	 * SVG rather than canvas: it is a dozen shapes, it scales to whatever the
+	 * card turns out to be, it costs no pixels, and — unlike the editor's
+	 * canvas — there is nothing here a device can silently fail to allocate.
+	 *
+	 * Every number comes from `SheetLayout` by way of `config.formats`. None of
+	 * it is computed here and none of it is drawn from a fixed picture, because
+	 * a diagram that stops agreeing with the print is worse than no diagram:
+	 * both look right, and only the printed sheet says otherwise (D-038).
+	 *
+	 * `currentColor` throughout, so it inherits whatever the theme is doing.
+	 * The live theme is a separate project and its cosmetics are Ruslan's at
+	 * ship time — this only has to be legible and correct.
+	 *
+	 * @param {Object} format One entry of config.formats.
+	 * @return {SVGElement} The diagram.
+	 */
+	function diagram( format ) {
+		var NS = 'http://www.w3.org/2000/svg';
+		var w  = format.sheetW;
+		var h  = format.sheetH;
 
-		sizeInput.innerHTML = '';
+		var svg = document.createElementNS( NS, 'svg' );
+		svg.setAttribute( 'viewBox', '0 0 ' + w + ' ' + h );
+		svg.setAttribute( 'class', 'aicake-format-card__diagram' );
+		svg.setAttribute( 'aria-hidden', 'true' );
+		svg.setAttribute( 'focusable', 'false' );
 
-		options.forEach( function ( option ) {
-			var element = document.createElement( 'option' );
-			element.value = String( option.mm );
-			element.textContent = option.label;
-			element.dataset.perSheet = String( option.perSheet );
-			sizeInput.appendChild( element );
-		} );
+		var sheet = document.createElementNS( NS, 'rect' );
+		sheet.setAttribute( 'x', '0.5' );
+		sheet.setAttribute( 'y', '0.5' );
+		sheet.setAttribute( 'width', String( w - 1 ) );
+		sheet.setAttribute( 'height', String( h - 1 ) );
+		sheet.setAttribute( 'fill', 'none' );
+		sheet.setAttribute( 'stroke', 'currentColor' );
+		sheet.setAttribute( 'stroke-width', '1.5' );
+		sheet.setAttribute( 'opacity', '0.35' );
+		svg.appendChild( sheet );
+
+		if ( format.shape !== 'round' ) {
+			/*
+			 * A whole sheet is its own single piece. Drawn filled rather than
+			 * left as the bare outline, so the card is not an empty rectangle
+			 * that reads as a diagram which failed to load.
+			 */
+			var fill = document.createElementNS( NS, 'rect' );
+			fill.setAttribute( 'x', '4' );
+			fill.setAttribute( 'y', '4' );
+			fill.setAttribute( 'width', String( w - 8 ) );
+			fill.setAttribute( 'height', String( h - 8 ) );
+			fill.setAttribute( 'fill', 'currentColor' );
+			fill.setAttribute( 'opacity', '0.18' );
+			svg.appendChild( fill );
+
+			return svg;
+		}
 
 		/*
-		 * A whole sheet has exactly one size, so asking about it would be a
-		 * question with one answer. The value is still set, because the server
-		 * validates type and size together.
+		 * The grid is centred in the usable area the same way `SheetLayout`
+		 * imposes it, so what the customer counts here is what arrives.
 		 */
-		var single = options.length <= 1;
+		var d       = format.mm;
+		var usedW   = format.cols * d;
+		var usedH   = format.rows * d;
+		var originX = ( w - usedW ) / 2;
+		var originY = ( h - usedH ) / 2;
 
-		sizeField.hidden = single;
-		state.mm = options.length ? options[ 0 ].mm : null;
-
-		if ( ! single ) {
-			sizeInput.value = String( state.mm );
+		for ( var row = 0; row < format.rows; row++ ) {
+			for ( var col = 0; col < format.cols; col++ ) {
+				var circle = document.createElementNS( NS, 'circle' );
+				circle.setAttribute( 'cx', String( originX + ( col * d ) + ( d / 2 ) ) );
+				circle.setAttribute( 'cy', String( originY + ( row * d ) + ( d / 2 ) ) );
+				circle.setAttribute( 'r', String( ( d / 2 ) - 1 ) );
+				circle.setAttribute( 'fill', 'currentColor' );
+				circle.setAttribute( 'fill-opacity', '0.18' );
+				circle.setAttribute( 'stroke', 'currentColor' );
+				circle.setAttribute( 'stroke-width', '1.5' );
+				svg.appendChild( circle );
+			}
 		}
+
+		return svg;
+	}
+
+	/**
+	 * Build the one and only format question.
+	 */
+	function renderFormats() {
+		if ( ! formatGrid ) {
+			return;
+		}
+
+		config.formats.forEach( function ( format ) {
+			var label = document.createElement( 'label' );
+			label.className = 'aicake-format-card';
+
+			var input = document.createElement( 'input' );
+			input.type = 'radio';
+			input.name = 'aicake_format';
+			input.value = format.key;
+
+			input.addEventListener( 'change', function () {
+				/*
+				 * Both halves are taken from the card, never derived here. The
+				 * type is the server's own word for this format and the client
+				 * has no business inventing it — that is how the D-043 family
+				 * of bugs started, with two ends each computing a key.
+				 */
+				state.type = format.type;
+				state.mm   = format.mm;
+
+				invalidateDesign();
+				update();
+			} );
+
+			var title = document.createElement( 'span' );
+			title.className = 'aicake-format-card__title';
+			title.textContent = format.label;
+
+			label.appendChild( input );
+			label.appendChild( diagram( format ) );
+			label.appendChild( title );
+			formatGrid.appendChild( label );
+		} );
 	}
 
 	function currentOption() {
-		var options = config.formats[ state.type ] || [];
+		for ( var i = 0; i < config.formats.length; i++ ) {
+			var option = config.formats[ i ];
 
-		for ( var i = 0; i < options.length; i++ ) {
-			if ( Math.abs( options[ i ].mm - state.mm ) < 0.05 ) {
-				return options[ i ];
+			if ( option.type === state.type && Math.abs( option.mm - state.mm ) < 0.05 ) {
+				return option;
 			}
 		}
 
@@ -153,10 +252,15 @@
 			price.innerHTML = entry.html;
 		}
 
-		var ready = state.type !== '' && option !== null;
+		/*
+		 * One question means one unmet condition — there is no longer a state
+		 * where a type is chosen and a size is not (D-055), so `pickSize` has
+		 * nothing left to describe.
+		 */
+		var ready = option !== null;
 
 		next.disabled = ! ready;
-		hint.textContent = ready ? '' : ( state.type === '' ? config.i18n.pickFormat : config.i18n.pickSize );
+		hint.textContent = ready ? '' : config.i18n.pickFormat;
 
 		if ( summary && option ) {
 			summary.textContent = option.label;
@@ -929,20 +1033,11 @@
 
 	/* --------------------------------------------------------------- wire */
 
-	root.querySelectorAll( 'input[name="aicake_format_type"]' ).forEach( function ( input ) {
-		input.addEventListener( 'change', function () {
-			state.type = input.value;
-			renderSizes( state.type );
-			invalidateDesign();
-			update();
-		} );
-	} );
-
-	sizeInput.addEventListener( 'change', function () {
-		state.mm = parseFloat( sizeInput.value );
-		invalidateDesign();
-		update();
-	} );
+	/*
+	 * Nothing to wire for the format here — the cards bind their own listener
+	 * as they are built, because they do not exist until `renderFormats()`
+	 * runs (D-055).
+	 */
 
 	next.addEventListener( 'click', function () {
 		if ( next.disabled ) {
@@ -1144,6 +1239,7 @@
 	 */
 	window.aicakeWizardState = state;
 
+	renderFormats();
 	renderSheets();
 	renderFontChoices();
 	update();

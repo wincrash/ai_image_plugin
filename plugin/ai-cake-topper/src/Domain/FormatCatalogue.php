@@ -41,6 +41,17 @@ final class FormatCatalogue {
 	public const TYPE_CUPCAKE = 'cupcake';
 
 	/**
+	 * The largest diameter still called a cupcake.
+	 *
+	 * The dividing line `type_for_diameter()` uses. It sits in the empty gap
+	 * between the two offered lists — cupcakes stop at 60 mm, circles start at
+	 * 100 mm — so nothing legitimate is near it. `format-check` asserts both
+	 * lists stay clear of it, because a size added into that gap would make the
+	 * derivation ambiguous and it would fail silently, one label at a time.
+	 */
+	public const CUPCAKE_MAX_MM = 80.0;
+
+	/**
 	 * Single circles: 20 cm down to 10 cm in 1 cm steps (Ruslan, D-038).
 	 *
 	 * ⌀20 cm is the declared maximum and it fits with 4 mm to spare — but only
@@ -155,6 +166,34 @@ final class FormatCatalogue {
 		}
 
 		return null;
+	}
+
+	/**
+	 * Which type a diameter belongs to.
+	 *
+	 * **The customer never chooses this** (D-055). Ruslan's observation was that
+	 * A4, circles and cupcakes "really almost the same", and the code already
+	 * agreed without saying so: `round_option()` builds circles and cupcakes
+	 * through identical arithmetic and they differ in the label alone.
+	 *
+	 * They are still two constants because a design row written before D-055
+	 * carries one of them, and rewriting stored history to tidy a label would
+	 * be a migration with nothing to gain. So the type stays — derived here
+	 * rather than asked for.
+	 *
+	 * That derivation is total because the two lists **do not overlap**: 40–60
+	 * mm against 100–200 mm. If a size is ever offered in the gap, this stops
+	 * being answerable and the caller has to be given the type again — which is
+	 * why the boundary is asserted rather than assumed.
+	 *
+	 * @param float $diameter_mm Trim diameter; zero means the whole sheet.
+	 */
+	public static function type_for_diameter( float $diameter_mm ): string {
+		if ( $diameter_mm <= 0.0 ) {
+			return self::TYPE_SHEET;
+		}
+
+		return $diameter_mm <= self::CUPCAKE_MAX_MM ? self::TYPE_CUPCAKE : self::TYPE_CIRCLE;
 	}
 
 	/**

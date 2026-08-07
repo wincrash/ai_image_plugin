@@ -101,19 +101,47 @@
 	margin-bottom: 1.5rem;
 }
 
-@media (min-width: 34rem) {
+/*
+ * Sixteen cards now rather than three (D-055), so the grid is auto-fitted
+ * instead of a fixed three columns — a phone gets two, a desktop gets five or
+ * six, and nothing has to know how many formats exist.
+ */
+@media (min-width: 26rem) {
 	.aicake-formats {
-		grid-template-columns: repeat(3, 1fr);
+		grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
 	}
 }
 
 .aicake-format-card {
-	display: block;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.5rem;
 	padding: 0.9rem 1rem;
 	border: 1px solid var(--aicake-line);
 	border-radius: 0.5rem;
 	cursor: pointer;
 	transition: border-color 0.15s ease;
+	text-align: center;
+}
+
+/*
+ * The diagram is an SVG with a viewBox and no intrinsic size, so without a
+ * height it lays out at whatever the container allows — which on a wide screen
+ * is a full-page A4 outline per card. Functional, not cosmetic: the cards are
+ * unusable without it.
+ *
+ * Height rather than width, because every sheet is the same portrait A4 and
+ * `width: auto` then keeps the aspect honest. A ⌀4 cm cupcake card and a whole
+ * sheet card show the same paper at the same size, which is the entire point —
+ * the customer is comparing what fits on it.
+ */
+.aicake-format-card__diagram {
+	display: block;
+	height: 5.5rem;
+	width: auto;
+	max-width: 100%;
+	color: var(--aicake-accent);
 }
 
 .aicake-format-card:hover {

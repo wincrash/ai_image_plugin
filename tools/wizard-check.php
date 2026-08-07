@@ -77,11 +77,61 @@ $product = $wizard->product();
 aicake_check( 'the AI product resolves', true, $product instanceof WC_Product );
 aicake_check( 'and it is simple, not variable', 'simple', $product->get_type() );
 
+/*
+ * One flat list now, not three buckets (D-055). The counts below are the same
+ * sixteen formats §3.5 has always specified — what changed is that the wizard
+ * asks about them once instead of asking for a type and then a size.
+ */
 $formats = $wizard->formats();
 
-aicake_check( 'one whole-sheet format', 1, count( $formats[ FormatCatalogue::TYPE_SHEET ] ) );
-aicake_check( 'eleven circle sizes', 11, count( $formats[ FormatCatalogue::TYPE_CIRCLE ] ) );
-aicake_check( 'four cupcake sizes', 4, count( $formats[ FormatCatalogue::TYPE_CUPCAKE ] ) );
+$by_type = array();
+
+foreach ( $formats as $option ) {
+	$by_type[ $option['type'] ][] = $option;
+}
+
+aicake_check( 'sixteen formats in one list', 16, count( $formats ) );
+aicake_check( 'one whole-sheet format', 1, count( $by_type[ FormatCatalogue::TYPE_SHEET ] ) );
+aicake_check( 'eleven circle sizes', 11, count( $by_type[ FormatCatalogue::TYPE_CIRCLE ] ) );
+aicake_check( 'four cupcake sizes', 4, count( $by_type[ FormatCatalogue::TYPE_CUPCAKE ] ) );
+
+/*
+ * Largest first, so the one list reads as a single scale rather than three
+ * lists concatenated. The whole sheet leads because it is the whole sheet.
+ */
+aicake_check( 'the whole sheet comes first', FormatCatalogue::TYPE_SHEET, $formats[0]['type'] );
+aicake_check( 'the largest circle comes second', 200.0, $formats[1]['mm'] );
+aicake_check( 'the smallest cupcake comes last', 40.0, $formats[ count( $formats ) - 1 ]['mm'] );
+
+/*
+ * Every card has to be drawable, or the grid renders as empty rectangles that
+ * read like a diagram which failed to load. cols x rows is what the browser
+ * lays out, so it must agree with the count the label promises.
+ */
+$undrawable = 0;
+
+foreach ( $formats as $option ) {
+	if ( $option['cols'] * $option['rows'] !== $option['perSheet'] || $option['sheetW'] <= 0 ) {
+		++$undrawable;
+	}
+}
+
+aicake_check( 'every format carries geometry the browser can draw', 0, $undrawable );
+
+/*
+ * The type is derived from the diameter now, never asked for (D-055). That
+ * only works while the two size lists stay clear of the boundary — a size
+ * added into the gap would be mislabelled silently, one format at a time.
+ */
+$misderived = 0;
+
+foreach ( $formats as $option ) {
+	if ( FormatCatalogue::type_for_diameter( (float) $option['mm'] ) !== $option['type'] ) {
+		++$misderived;
+	}
+}
+
+aicake_check( 'the type is derivable from the diameter for every format', 0, $misderived );
 
 /*
  * The count has to reach the browser, because "as many as fit" is invisible
@@ -89,7 +139,7 @@ aicake_check( 'four cupcake sizes', 4, count( $formats[ FormatCatalogue::TYPE_CU
  */
 $ten = null;
 
-foreach ( $formats[ FormatCatalogue::TYPE_CIRCLE ] as $option ) {
+foreach ( $by_type[ FormatCatalogue::TYPE_CIRCLE ] as $option ) {
 	if ( abs( $option['mm'] - 100.0 ) < 0.05 ) {
 		$ten = $option;
 	}
@@ -143,9 +193,32 @@ $html = do_shortcode( '[' . Wizard::SHORTCODE . ']' );
 
 aicake_check( 'the wizard renders', true, false !== strpos( $html, 'aicake-wizard' ) );
 aicake_check( 'step 1 is present', true, false !== strpos( $html, 'data-step="1"' ) );
-// The exact attribute, not the bare class name — `aicake-format-card` also
-// prefixes the title and note elements, so a loose count reads 9 for 3 cards.
-aicake_check( 'all three format cards', 3, substr_count( $html, 'class="aicake-format-card"' ) );
+/*
+ * The cards are no longer in the markup (D-055). They are drawn by the browser
+ * from `SheetLayout`'s plan, because each one is a picture of the real sheet
+ * and rendering it twice — once here, once in the editor — is how a diagram
+ * and a print drift apart.
+ *
+ * So what is asserted here is the container, and the *absence* of the old two
+ * question flow. That second half is the one with teeth: bringing back the
+ * type radios and the size select would leave "the wizard renders" green and
+ * quietly restore the thing Ruslan asked to remove.
+ */
+aicake_check(
+	'step 1 has one format grid for the browser to fill',
+	1,
+	substr_count( $html, 'data-role="formats"' )
+);
+aicake_check(
+	'and no separate type question',
+	false,
+	strpos( $html, 'aicake_format_type' )
+);
+aicake_check(
+	'and no separate size question',
+	false,
+	strpos( $html, 'id="aicake-size"' )
+);
 
 /*
  * D-025: this markup is cacheable, so it must never carry a nonce for an
