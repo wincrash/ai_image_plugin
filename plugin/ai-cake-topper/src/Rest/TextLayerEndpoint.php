@@ -246,6 +246,27 @@ class TextLayerEndpoint {
 			 * Only when text was typed. An empty layer with no text is somebody
 			 * pressing save on an untouched editor, which is not a fault.
 			 */
+			/*
+			 * Every other refusal is logged with the inspector's own detail —
+			 * `off_palette` already knows the exact pixel and colour that
+			 * offended it, and `too_much_ink` knows the coverage. None of that
+			 * reached anywhere a shop could read it, so the only evidence was
+			 * a customer-facing sentence that deliberately says nothing
+			 * specific (§10: a precise refusal is a tutorial in getting past
+			 * it). That is right for the customer and useless for Ruslan.
+			 */
+			if ( 'empty' !== $verdict['reason'] ) {
+				$this->logger->warning(
+					'Text layer refused by the pixel gate.',
+					array(
+						'design'   => $public_id,
+						'reason'   => $verdict['reason'],
+						'colours'  => implode( ',', $colours ),
+						'detail'   => $verdict['detail'],
+					)
+				);
+			}
+
 			if ( 'empty' === $verdict['reason'] && '' !== $text ) {
 				$this->logger->warning(
 					'Text layer arrived empty although text was typed — the browser could not build the canvas.',

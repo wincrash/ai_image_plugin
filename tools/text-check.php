@@ -174,6 +174,33 @@ function aicake_fixture_layer( int $w, int $h, array $colours, int $bars = 6 ): 
  * @param int    $b        Blue.
  * @return string Data URL.
  */
+/**
+ * Same, but faint — a feather-edge pixel rather than a solid one.
+ *
+ * @param string $data_url The layer.
+ * @param int    $r        Red.
+ * @param int    $g        Green.
+ * @param int    $b        Blue.
+ * @param int    $alpha    GD alpha, 0 opaque .. 127 transparent.
+ * @return string Data URL.
+ */
+function aicake_taint_alpha( string $data_url, int $r, int $g, int $b, int $alpha ): string {
+	$bytes = base64_decode( substr( $data_url, strlen( 'data:image/png;base64,' ) ), true );
+	$image = imagecreatefromstring( (string) $bytes );
+
+	imagealphablending( $image, false );
+	imagesavealpha( $image, true );
+	imagesetpixel( $image, 12, 12, imagecolorallocatealpha( $image, $r, $g, $b, $alpha ) );
+
+	ob_start();
+	imagepng( $image );
+	$out = (string) ob_get_clean();
+
+	imagedestroy( $image );
+
+	return 'data:image/png;base64,' . base64_encode( $out );
+}
+
 function aicake_taint( string $data_url, int $r, int $g, int $b ): string {
 	$bytes = base64_decode( substr( $data_url, strlen( 'data:image/png;base64,' ) ), true );
 	$image = imagecreatefromstring( (string) $bytes );
@@ -408,6 +435,45 @@ aicake_check( 'the first upload is accepted', 200, $status );
 
 list( $status ) = aicake_post_layer( $circle['public_id'], $good, array( '#c62828', '#ffffff' ) );
 aicake_check( 'an immediate second is throttled', 429, $status );
+
+/* ----------------- D-064: a feather edge is not a second colour */
+
+/*
+ * A partly transparent pixel's stored RGB is not what was drawn. The browser
+ * composites premultiplied and un-multiplies on export, dividing every channel
+ * by the alpha and multiplying the rounding error by 255/alpha along with it.
+ * At the feather edge of a glyph a stroke declared `#4caf50` came back as
+ * `#00ff40` — a saturated green nothing drew — and the customer was refused.
+ *
+ * Black hid it entirely, because (0,0,0) survives that arithmetic exactly at
+ * every alpha. Every test here, and every browser run before 2026-08-09, used
+ * the default black outline.
+ */
+
+aicake_clear_cooldown();
+
+$faint = aicake_taint_alpha(
+	aicake_fixture_layer( 1843, 1843, array( '#c62828' ) ),
+	0,
+	255,
+	64,
+	100
+);
+
+list( $status ) = aicake_post_layer( $circle['public_id'], $faint, array( '#c62828' ) );
+aicake_check( 'a faint off-palette edge pixel is tolerated', 200, $status );
+
+/*
+ * And the hole that would open if this were done by widening the tolerance
+ * instead: the same colour at full opacity is still a second subject, and is
+ * still refused.
+ */
+aicake_clear_cooldown();
+
+$solid = aicake_taint( aicake_fixture_layer( 1843, 1843, array( '#c62828' ) ), 0, 255, 64 );
+
+list( $status ) = aicake_post_layer( $circle['public_id'], $solid, array( '#c62828' ) );
+aicake_check( 'the same colour at full opacity is still refused', 422, $status );
 
 /* ------------------------------------- D-057: an empty layer means two things */
 

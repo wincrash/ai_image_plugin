@@ -82,6 +82,31 @@ class LayerInspector {
 	 */
 	private const ALPHA_CLEAR = 127;
 
+	/**
+	 * The faintest a pixel may be and still have its colour judged.
+	 *
+	 * 64 is half opacity on GD's 0-opaque..127-transparent scale.
+	 *
+	 * **A partly transparent pixel's stored RGB is not what was drawn.** A
+	 * browser canvas composites premultiplied and `toDataURL()` un-multiplies
+	 * on the way out, so every channel is divided by the alpha — and the
+	 * rounding error is multiplied by `255 / alpha` along with it. At the
+	 * feather edge of a glyph that is enormous: a stroke declared `#4caf50`
+	 * came back as `#00ff40`, a saturated green nothing ever drew.
+	 *
+	 * Black hides this completely, because (0,0,0) survives the arithmetic
+	 * exactly at any alpha — which is why the four bundled faces, every test
+	 * and every earlier browser run passed with the default black outline, and
+	 * why the first customer to pick a coloured one was refused (2026-08-09,
+	 * Ruslan, reproduced and measured).
+	 *
+	 * These pixels are **still counted as ink**, so the density half of the
+	 * check is untouched and a faint full-sheet photograph is still refused by
+	 * `MAX_COVERAGE`. Only the colour question is skipped, and only where the
+	 * answer is arithmetic noise.
+	 */
+	private const ALPHA_JUDGE_ABOVE = 64;
+
 	private Logger $logger;
 
 	/**
@@ -137,11 +162,19 @@ class LayerInspector {
 				 * every pixel. A text layer is overwhelmingly empty, so the
 				 * whole cost of this scan is this shift and compare.
 				 */
-				if ( self::ALPHA_CLEAR === ( $packed >> 24 & 0x7F ) ) {
+				$alpha = $packed >> 24 & 0x7F;
+
+				if ( self::ALPHA_CLEAR === $alpha ) {
 					continue;
 				}
 
 				++$ink;
+
+				// Too faint for its colour to mean anything — see the constant.
+				// Counted above, so density still sees it.
+				if ( $alpha > self::ALPHA_JUDGE_ABOVE ) {
+					continue;
+				}
 
 				if ( ! $this->is_allowed( $packed & 0xFFFFFF, $palette, $segments ) ) {
 					/*

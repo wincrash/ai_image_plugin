@@ -2812,4 +2812,58 @@ nonce, and accepted with the session's.
 > no nonce check at all, which is precisely the bug it exists to catch. Every
 > required argument is supplied now, and the comment says why.
 
-<!-- Next: D-064 -->
+---
+
+## D-064 · A feather edge is not a second colour
+
+**2026-08-09, Ruslan, reported from the wizard:** red text with a **green**
+outline was refused with „Užrašo išsaugoti nepavyko. Naudokite tik tekstą ir
+pasirinktas spalvas."
+
+**Reproduced and measured rather than guessed.** With the refusal logged, the
+inspector named the offending pixel: declared `#4caf50`, refused `#40bf40`, and
+an earlier attempt refused `#00ff40` — a fully saturated green that nothing ever
+drew.
+
+**The cause is the canvas → PNG alpha round trip.** A browser canvas composites
+**premultiplied**; `toDataURL()` un-multiplies on the way out, dividing every
+channel by the alpha — and multiplying the rounding error by `255 / alpha` with
+it. At the feather edge of a glyph, where alpha is a handful of units, that
+error is enormous. The stored RGB of a nearly transparent pixel is arithmetic
+noise, not a colour anybody chose.
+
+> **Why this survived every test and months of use: black.** `(0,0,0)`
+> premultiplied is `(0,0,0)` at any alpha, and un-multiplying it gives `(0,0,0)`
+> back exactly. The default outline is black, all four bundled faces were
+> exercised with it, and every browser run before this one used it. **The first
+> customer to pick a coloured outline was refused.** A gate that only fails for
+> colours nobody had tested is a gate that reads as working.
+
+**The fix: pixels below half opacity are not colour-judged.** `ALPHA_JUDGE_ABOVE
+= 64` on GD's 0-opaque..127-transparent scale. Above ~50% opacity the round-trip
+error is under a unit or two; below it the answer is meaningless.
+
+**They are still counted as ink.** That is the part that matters — the density
+half of the check is untouched, so a faint full-sheet photograph still trips
+`MAX_COVERAGE` exactly as before. The two halves were always meant to be
+independent (see D-033's note that disabling the colour test leaves "a picture
+is refused" green because density catches it alone), and this keeps them that
+way.
+
+**Deliberately not fixed by widening `TOLERANCE_SQ`.** The refused pixel sat at
+distance 25.6 against a tolerance of 24, so a small widening would have made
+this one case pass — and `#00ff40` at distance 118 would still have failed,
+while every genuine second subject got closer to slipping through. The problem
+is not that the radius is too small; it is that the measurement is invalid at
+low alpha.
+
+Two assertions, and the second is the one that keeps the fix honest: a faint
+off-palette pixel is accepted, **and the identical colour at full opacity is
+still refused**. Falsified by removing the floor — exactly the first turns red.
+
+`TextLayerEndpoint` now logs every pixel-gate refusal with the inspector's own
+detail. It always knew the offending coordinate and colour and never said so
+anywhere a shop could read it, which is why this started as an unexplainable
+customer report. The customer-facing message stays deliberately vague (§10).
+
+<!-- Next: D-065 -->
