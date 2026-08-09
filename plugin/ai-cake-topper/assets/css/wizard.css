@@ -159,6 +159,40 @@
 	display: inline-block;
 }
 
+/*
+ * The zoom row. Functional: the slider has to be wide enough to aim with and
+ * the readout has to not jump about as the number changes width.
+ */
+.aicake-upload__zoom {
+	display: flex;
+	align-items: center;
+	gap: 0.6rem;
+	flex-wrap: wrap;
+}
+
+.aicake-upload__zoom input[type="range"] {
+	flex: 1 1 12rem;
+	min-width: 8rem;
+	/* Big enough to grab with a thumb. */
+	height: 1.6rem;
+}
+
+.aicake-upload__zoom [data-role="crop-zoom-value"] {
+	min-width: 3rem;
+	font-variant-numeric: tabular-nums;
+}
+
+.aicake-upload__warn {
+	margin: 0.5rem 0 0;
+	padding: 0.5rem 0.7rem;
+	border-radius: 0.35rem;
+	font-size: 0.85rem;
+	/* Advice, not an error — it does not stop anyone buying. */
+	border: 1px solid #e0c169;
+	background: #fdf6e3;
+	color: #6b5312;
+}
+
 /* Search results — functional only: a grid you can tap on a phone. */
 .aicake-search__results {
 	display: grid;

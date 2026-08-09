@@ -129,9 +129,18 @@ defined( 'ABSPATH' ) || exit;
 			<div class="aicake-upload__stage" data-role="upload-stage" hidden>
 				<canvas data-role="crop-canvas" class="aicake-upload__canvas"></canvas>
 
-				<p class="aicake-field__note">
-					<?php esc_html_e( 'Traukite nuotrauką pirštu arba pele, priartinkite dviem pirštais. Kas matosi lange — tas ir bus atspausdinta.', 'ai-cake-topper' ); ?>
+				<p class="aicake-field aicake-upload__zoom">
+					<label for="aicake-crop-zoom"><?php esc_html_e( 'Priartinimas', 'ai-cake-topper' ); ?></label>
+					<input type="range" id="aicake-crop-zoom" data-role="crop-zoom"
+						min="100" max="600" step="1" value="100">
+					<span class="aicake-field__note" data-role="crop-zoom-value">1,0×</span>
 				</p>
+
+				<p class="aicake-field__note">
+					<?php esc_html_e( 'Traukite nuotrauką pele arba pirštu, o priartinimu pasirinkite, kurią jos dalį naudoti. Kas matosi lange — tas ir bus atspausdinta.', 'ai-cake-topper' ); ?>
+				</p>
+
+				<p class="aicake-upload__warn" data-role="crop-warn" hidden></p>
 
 				<p class="aicake-actions">
 					<button type="button" class="button" data-role="upload-save">

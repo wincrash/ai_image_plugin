@@ -1138,10 +1138,46 @@
 		canvas: root.querySelector( '[data-role="crop-canvas"]' ),
 		save: root.querySelector( '[data-role="upload-save"]' ),
 		hint: root.querySelector( '[data-role="upload-hint"]' ),
-		error: root.querySelector( '[data-role="upload-error"]' )
+		error: root.querySelector( '[data-role="upload-error"]' ),
+		zoom: root.querySelector( '[data-role="crop-zoom"]' ),
+		zoomValue: root.querySelector( '[data-role="crop-zoom-value"]' ),
+		warn: root.querySelector( '[data-role="crop-warn"]' )
 	};
 
-	var cropper = window.AiCakeCropper ? window.AiCakeCropper( config, {} ) : null;
+	var cropper = window.AiCakeCropper ? window.AiCakeCropper( config, {
+		/**
+		 * Keep the slider and the warning in step with the canvas.
+		 *
+		 * The slider is not the only way to zoom — the wheel and a pinch move
+		 * it too — so it is driven from here rather than being treated as the
+		 * source of truth. Two controls each believing they own the number is
+		 * how they end up disagreeing.
+		 */
+		onZoom: function ( at ) {
+			if ( upload.zoom ) {
+				upload.zoom.max = String( Math.round( at.max * 100 ) );
+				upload.zoom.value = String( Math.round( at.scale * 100 ) );
+			}
+
+			if ( upload.zoomValue ) {
+				upload.zoomValue.textContent = at.scale.toFixed( 1 ).replace( '.', ',' ) + '×';
+			}
+
+			/*
+			 * Zooming in takes a smaller part of the photograph, so past a
+			 * point there are fewer source pixels than the print needs. Nothing
+			 * on screen would betray that — the viewport is 640 px and
+			 * everything looks fine at 640 px — so the customer would find out
+			 * when the sheet arrived. It is a warning rather than a limit:
+			 * a slightly soft picture of the right thing beats a sharp picture
+			 * of the wrong thing, and that is their call to make.
+			 */
+			if ( upload.warn ) {
+				upload.warn.textContent = at.sharp ? '' : config.i18n.cropSoft;
+				upload.warn.hidden = at.sharp;
+			}
+		}
+	} ) : null;
 
 	/**
 	 * Show the half of step 2 that belongs to the chosen source.
@@ -1280,6 +1316,14 @@
 
 	if ( upload.save ) {
 		upload.save.addEventListener( 'click', sendCrop );
+	}
+
+	if ( upload.zoom && cropper ) {
+		// `input`, not `change` — the picture should move while the slider is
+		// being dragged, not once it is let go.
+		upload.zoom.addEventListener( 'input', function () {
+			cropper.zoom( Number( upload.zoom.value ) / 100 );
+		} );
 	}
 
 	/* ------------------------------------------------ step 2: the search */

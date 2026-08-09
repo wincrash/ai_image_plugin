@@ -42,6 +42,74 @@
 		var pinch = null;
 
 		/**
+		 * How far in the customer may go.
+		 *
+		 * Six times the "just covers" size. Beyond that the crop is a handful
+		 * of source pixels stretched across a decoration, and the print looks
+		 * like a mistake rather than a choice — `onQuality` warns long before
+		 * this, so the ceiling is only there to stop the slider being absurd.
+		 */
+		var MAX_ZOOM = 6;
+
+		/**
+		 * Change the zoom, keeping the middle of the hole where it is.
+		 *
+		 * Zooming about the centre rather than about the pointer is the less
+		 * clever choice and the right one: the customer is looking at what is
+		 * inside the circle, and that is the thing that should stay still.
+		 *
+		 * @param {number} next Requested scale, as a multiple of cover.
+		 */
+		function zoomTo( next ) {
+			if ( ! image || ! canvas ) {
+				return;
+			}
+
+			var before = coverScale() * view.scale;
+
+			view.scale = Math.min( MAX_ZOOM, Math.max( 1, next ) );
+
+			var after = coverScale() * view.scale;
+			var ratio = after / before;
+
+			view.x = ( canvas.width / 2 ) - ( ( canvas.width / 2 ) - view.x ) * ratio;
+			view.y = ( canvas.height / 2 ) - ( ( canvas.height / 2 ) - view.y ) * ratio;
+
+			clamp();
+			render();
+			report();
+		}
+
+		/**
+		 * Tell the host where the zoom is, and whether the crop is still sharp.
+		 *
+		 * The second half matters more than it looks. Zooming in takes a
+		 * smaller part of the photograph, so beyond a point there are fewer
+		 * source pixels than the print needs and the decoration comes out soft
+		 * — and nothing on screen would say so, because the viewport is 640 px
+		 * and everything looks fine at 640 px. The customer finds out when the
+		 * sheet arrives.
+		 */
+		function report() {
+			if ( ! hooks.onZoom || ! image || ! format ) {
+				return;
+			}
+
+			// Source pixels currently inside the hole, along the long edge.
+			var s = coverScale() * view.scale;
+			var sourceW = canvas.width / s;
+			var sourceH = canvas.height / s;
+
+			hooks.onZoom( {
+				scale: view.scale,
+				max: MAX_ZOOM,
+				// True while the crop still has at least the print's own
+				// resolution. A little under is invisible; far under is not.
+				sharp: sourceW >= format.targetW * 0.75 && sourceH >= format.targetH * 0.75
+			} );
+		}
+
+		/**
 		 * The smallest scale that still covers the hole completely.
 		 */
 		function coverScale() {
@@ -157,23 +225,7 @@
 
 		function onMove( event ) {
 			if ( pinch && event.touches && event.touches.length === 2 ) {
-				/*
-				 * Pinch zooms about the centre of the hole rather than about
-				 * the fingers. Less clever, and much easier to aim on a phone:
-				 * the thing the customer is looking at stays where it is.
-				 */
-				var before = coverScale() * view.scale;
-
-				view.scale = Math.min( 6, Math.max( 1, pinch.scale * ( spread( event ) / pinch.at ) ) );
-
-				var after = coverScale() * view.scale;
-				var ratio = after / before;
-
-				view.x = ( canvas.width / 2 ) - ( ( canvas.width / 2 ) - view.x ) * ratio;
-				view.y = ( canvas.height / 2 ) - ( ( canvas.height / 2 ) - view.y ) * ratio;
-
-				clamp();
-				render();
+				zoomTo( pinch.scale * ( spread( event ) / pinch.at ) );
 				event.preventDefault();
 
 				return;
@@ -220,6 +272,30 @@
 				canvas.addEventListener( 'touchmove', onMove, { passive: false } );
 				window.addEventListener( 'mouseup', onUp );
 				canvas.addEventListener( 'touchend', onUp );
+
+				/*
+				 * The wheel, for anyone with a mouse. The slider is the
+				 * discoverable control and this is the one people reach for
+				 * without thinking — but the slider is what makes the feature
+				 * *exist* on a desktop, because until it did there was pinch
+				 * and nothing else, and the crop was stuck at the whole
+				 * picture. Ruslan, 2026-08-09.
+				 *
+				 * `passive: false`, because it has to stop the page scrolling
+				 * out from under the thing being zoomed.
+				 */
+				canvas.addEventListener(
+					'wheel',
+					function ( event ) {
+						if ( ! image ) {
+							return;
+						}
+
+						event.preventDefault();
+						zoomTo( view.scale * ( event.deltaY < 0 ? 1.12 : 1 / 1.12 ) );
+					},
+					{ passive: false }
+				);
 			},
 
 			/**
@@ -250,6 +326,7 @@
 				if ( image ) {
 					clamp();
 					render();
+					report();
 				}
 			},
 
@@ -284,6 +361,7 @@
 
 						clamp();
 						render();
+						report();
 
 						if ( hooks.onReady ) {
 							hooks.onReady();
@@ -306,6 +384,22 @@
 			 */
 			hasImage: function () {
 				return null !== image;
+			},
+
+			/**
+			 * Set the zoom from outside — the slider.
+			 *
+			 * @param {number} scale Multiple of the "just covers" size.
+			 */
+			zoom: function ( scale ) {
+				zoomTo( scale );
+			},
+
+			/**
+			 * The furthest in the customer may go.
+			 */
+			maxZoom: function () {
+				return MAX_ZOOM;
 			},
 
 			/**
