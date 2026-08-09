@@ -1,8 +1,67 @@
 # Project state
 
-**Updated:** 2026-08-07
-**Phase:** **Migrating to production.** Phases 1–7 built, the wizard track finished
-(D-033 → D-045), Phase 8 almost entirely cut (D-047, D-048). Phase 0 deferred (D-018).
+**Updated:** 2026-08-09
+**Phase:** **Wizard v2 is built.** Migration to production is paused behind it (D-053's review has
+to read the code that ships). Phases 1–7 built, Phase 8 almost entirely cut (D-047, D-048).
+
+---
+
+## 👋 Start here — where things actually are, 2026-08-09
+
+**Wizard v2 is complete and working on the testbed. All four sources go end to end to a real cart
+line.** `docs/wizard-v2.md` is the design; **D-054 → D-069** are the decisions. Steps 0–7 of §14
+are all done.
+
+| Source | State |
+|---|---|
+| `none` — text only | works, no AI fee, cart line at 3,50 € |
+| `upload` — the customer's photo | works, whole photo + movable selection + live preview (D-069) |
+| `ai` — fal generation | works, cart line at 4,50 € with „AI paveikslėlis: taip" |
+| `search` — Openverse | works, **off by default**, commercial+modification licences only (D-067) |
+
+**Twelve suites, all green:** `tests/run.php` 368 · `rest-check.sh` 16 · `wizard-check` 61 ·
+`text-check` 37 · `wcff-check` 37 · `order-check` 63 · `upload-check` 18 · `search-check` 18 ·
+`retention-check` 11 · `proof-check` 18 · `settings-check` 35 · `moderation-check` 34.
+
+### 🔴 The rule this session cost the most to learn
+
+**Test logged out, in a real browser, before believing anything.** Ruslan, 2026-08-09: *"most users
+are firstly not logged or as guest, they create account on checkout only."*
+
+Three separate bugs this session were **invisible to a logged-in tester and invisible to every
+committed suite**, because a logged-in page carries a printed nonce and the suites run server-side
+with their own:
+
+- **D-063** — no anonymous customer could save a text layer, ever. `/text-layer` and `/layout` went
+  out with no nonce at all.
+- **D-066** — an init exception killed `loadSession()`, so anonymous generation 403'd.
+- **D-068** — the cart's hidden design field was only filled by the AI path, so three of the four
+  sources added nothing to the cart.
+
+None of them could have been caught by a suite. **A logged-out browser run, all the way to a cart
+line, is a required step before anything ships.**
+
+### What is waiting on Ruslan
+
+1. **Every price.** The WCFF field and its rules are built; the amounts are his (D-058). Today
+   `upload`, `search` and `none` all attract no surcharge and only `ai` does.
+2. **Attribution for search results** — most CC licences require crediting the creator. Licence,
+   creator, source and title are stored on every design so whatever he decides can be honoured
+   (D-067).
+3. **A look at the format grid** — he asked to review the representation once built (D-055).
+4. **An iPhone.** Still the one unmeasured thing that matters — see the canvas section below.
+
+### Known open, not blocking
+
+- **iOS is unmeasured.** `tools/phone-canvas-check.html` exists and takes 30 seconds; Ruslan has no
+  iPhone. There is also a public copy of that page (published as an artifact) so it can be handed
+  to anyone.
+- **The 339 MB peak has never been measured per item** — it came from a check rendering two formats
+  in one pass. Measure before treating M0.3 as real work (D-056).
+- **Ruslan reported (2026-08-09) that he has one more error and one modification to raise.** Not yet
+  described. Ask him.
+
+---
 
 > **🚚 The current work is the migration to `valgomosdekoracijos.lt`, and
 > `docs/migration.md` is the plan.** Ruslan's decision on 2026-08-07: **straight to live**, no
@@ -27,10 +86,17 @@
 > It also found the thing nobody was looking for: **production has no sodium**, so the openssl
 > branch of the key store is the only one that will ever run there. That is D-052.
 
-> **👉 WIZARD v2 IS DESIGNED AND NOT BUILT (2026-08-07). Read `docs/wizard-v2.md` first.**
-> The wizard stops being "an AI generator" and becomes **a decoration designer with four sources**
+> **👉 WIZARD v2 IS BUILT (2026-08-09). Read `docs/wizard-v2.md` first.**
+> The wizard stopped being "an AI generator" and became **a decoration designer with four sources**
 > — text only, uploaded photo, AI, and image search — as **one wizard branching at one step**
-> (D-054 → D-062). Everything below describing the wizard as an AI-only flow is v1.
+> (D-054 → D-069). Everything below describing the wizard as an AI-only flow is v1.
+>
+> **Two things landed after the seven steps, both from Ruslan testing it:**
+> **D-068** — the cart's hidden design field was written only by the AI path, so three of the four
+> sources added nothing to the cart. It is derived from state now, in one place.
+> **D-069** — the cropper was inverted on his suggestion: the photograph stays still and the
+> selection moves over it, with a live preview of the decoration beside it. Better for taking one
+> thing out of a bigger picture, which is what the shop sells.
 >
 > **🔴 D-063 — the biggest find so far, and it was live: no anonymous customer
 > could ever save their text.** `editor.js` read `config.nonce`, which is empty
@@ -1353,8 +1419,17 @@ bash tools/rest-check.sh
 > wp eval 'var_dump( get_option( "aicake_settings" ) );'
 > ```
 
-> **The testbed's limits are currently lifted for manual testing (2026-08-04, re-checked
-> 2026-08-07 — `free_per_user` and `ip_daily_ceiling` are at 100000, not the 500 below):**
+> **Audited 2026-08-09 — the testbed currently has `free_per_user` 1000, `ip_daily_ceiling` 10000,
+> `min_interval_seconds` 0, and `free_per_session` 5.** Defaults are 20 / 30 / 3 / 5. Only
+> `free_per_session` is at its real value, deliberately — raising it breaks „logged-in allowance
+> exceeds anonymous" in `rest-check`, correctly. If a browser run hits
+> „Nemokami bandymai išnaudoti", that is `free_per_session` doing its job; lift it for the run and
+> **put it back to 5**, then re-run `rest-check.sh` to prove you did.
+>
+> Sources as of the same audit: `none`/`upload`/`ai` on, **`search` off** (its default).
+> Moderation both on. `retention_days` 14.
+
+> **Historic, kept for the reasoning (2026-08-04):**
 > `free_per_user` **500** (default 20) and `ip_daily_ceiling` **500** (default 30).
 > `free_per_session` is still **5**, deliberately — raising it breaks „logged-in allowance
 > exceeds anonymous" in `rest-check`, correctly. Put them back with:
