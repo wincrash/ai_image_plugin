@@ -1603,20 +1603,27 @@
 	 */
 	window.aicakeWizardState = state;
 
+	/*
+	 * The session call also sets the cookie, so the throttle identity exists
+	 * before the first generation rather than being created by it (§7). Issued
+	 * from step 1, because by the time someone reaches step 2 they are about to
+	 * spend money and a round trip there is a round trip they wait for.
+	 *
+	 * **First, before any rendering.** It used to run last, and when
+	 * `renderFontChoices()` threw during initialisation it took this with it —
+	 * leaving an anonymous visitor with no nonce and every generation coming
+	 * back 403. It is an independent network call with nothing to wait for, so
+	 * starting it first is both safer and faster: no future mistake in the
+	 * markup can silence the thing that makes the wizard work.
+	 */
+	if ( engine ) {
+		engine.loadSession();
+	}
+
 	renderSources();
 	renderFormats();
 	renderSheets();
 	renderFontChoices();
 	update();
 	show( stepFromHash() );
-
-	/*
-	 * The session call also sets the cookie, so the throttle identity exists
-	 * before the first generation rather than being created by it (§7). Issued
-	 * from step 1, because by the time someone reaches step 2 they are about to
-	 * spend money and a round trip there is a round trip they wait for.
-	 */
-	if ( engine ) {
-		engine.loadSession();
-	}
 }() );

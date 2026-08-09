@@ -2916,4 +2916,53 @@ The crop canvas is verified before it is trusted, exactly as the text layer is
 > PNG with its IHDR patched and its CRC recomputed, under 4 kB on the wire,
 > declaring 20000 × 20000. Falsifying the dimension check now turns it red.
 
-<!-- Next: D-066 -->
+---
+
+## D-066 · The session call goes first, because everything else can throw
+
+**2026-08-09, found while re-verifying the AI path (step 6).** Generation failed
+for an anonymous visitor with „Sesija pasibaigė. Bandykite dar kartą.", while
+`rest-check.sh` proved the same endpoint answering **202** to the same request
+over curl. The endpoint was fine. The page was not.
+
+**`renderFontChoices()` threw during initialisation.** It samples each font with
+whatever the customer has typed, which means asking the editor for its text at
+page load — before any design exists and before `mount()` has set a layout.
+`plainText()` walked `state.layout.pieces` and `state.layout` was `null`.
+
+The throw was the small half. **`engine.loadSession()` was the last statement in
+the init block**, so it never ran. An anonymous visitor's only nonce comes from
+`/session` (§7, D-025), so there was no nonce, and every generation came back
+403 — reported to the customer as an expired session, which is exactly what it
+looked like and exactly what it was not.
+
+**Two fixes, and the second is the one that matters.**
+
+1. `plainText()` answers `''` when there is no layout. Being asked what text
+   exists before there is anywhere to put it is a fair question with a fair
+   answer, not an error.
+2. **`loadSession()` now runs first, before any rendering.** It is an
+   independent network call with nothing to wait for, so starting it first is
+   both faster and safer: no future mistake in the markup can silence the thing
+   that makes the wizard work.
+
+> **Why this survived: every browser verification of the AI path had been done
+> logged in.** A logged-in page carries a printed nonce, so `config.nonce` is
+> non-empty and the engine never needs the session at all — the missing call
+> costs nothing and the bug is invisible. D-026 recorded the anonymous path as
+> verified, and it was: **over curl, by `rest-check.sh`, not in a browser.**
+>
+> That is the same shape as D-063 and it is now the third time this project has
+> been caught by it. Ruslan's note on 2026-08-09 settles how to test from here:
+> *"most users are firstly not logged or as guest, they create account on
+> checkout only."* **The logged-out browser is the primary case, not the edge
+> one.**
+
+**No automated gate covers this**, and that is stated rather than papered over:
+it is a JavaScript exception at page initialisation, and this project has no
+headless browser. The mitigations are structural — the guard, and the ordering
+that makes the session call independent of anything that might throw after it.
+A browser run of the anonymous path is a required step before shipping, not an
+optional one.
+
+<!-- Next: D-067 -->

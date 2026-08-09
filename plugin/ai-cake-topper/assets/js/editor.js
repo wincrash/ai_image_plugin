@@ -770,6 +770,22 @@
 		function plainText() {
 			var parts = [];
 
+			/*
+			 * Nothing typed yet, because there is nothing to type on.
+			 *
+			 * The editor is asked this before it is mounted — the font list on
+			 * step 3 samples each face with whatever the customer has written,
+			 * and it is built at page load, long before a design exists. The
+			 * honest answer is an empty string; it used to be a TypeError, and
+			 * because it was thrown during initialisation it took the rest of
+			 * the init block with it, including the `/session` call. For an
+			 * anonymous visitor that meant no nonce, and every generation came
+			 * back 403 „Sesija pasibaigė."
+			 */
+			if ( ! state.layout || ! state.layout.pieces ) {
+				return '';
+			}
+
 			state.layout.pieces.forEach( function ( piece, index ) {
 				linesFor( index ).forEach( function ( line ) {
 					if ( line.text.trim() !== '' ) {
