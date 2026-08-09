@@ -54,47 +54,78 @@ Steps 8–13 all happen inside one background job. The customer sees step 6 and 
 - **Layer 2 runs in the job**, because it costs money and ~800 ms. It also does the
   Lithuanian → English translation in the same call, so the image provider never sees the
   customer's original text.
-- **Layer 3 is a human**, in Phase 8's review queue, and it is the only layer that looks at the
-  **image** rather than the prompt. Not built yet. Orders wait in `aicake-approval`.
+- **Layer 3 is a human, and it is not software** (D-047). It is the only layer that looks at the
+  **image** rather than the prompt, and it is Ruslan: he sees every picture when he loads the
+  icing sheet and presses print. The review queue that used to be described here was **deleted**,
+  not deferred — it was a second order process running beside the one the shop actually uses, and
+  the requirement was already met before it was written. No order waits anywhere.
+
+  > Worth saying out loud, because it comes up: this is the control that made uploads and image
+  > search acceptable at all. Layers 0–2 read prompts and are blind to an arbitrary customer
+  > bitmap. The control still exists — it is just in Ruslan's hands rather than in the software,
+  > and it stops existing the moment anyone automates the printing.
 
 A rejection is terminal and never retried — the classifier will say the same thing next time,
 and re-asking costs money.
 
 ---
 
-## Act 2 — after payment
+## Act 2 — when the shop presses the button
 
-Triggered by the real `woocommerce_order_status_processing` transition. One Action Scheduler job
-**per line item**.
+> **Corrected 2026-08-09.** This section described an Action Scheduler job fired by
+> `woocommerce_order_status_processing`, ending in a custom `aicake-approval` order status. **None
+> of that exists** and none of it has since D-047/D-048, which deleted it — the description
+> outlived the code by five decisions. It is written out here rather than quietly replaced,
+> because a session that had read the old version would go looking for a queue and a status that
+> are not there, and would conclude the plugin was broken.
+
+**Nothing at all happens on payment.** `Fulfilment` registers exactly one hook —
+`woocommerce_order_again_cart_item_data`, to carry a design across a reorder. No status
+transition is observed, no job is scheduled, no note is written, and the customer is sent nothing
+(D-047, asserted in `order-check` and falsifiable).
+
+The print file is rendered **on demand, in about a second**, when Ruslan opens the order and
+presses **„Atsisiųsti spausdinimui"** (`Fulfilment::ensure_print_file()`, D-048). The shop moves
+orders sustabdytas → vykdomas → įvykdytas by hand, as it has for years, and the plugin stays out
+of it.
 
 | # | Stage | Where | Cost |
 |---|---|---|---|
 | 1 | Read `_aicake_design` off the line item | MySQL | free |
-| 2 | Resolve geometry: variation → product → default | PHP | free |
-| 3 | Upscale, **only if the SKU needs it** | **PHP + GD bicubic** | free |
-| 4 | Bleed, shape mask, text at **300 DPI** | PHP + GD | free |
-| 5 | Imposition — N-up for cupcake sheets | PHP + GD | free |
-| 6 | Flatten on white, draw the cut lines | PHP + GD | free |
-| 6b | **Mount on a full A4 page** at the proof's origin (D-070) | PHP + GD | free |
-| 6c | PNG with a correct `pHYs` chunk | PHP + GD | free |
-| 7 | Archive: `sessions/` → `orders/`, DB repoint, `.json` sidecar | PHP | free |
-| 8 | Status → `aicake-approval` once **every** item has a file | PHP | free |
+| 2 | Resolve geometry: **design** → variation → product → default (D-035, D-043) | PHP | free |
+| 3 | Upscale, **only if the format needs it** | **PHP + GD bicubic** | free |
+| 4 | Fit the picture to the cut line and add bleed round it (D-073) | PHP + GD | free |
+| 5 | Circle mask, at **300 DPI** | PHP + GD | free |
+| 6 | Imposition — N-up for cupcake, circle and cake-pop sheets | PHP + GD | free |
+| 7 | Flatten on white | PHP + GD | free |
+| 8 | Composite the customer's text layer, **never scaled** (D-033) | PHP + GD | free |
+| 9 | **Mount on a full A4 page** at the proof's origin (D-070) | PHP + GD | free |
+| 10 | **Draw the cut lines, on the page** (D-074) | PHP + GD | free |
+| 11 | PNG with a correct `pHYs` chunk (D-027) | PHP + GD | free |
+| 12 | Archive: `sessions/` → `orders/`, DB repoint, `.json` sidecar | PHP | free |
+
+**The order of 8 → 9 → 10 is load-bearing and each step moved for a reason.** The text layer is
+authored at `PrintSpec::canvas_px()` and refused if it does not match, so the page may not be
+enlarged before it is composited (D-070). The cut lines are drawn last, on the page, because with
+no bleed the artwork canvas *is* the trim circle and a line drawn on it has its far side clipped
+away (D-074) — and because a letter allowed right up to the trim must not be able to erase the
+line the shop cuts by.
 
 **Nothing in Act 2 costs money.** No AI call happens after payment. The master already exists;
-this is pixels and arithmetic. That is why a retry is safe and why the reprint button is free.
+this is pixels and arithmetic. That is why pressing the button twice is safe.
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **The file that comes out is A4, 2481 × 3508 at 300 DPI, and it is meant to be printed at
   100%** — never "fit to page", which would scale it 5.3% and turn a ⌀45 mm cupcake into a
   47.4 mm one. It overlays the format's proof sheet exactly, so the printed cut lines land where
   the proof says (D-070).
-- **Idempotency is the print file itself.** If the item already has a readable print file, the
-  job returns without re-rendering. That is what makes the retry button, a duplicated status
-  transition and an AS sweep all safe.
-- **`on-hold` is deliberately not promoted.** An unpaid order must not walk into the print
-  queue. It self-heals: on payment the order moves to `processing`, the idempotency check finds
-  the existing file, nothing is re-rendered, and it lands in `aicake-approval` (D-031).
+- **What is inside the cut line is exactly what the customer approved in the preview** (D-073),
+  and since D-074 there is **no bleed**: the picture stops at the line and the page is bare
+  outside it. The cost of that is the margin for a crooked cut, and it is Ruslan's decision.
+- **Idempotency is the print file itself.** If the item already has a readable print file,
+  `ensure_print_file()` returns it without re-rendering. That is what makes pressing the button
+  twice, and a reorder, both safe.
 
 ---
 

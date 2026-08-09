@@ -19,11 +19,17 @@ are all done.
 | `ai` — fal generation | works, cart line at base + the AI price |
 | `search` — Openverse | works, **off by default**, commercial+modification licences only (D-067) |
 
-**Fourteen suites, all green:** `tests/run.php` 446 · `rest-check.sh` 16 · `wizard-check` 65 ·
-`text-check` 37 · `wcff-check` 47 · `order-check` 65 · `upload-check` 18 · `search-check` 18 ·
-`retention-check` 11 · `proof-check` 21 · `settings-check` 45 · `moderation-check` 34 ·
-**`bleed-check` 16** (new — D-073, D-074) · `crop-check.html` 9 (in a browser — **vacuous since
-D-074**, see there).
+**Thirteen suites that can fail, all green — re-run and re-counted 2026-08-09:**
+`tests/run.php` **446** · `order-check` 65 · `wizard-check` 65 · `wcff-check` 47 ·
+`settings-check` 45 · `text-check` 37 · `moderation-check` 34 · `proof-check` 21 ·
+`upload-check` 18 · `search-check` 18 · **`bleed-check` 16** (new — D-073, D-074) ·
+`rest-check.sh` 16 (real HTTP) · `retention-check` 11.
+
+**Two things in `tools/` are not suites and must not be counted as cover.** `layer-check.php` is a
+**report** — it prints where text landed on a real layer and never passes or fails.
+`crop-check.html` is **vacuous since D-074**: it scores D-070's crop mapping against the one it
+replaced, and with no bleed those are the same mapping, so it cannot go red. Left in place because
+it becomes meaningful again the moment any format wants bleed.
 
 **Nineteen formats now — cake pops at ⌀2,5 / 3 / 3,5 cm are new (D-072)**, yielding 88 / 63 / 48
 to a sheet. Proofs for them are already downloadable from **AI Cake Topper → Print formats**. The
@@ -498,9 +504,11 @@ the free allowance (though it does count toward the per-IP daily ceiling).
 | `Imaging/GdEngine.php` | Mask, cover/crop, flatten, PNG + WebP, `pHYs` DPI injection |
 | `Imaging/TtfCmap.php` | TrueType cmap reader |
 | `Imaging/FontCatalogue.php` | Bundled fonts + Lithuanian coverage gate |
-| `Imaging/TextRenderer.php` | Straight, outlined, auto-fit, wrapped, and arc text |
-| `Imaging/Watermarker.php` | Diagonal tiled watermark |
-| `Domain/TextSpec.php` | Resolution-independent text layer |
+| ~~`Imaging/TextRenderer.php`~~ | **Deleted at D-045** — the browser draws every glyph now |
+| `Imaging/Watermarker.php` | Diagonal tiled watermark — **the only thing left that draws a glyph** |
+| ~~`Domain/TextSpec.php`~~ | **Deleted at D-045.** `Domain/TextLayer.php` replaced it |
+| `Imaging/LayerInspector.php` | The colour gate on an uploaded text layer (D-033, D-064) |
+| `Imaging/ProofSheet.php` | Any format as a full A4 proof (D-038, D-048) |
 | `fonts/` | DejaVu Sans + Serif, regular and bold, with licence |
 | `tests/` | **83 assertions, 0 failures** — Mm, SheetLayout, font coverage |
 
@@ -871,11 +879,14 @@ price — so those two agree with each other rather than sharing a bug.
 > base — which reads exactly like WCFF being broken. The check resets the flag through the hook
 > registry between scenarios.
 
-Still open: the AI field is currently a **visible radio**, so on a plain product page a customer
-could answer it themselves — pay €1 without AI, or use AI and not pay. **The fix is not to hide
-the field.** `CartIntegration` must derive the value from whether the design actually has a
-generated image and overwrite what was posted, because a posted flag about whether money was
-spent can never be trusted. Hiding is cosmetic; the server-side derivation is the control.
+~~Still open:~~ **Done — and the reasoning is the part to keep.** The AI field was a **visible
+radio**, so on a plain product page a customer could answer it themselves — pay €1 without AI, or
+use AI and not pay. **The fix was not to hide the field.** `CartIntegration::settle_source_field()`
+derives the answer from what the design really is and overwrites what the browser posted, because
+a posted flag about whether money was spent can never be trusted. Hiding is cosmetic; the
+server-side derivation is the control. Built at D-044, then generalised at **D-071** — the field
+is „Paveikslėlio tipas" now, with one answer per source, and it is still derived and still
+overwritten.
 
 ### Production — full Site Health dump read 2026-08-07
 
@@ -930,6 +941,13 @@ functional/necessary — document it), and **All in One SEO** (how the wizard pa
 **No external render server is needed** — GD + pure PHP + the AI APIs cover everything
 (`PLAN.md` §9.1.3, D-015).
 
+> **⛔ Superseded 2026-08-07 — FreeType is CONFIRMED on production.** The migration preflight ran
+> `tools/host-check.php` against the live host and rendered **668 samples of `ĄČĘĖĮŠŲŪŽ`**. See
+> the top of this file and `docs/migration.md` §1. Everything from here to the end of this
+> subsection is the reasoning from when it was still unknown, kept because the confidence argument
+> (a GD build with WebP almost certainly has FreeType) is a good one and may be reusable. **Do not
+> act on it — the question is answered.**
+
 **GD FreeType: still assumed present, still not verified — and the stake is much smaller now.**
 Site Health does not report it. D-045 deleted all server-side text rendering, so the only thing
 left that draws a glyph is the **watermark**. No FreeType means no watermark, not a product with
@@ -968,29 +986,69 @@ The git-bundle-through-the-server bootstrap (D-014) is retired — just `git pus
 
 ## Repository layout
 
+Audited against the filesystem 2026-08-09.
+
 ```
 C:\AI_IMAGE\
+├── BOOTSTRAP.md             ⭐ READ FIRST — the minimum to work safely
 ├── README.md                project overview
 ├── CLAUDE.md                entry point for a reset session
 ├── PLAN.md                  the design (23 sections)
 ├── WORKFLOW.md              how we work
 ├── STATE.md                 this file
-├── DECISIONS.md             append-only decision log (34 entries)
+├── DECISIONS.md             append-only decision log — D-001…D-074, 74 entries
 ├── idea.md                  original brief, superseded by PLAN.md
 ├── docs\api-evaluation.md   Phase 0 plan
 ├── docs\pipeline.md         the built system: what runs where, what costs money
+├── docs\wizard-v2.md        the four-source wizard — the design that shipped
+├── docs\migration.md        going live: production's facts and the ordered steps
 ├── infra\                   testbed Docker config — applied
-├── tools\sync.ps1           C:\AI_IMAGE  ->  Z:\
-├── tools\rest-check.sh      REST over real HTTP, logged out and logged in
-├── tools\order-check.php    a real order through to print files (Phase 7's gate)
-├── tools\moderation-check.php  the moderation switches (D-049), no network
-├── tools\settings-check.php    the encrypted key store and the counter reset (D-050/051)
+├── tools\sync.ps1           C:\AI_IMAGE  ->  Z:\   (the only deploy)
+├── tools\rest-check.sh      REST over real HTTP, logged out AND logged in — 16
+├── tools\order-check.php    a real order through to print files — 65
+├── tools\bleed-check.php    the cut circle holds the approved picture (D-073/074) — 16
+├── tools\wizard-check.php   the wizard, formats and sources — 65
+├── tools\text-check.php     the text-layer endpoint and its refusals — 37
+├── tools\wcff-check.php     real cart prices through Fields Factory — 47
+├── tools\upload-check.php   what gets in, and mostly what does not — 18
+├── tools\search-check.php   Openverse and the licence filter — 18
+├── tools\settings-check.php the encrypted key store and the counters — 45
+├── tools\moderation-check.php  the moderation switches (D-049), no network — 34
+├── tools\proof-check.php    every format's A4 proof — 21
+├── tools\retention-check.php  the opportunistic sweep (D-061) — 11
+├── tools\layer-check.php    a report, not a gate: where text landed on a real layer
+├── tools\crop-check.html    in Chrome; ⚠ VACUOUS since D-074 — see there
+├── tools\phone-canvas-check.html  the device canvas ceiling; iOS still unrun
+├── tools\host-check.php     the production preflight (one upload, read, delete)
+├── tools\fresh-check.php    activation from nothing
 └── plugin\                  the plugin itself
 ```
 
 ## Next actions
 
 **Nothing is blocked.** fal is funded and the success path is verified (D-030).
+
+> # ⛔ NARRATIVE HISTORY FROM HERE DOWN
+>
+> **Audited 2026-08-09.** Everything below this line is the running account of how the project got
+> here, appended session by session. It is kept on purpose — the *reasoning* in it is the most
+> valuable thing in this file, and several bugs have been re-found by reading it — but **it is not
+> a statement of what is true now.** Phrases like "not scheduled", "no code written" and "being
+> built now" describe the week they were written, not today.
+>
+> **The current state of the project is the top of this file, and the minimum you need is
+> `BOOTSTRAP.md`.** If something below contradicts either of those, the top wins and what you
+> found is a stale line worth correcting where you found it.
+>
+> Known-stale claims below have been struck through and marked at the point they appear rather
+> than deleted, so that a session following a cross-reference lands on the correction instead of
+> on the wrong fact.
+>
+> **One class of number is deliberately left alone: assertion counts inside falsification
+> stories** — "turns 3 of the 35 wizard-check assertions red". Those are true statements about the
+> run that was done, and rewriting them to today's totals would turn a real measurement into a
+> fabricated one. **The current totals are the suite table at the top of this file**, and they are
+> the only ones to trust when deciding whether a suite is passing.
 
 ### ✅ Fixed: „Užrašo dydis netinka." on saving the text — D-043
 
@@ -1185,9 +1243,15 @@ monthly USD ceilings. §8.6's conclusion is the frame for that talk — **the do
 not per-call price, it is an unthrottled endpoint being hammered.** Now that generation costs
 real money ($0.012 an image), the numbers deserve a decision rather than a default.
 
-### A design direction exists but is not scheduled — D-033, D-034 and D-035
+### ~~A design direction exists but is not scheduled~~ — D-033, D-034 and D-035
 
-Three sessions' worth of design discussion, agreed in principle, **no code written**:
+> **⛔ Stale heading, kept for the summaries under it.** All three are **built and shipped**:
+> D-033's browser-drawn text layer, D-034's wizard and D-035's single AI product are what the
+> plugin *is*. The one-paragraph summaries below are still an accurate and useful description of
+> each decision — read them as "what this decision says", not as "what is planned".
+
+Three sessions' worth of design discussion, agreed in principle, ~~**no code written**~~
+**all since built**:
 
 - **D-033** — the text layer moves to the browser (transparent PNG + the plain string), the
   print canvas becomes A4 with everything centred in the usable region, and the server draws a
@@ -1210,11 +1274,16 @@ Three sessions' worth of design discussion, agreed in principle, **no code writt
   as its own labelled row on the line. So AI generation is one more WCFF field with a price
   rule, and Ruslan edits prices exactly where he does today.
 
-### Being built now — the D-035…D-039 model
+### ~~Being built now~~ — the D-035…D-039 model, **built and since superseded in places**
+
+> **⛔ Stale as a status report; accurate as history.** Read the corrections inline. The two that
+> would actually mislead: there are **nineteen** formats now, not sixteen (D-072 added cake pops),
+> and pricing is **per source** since D-071, not a single „AI paveikslėlis" yes/no.
 
 **Step 1 done: the money path** (D-036). `WooCommerce/FieldsFactory.php` + `tools/wcff-check.php`,
-18 assertions. Product `ai-paveikslelis` on the testbed charges 3.50 / 4.50 / 5.00 by sheet type,
-+1.00 with AI, all of it WCFF's doing.
+~~18~~ **47** assertions. Product `ai-paveikslelis` on the testbed charges 3.50 / 4.50 / 5.00 by
+sheet type, ~~+1.00 with AI~~ **plus a surcharge per picture type (D-071)**, all of it WCFF's
+doing.
 
 **Step 2 done: the geometry.**
 
@@ -1226,8 +1295,9 @@ Three sessions' worth of design discussion, agreed in principle, **no code writt
 | `Admin/FormatsPage.php` | Every offered format drawn to scale on one page (D-038) |
 | `Installer.php` | Schema **3** — `format_type`, `format_mm` on `aicake_designs` |
 
-Verified on the testbed: the admin page renders all 16 formats, none unfit, counts matching §3.5
-exactly — A4, ⌀20…15 cm yield 1, ⌀14…11 cm yield 2, ⌀10 cm yields 4, cupcakes 35 / 24 / 20 / 12.
+Verified on the testbed: the admin page renders all ~~16~~ **19** formats, none unfit, counts
+matching §3.5 exactly — A4, ⌀20…15 cm yield 1, ⌀14…11 cm yield 2, ⌀10 cm yields 4, cupcakes
+35 / 24 / 20 / 12, **cake pops 88 / 63 / 48 (D-072)**.
 
 **Printable proofs, for the physical check D-039 makes the authority.**
 `Imaging/ProofSheet.php` renders any format as a **full A4 PNG at 300 DPI with the resolution
@@ -1244,6 +1314,13 @@ bleed ring in grey, and the **15 mm dead strip hatched** rather than silently su
 the caption inside it so it can never land on a product. Two of the sixteen were looked at, not
 just asserted: the 24-up shows its outer bleed rings clipping at the sheet edge, which is the
 `bleed_clipped` advisory made visible.
+
+> **⛔ The grey bleed ring no longer appears on any proof, and neither does the clipping.**
+> **D-074 set bleed to zero**, so `ProofSheet` takes its `if ( $bled > $trim )` branch nowhere and
+> draws the black trim line alone; `bleed_clipped` is false for every offered format. The code is
+> unchanged and correct — the guard was already there — but a proof printed today will not show
+> what this paragraph describes, and the caption reads „piece 45 mm + 0 mm bleed". **Re-read any
+> proof you are comparing against paper.**
 
 > **`order-check.php`'s sheet assertion is now derived, not typed.** It was `array( 2363, 3390 )`
 > — right for the assumed 200 × 287 and wrong the moment D-039 corrected it. A frozen number
@@ -1545,15 +1622,18 @@ bash tools/rest-check.sh
 
 ## Open items, not blocking
 
-- **Confirm GD FreeType on the live host before Phase 4** — see Production above. Not urgent,
-  high confidence, three ways to check. Do not push the client to upload things to the live shop.
-- Cupcake diameter assumed 4.5 cm → 24 per A4. Under D-037/D-038 this stops mattering as a
-  *product* question, but it still decides which cases are worth offering.
+- ~~**Confirm GD FreeType on the live host before Phase 4**~~ — **done 2026-08-07**, 668 samples
+  of `ĄČĘĖĮŠŲŪŽ` rendered on production by the preflight. Phase 4 is also long finished.
+- ~~Cupcake diameter assumed 4.5 cm → 24 per A4.~~ **Settled.** Nineteen formats are offered and
+  every count is derived by `SheetLayout`, not assumed — ⌀4.0/4.5/5.0/6.0 cm yield 35/24/20/12.
 
 **The geometry is settled (D-039) and validated by printing, not by arithmetic.** Usable area is
 **282 × 210 mm** — full A4 less the 15 mm of bare icing at the right, no printer margins. ⌀20 cm
-is the declared maximum and fits (206 against 210). Circle list 20 → 10 cm in 1 cm steps, count
-"as many as fit" and stated in the wizard. Cupcakes 35 / 24 / 20 / 12 at ⌀4.0 / 4.5 / 5.0 / 6.0.
+is the declared maximum and fits (~~206~~ **200** against 210 — the 6 mm was bleed, and **D-074
+set bleed to zero**, so it now fits with 10 mm to spare). Circle list 20 → 10 cm in 1 cm steps,
+count "as many as fit" and stated in the wizard. Cupcakes 35 / 24 / 20 / 12 at
+⌀4.0 / 4.5 / 5.0 / 6.0, **plus cake pops 88 / 63 / 48 at ⌀2,5 / 3 / 3,5 (D-072)** — nineteen
+formats in total.
 
 > **Do not re-derive printer physics from specifications.** I twice argued ⌀20 cm could not fit,
 > from 5 mm margins I had assumed off a spec sheet. Ruslan prints ⌀20 cm circles routinely. The

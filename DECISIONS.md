@@ -4,6 +4,24 @@ Append-only. Newest at the bottom. Each entry: what was decided, when, why, and 
 rejected. If a decision is later reversed, add a **new** entry that supersedes it rather than
 editing the old one — the reasoning that turned out to be wrong is worth keeping.
 
+**Every entry is `### D-0NN · title`.** Audited 2026-08-09: D-001 → D-074, no gaps, no
+duplicates, 74 entries. D-049 → D-069 had been written at `##` and were normalised to `###` —
+formatting only, not a word of any entry changed. It is worth knowing why that mattered: a grep
+for `^### D-` silently missed twenty-one decisions, which is exactly how a session concludes a
+decision was never recorded and writes it a second time under a new number.
+
+**Superseded entries are kept and are not marked in place** — that is the point of the rule
+above. To know whether an entry still governs the code, read forward for a later entry that says
+it supersedes it. The chains that matter today:
+
+| Topic | Read in this order | Current answer |
+|---|---|---|
+| Print geometry, placement, cropping | D-033 → D-037 → D-039 → D-048 → **D-070** → **D-073** → **D-074** | file is a full A4 page; the master's picture fills the cut circle; **no bleed** |
+| Pricing | D-035 → D-036 → D-044 → D-058 → **D-071** | the plugin prices nothing; WCFF does, per source |
+| Scope of the admin side | D-046 → **D-047** → **D-048** | no statuses, no queue, no emails; one download button |
+| Text rendering | D-003 → D-033 → **D-045** | the browser draws all glyphs; the server draws only the watermark |
+| Sources | **D-054** → D-059 → D-060 → **D-067** → D-069 | four sources, one wizard; search is Openverse, off by default |
+
 ---
 
 ### D-001 · Split the pipeline at the payment boundary
@@ -2160,7 +2178,7 @@ make it red for a reason unrelated to the order under test.
 
 ---
 
-## D-049 · Moderation becomes the shop's decision, not the plugin's
+### D-049 · Moderation becomes the shop's decision, not the plugin's
 
 **2026-08-06. Ruslan asked for two things: the ability to edit the built-in
 restrictions, and the ability to turn moderation off entirely.** Both now exist
@@ -2267,7 +2285,7 @@ a screen that lies about its own settings is worse than no screen.
 
 ---
 
-## D-050 · API keys move into the admin screen, encrypted
+### D-050 · API keys move into the admin screen, encrypted
 
 **2026-08-07. Ruslan, opening the migration to production:** *"first
 modifications, api keys should be entered in plugin environment, not in files."*
@@ -2330,7 +2348,7 @@ which is strictly better than a stored value — that salt lives in
 every stored identity, so per-IP counters restart once; that is a one-time
 effect on a rate limit, not data loss.
 
-## D-051 · The settings screen, and a reset that is a date rather than a number
+### D-051 · The settings screen, and a reset that is a date rather than a number
 
 **2026-08-07. Ruslan, during the migration planning:** *"add one small
 functionality, it is number ai generation limitations count and the reset
@@ -2414,7 +2432,7 @@ This is the D-049 switches doing their job and the shop's own settings quietly
 disabling the tests that prove they work. Worth checking the option before
 debugging either suite again.
 
-## D-052 · Production has no sodium, so the testbed stops using it
+### D-052 · Production has no sodium, so the testbed stops using it
 
 **2026-08-07. `host-check.php` run against the live shop.** PHP 8.4.14 normally
 bundles sodium. valgomosdekoracijos.lt does not have it.
@@ -2456,7 +2474,7 @@ Falsified: shifting the openssl IV/tag offsets by four bytes turns **4 of the
 
 ---
 
-## D-053 · Nothing reaches the live shop without a full code review first
+### D-053 · Nothing reaches the live shop without a full code review first
 
 **2026-08-07. Ruslan, planning the migration:** *"make strict NOTE, it is
 important not to brake the live system. so before first upload, we will do FULL
@@ -2486,7 +2504,7 @@ checkout, or a customer who never touches it.*
 
 ---
 
-## D-054 · One wizard with four sources, branching at exactly one step
+### D-054 · One wizard with four sources, branching at exactly one step
 
 **2026-08-07, Ruslan:** *"as user i want to have just cupcakes with my only custom text, so here is
 no ai image at all. next case user may upload his image, cut circle from it. the third user may
@@ -2512,7 +2530,7 @@ Design in `docs/wizard-v2.md`.
 
 ---
 
-## D-055 · Format is shape plus size, and the chooser is drawn
+### D-055 · Format is shape plus size, and the chooser is drawn
 
 **2026-08-07, Ruslan:** *"from my perspective, a4, circle, cupcakes, really almost the same, so i
 dont like treat it seperatly like we do now."*
@@ -2542,7 +2560,7 @@ in presentation only.
 
 ---
 
-## D-056 · The client/server seam is drawn by what the work scales with
+### D-056 · The client/server seam is drawn by what the work scales with
 
 **2026-08-07, Ruslan, and this is his rule rather than a restatement of mine:** *"i just dont want
 to load too much the server while clients are surfing, because server itself is not big, and often
@@ -2571,7 +2589,7 @@ client-composited watermark means handing over the unwatermarked master · the f
 
 ---
 
-## D-057 · The browser is never trusted to have drawn anything
+### D-057 · The browser is never trusted to have drawn anything
 
 **The wizard has always asked the browser for a canvas at the true print size** — `editor.js`
 `exportLayer()` allocates 2481 × 3331, **8.3 megapixels**, for a cupcake sheet, and calls
@@ -2626,7 +2644,7 @@ moment either changes. The fallback is *degrade the canvas*, never *move the ren
 
 ---
 
-## D-058 · Price follows the source, and the plugin still owns no pricing
+### D-058 · Price follows the source, and the plugin still owns no pricing
 
 **2026-08-07, Ruslan:** *"the base price the same, then using fields update the prices just like
 laksto tipas"* and *"base for now is 3.5, while depending on what you use ai/search/blank/uploaded
@@ -2651,7 +2669,7 @@ begining or in the end ... for now lets do in beginign, later we will see."*
 
 ---
 
-## D-059 · A disabled source does not exist, in the UI and at the endpoint
+### D-059 · A disabled source does not exist, in the UI and at the endpoint
 
 **2026-08-07, Ruslan:** *"in plugin settings, i want settings enable disable, ai generation, search
 options, just in case i want disable it, or like marketing trick, firstly publish
@@ -2675,7 +2693,7 @@ D-049 pattern, already built and already tested.
 
 ---
 
-## D-060 · Image search is accepted, with the licensing exposure recorded
+### D-060 · Image search is accepted, with the licensing exposure recorded
 
 **2026-08-07, Ruslan:** *"image search will be done in future, but lets like this, you can even
 make now, really, you have access to llm."*
@@ -2700,7 +2718,7 @@ moderation covers all four paths.
 
 ---
 
-## D-061 · Retention by opportunistic sweep, not by cron
+### D-061 · Retention by opportunistic sweep, not by cron
 
 **2026-08-07, Ruslan:** *"what about for all temporal files use files with experation (and if need
 with sliding expiration), so lots of multiple files would deleted itself after some time, so that
@@ -2729,7 +2747,7 @@ to the media library.
 
 ---
 
-## D-062 · Uploads are re-encoded, not validated
+### D-062 · Uploads are re-encoded, not validated
 
 **2026-08-07, Ruslan:** *"User can upload what he wants (must be image, maybe need think only on
 security (for some exploits if there are any)), thats it."* No gating, no review step, no rights
@@ -2763,7 +2781,7 @@ checkbox rather than a workflow, and the offer stands.
 
 ---
 
-## D-063 · The nonce has one owner, and every caller asks it
+### D-063 · The nonce has one owner, and every caller asks it
 
 **2026-08-07, found in a browser while building the text-only path — not by a
 test, and not by reasoning.**
@@ -2814,7 +2832,7 @@ nonce, and accepted with the session's.
 
 ---
 
-## D-064 · A feather edge is not a second colour
+### D-064 · A feather edge is not a second colour
 
 **2026-08-09, Ruslan, reported from the wizard:** red text with a **green**
 outline was refused with „Užrašo išsaugoti nepavyko. Naudokite tik tekstą ir
@@ -2868,7 +2886,7 @@ customer report. The customer-facing message stays deliberately vague (§10).
 
 ---
 
-## D-065 · The browser crops, and it sends the picture rather than the rectangle
+### D-065 · The browser crops, and it sends the picture rather than the rectangle
 
 **2026-08-09, building the upload path.** This **reverses** a position the
 project had been carrying since the photo-upload idea was parked:
@@ -2918,7 +2936,7 @@ The crop canvas is verified before it is trusted, exactly as the text layer is
 
 ---
 
-## D-066 · The session call goes first, because everything else can throw
+### D-066 · The session call goes first, because everything else can throw
 
 **2026-08-09, found while re-verifying the AI path (step 6).** Generation failed
 for an anonymous visitor with „Sesija pasibaigė. Bandykite dar kartą.", while
@@ -2967,7 +2985,7 @@ optional one.
 
 ---
 
-## D-067 · Image search means Openverse, and only licences that permit selling
+### D-067 · Image search means Openverse, and only licences that permit selling
 
 **2026-08-09, building step 7.** D-060 recorded Ruslan's decision to build image
 search, and recorded the objection alongside it: this shop **prints the picture
@@ -3030,7 +3048,7 @@ all.
 
 ---
 
-## D-068 · The cart field is derived from state, not written beside it
+### D-068 · The cart field is derived from state, not written beside it
 
 **2026-08-09, Ruslan:** *"it almost working, firstly it didnt add to cart any
 generated product."*
@@ -3067,7 +3085,7 @@ AI at 4,50 € with „taip".
 
 ---
 
-## D-069 · The photograph stays still and the selection moves
+### D-069 · The photograph stays still and the selection moves
 
 **2026-08-09, Ruslan:** *"issnt it better visually, have full image, and
 move/zoom circle instead moving uploaded image?"*

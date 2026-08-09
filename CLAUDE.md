@@ -6,16 +6,23 @@ Guidance for Claude Code working in this repository.
 
 | File | What it gives you |
 |---|---|
-| `STATE.md` | **Where the project actually is.** Current phase, blockers, next actions, verified environment facts. |
+| **`BOOTSTRAP.md`** | ⭐ **Start here.** The minimum to be correct: hard constraints, current phase, the print facts, next actions, known risks. Audited against the code, not against the other documents. |
+| `STATE.md` | **Where the project actually is** — but read **the top section**. Everything below the „NARRATIVE HISTORY" marker is a session-by-session account kept for its reasoning, not a statement of the present. |
+| `docs/wizard-v2.md` | The four-source wizard — the design that actually shipped. |
 | `WORKFLOW.md` | How we work — environments, the sync loop, conventions, commands. |
-| `PLAN.md` | The design. 23 sections, authoritative. |
 | `docs/pipeline.md` | **The built system** — what runs where, what costs money, what is local PHP. |
-| `DECISIONS.md` | Why things are the way they are. Append-only. |
+| `DECISIONS.md` | Why things are the way they are. Append-only, D-001…D-074. **Superseded entries are kept and not marked in place** — its header table names the chains that still govern. |
 | `docs/migration.md` | **Going live.** Production's verified facts, what blocks us, the ordered steps. |
+| `PLAN.md` | The original design, 23 sections. Authoritative **where nothing supersedes it** — several sections have been overtaken, so check `DECISIONS.md` before treating a section as current. |
 | `docs/api-evaluation.md` | Phase 0 plan. |
 
 `idea.md` is the original brief. It is **superseded** — `PLAN.md` §23 lists where it is wrong.
 Do not follow it.
+
+> **When two documents disagree, the order is: the code, then `BOOTSTRAP.md`, then the top of
+> `STATE.md`, then `DECISIONS.md`, then everything else.** This is not hypothetical — the
+> 2026-08-09 audit found `docs/pipeline.md` still describing an Action Scheduler job and an
+> `aicake-approval` order status that D-047/D-048 had deleted five decisions earlier.
 
 ## 🛑 Before anything is uploaded to the live shop
 
