@@ -131,6 +131,32 @@ final class SourceCatalogue {
 	}
 
 	/**
+	 * Does this source's master already carry its bleed? (D-073)
+	 *
+	 * **The one question the imaging pipelines cannot answer by looking at the
+	 * file.** An uploaded master is exported by the cropper at `target_px()`,
+	 * with the customer's selection sitting inside it as the trim circle and
+	 * real photograph in the 3 mm around it (D-070). Everything else — a fal
+	 * generation, a found photograph, a blank sheet — is just a picture, with
+	 * nothing outside the artwork at all.
+	 *
+	 * Treating the second kind like the first is what shipped a print whose cut
+	 * line fell 12% inside the circle the customer approved: `cover()` scaled
+	 * the whole picture up to the bled box, and the blade then took the outer
+	 * ring off it. So the two kinds have to be told apart, and the source is the
+	 * only thing that knows.
+	 *
+	 * A function of the source rather than a stored flag, for the same reason
+	 * `costs_generation()` is: a design row that disagreed with the file on disk
+	 * would print wrong and look right.
+	 *
+	 * @param string $source One of the constants.
+	 */
+	public static function master_is_bled( string $source ): bool {
+		return self::UPLOAD === $source;
+	}
+
+	/**
 	 * The settings key holding what this source is called in Fields Factory.
 	 *
 	 * @param string $source One of the constants.

@@ -82,15 +82,19 @@ class FulfilPipeline {
 	/**
 	 * Render the file that goes to the printer.
 	 *
-	 * @param string         $master_path Absolute path to the clean generation.
-	 * @param PrintSpec      $spec        Product geometry.
-	 * @param TextLayer|null $layer       D-033 composed layer, or null.
+	 * @param string         $master_path    Absolute path to the clean generation.
+	 * @param PrintSpec      $spec           Product geometry.
+	 * @param TextLayer|null $layer          D-033 composed layer, or null.
+	 * @param bool           $master_is_bled Whether the master already carries its
+	 *                                       bleed — `SourceCatalogue::master_is_bled()`
+	 *                                       is the only thing that knows (D-073).
 	 * @return PrintFile|null Null on any failure; the caller retries.
 	 */
 	public function render(
 		string $master_path,
 		PrintSpec $spec,
-		?TextLayer $layer = null
+		?TextLayer $layer = null,
+		bool $master_is_bled = false
 	): ?PrintFile {
 		if ( ! is_readable( $master_path ) ) {
 			$this->logger->error( 'Print render aborted: no master on disk.', array( 'path' => $master_path ) );
@@ -107,7 +111,7 @@ class FulfilPipeline {
 
 		list( $bytes, $factor, $upscaler ) = $this->maybe_upscale( $bytes, $spec );
 
-		$piece = $this->render_piece( $bytes, $spec );
+		$piece = $this->render_piece( $bytes, $spec, $master_is_bled );
 		unset( $bytes );
 
 		if ( null === $piece ) {
@@ -367,10 +371,25 @@ class FulfilPipeline {
 	/**
 	 * One finished piece: bled and shaped, still with its alpha.
 	 *
-	 * @param string        $bytes Master image data.
-	 * @param PrintSpec     $spec  Product geometry.
+	 * **Which of the two bleed routes is right depends on the master** (D-073),
+	 * and both end at the same size — the difference is what lands inside the
+	 * cut line.
+	 *
+	 * A cropped upload already *is* the bled piece: the customer framed the trim
+	 * circle and the 3 mm around it is real photograph (D-070), so `cover()`
+	 * here is a no-op that preserves that mapping exactly.
+	 *
+	 * A generation, a found photograph or a blank sheet has nothing outside the
+	 * artwork. `cover()`ing those to the bled box scales the picture up until the
+	 * blade takes a ring off it — 12% of the diameter on a cupcake — and the ring
+	 * it takes is part of what the customer approved in the preview. Those get
+	 * `bleed_out()`: the picture at trim size, the bleed invented around it.
+	 *
+	 * @param string    $bytes          Master image data.
+	 * @param PrintSpec $spec           Product geometry.
+	 * @param bool      $master_is_bled Whether the master already carries its bleed.
 	 */
-	private function render_piece( string $bytes, PrintSpec $spec ): ?GdImage {
+	private function render_piece( string $bytes, PrintSpec $spec, bool $master_is_bled ): ?GdImage {
 		$master = $this->images->from_string( $bytes );
 
 		if ( null === $master ) {
@@ -378,10 +397,12 @@ class FulfilPipeline {
 		}
 
 		list( $target_w, $target_h ) = $spec->target_px();
+		list( $trim_w, $trim_h )     = $spec->trim_px();
 
-		// cover(), not resize(): the image is scaled past the trim line so there
-		// is real picture in the region the blade cuts through (§3.3).
-		$piece = $this->images->cover( $master, $target_w, $target_h );
+		$piece = $master_is_bled
+			? $this->images->cover( $master, $target_w, $target_h )
+			: $this->images->bleed_out( $master, $trim_w, $trim_h, $target_w, $target_h );
+
 		$this->images->free( $master );
 
 		if ( null === $piece ) {

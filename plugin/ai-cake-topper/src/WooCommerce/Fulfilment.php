@@ -11,6 +11,7 @@ namespace AiCake\WooCommerce;
 
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\PrintSpec;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Domain\TextLayer;
 use AiCake\Pipeline\FulfilPipeline;
 use AiCake\Storage\OrderArchive;
@@ -157,7 +158,14 @@ class Fulfilment {
 		$print = $this->pipeline->render(
 			(string) $design['file_master'],
 			$spec,
-			TextLayer::from_design( $design )
+			TextLayer::from_design( $design ),
+			/*
+			 * Read off the design, not assumed. Only a cropped upload arrives
+			 * with its bleed already on it; every other master is the picture
+			 * alone and the pipeline has to invent the bleed around it, or the
+			 * blade takes a ring off what the customer approved (D-073).
+			 */
+			SourceCatalogue::master_is_bled( (string) ( $design['source'] ?? '' ) )
 		);
 
 		if ( null === $print ) {

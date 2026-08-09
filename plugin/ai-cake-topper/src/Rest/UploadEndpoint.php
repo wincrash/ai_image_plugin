@@ -282,7 +282,17 @@ class UploadEndpoint {
 			return $this->failed();
 		}
 
-		$preview_path = $this->previews->build( $master_path, $public_id, $spec );
+		/*
+		 * The one master in the system that arrives with its bleed already on it
+		 * (D-070), so the preview has to take the bleed back off before showing
+		 * it — or it promises 3 mm of every edge that the blade removes (D-073).
+		 */
+		$preview_path = $this->previews->build(
+			$master_path,
+			$public_id,
+			$spec,
+			SourceCatalogue::master_is_bled( SourceCatalogue::UPLOAD )
+		);
 
 		$this->designs->update(
 			$design_id,

@@ -374,7 +374,14 @@ class SearchEndpoint {
 			return $this->failed();
 		}
 
-		$preview_path = $this->previews->build( $master_path, $public_id, $spec );
+		// A found photograph has nothing around it, so the master is the picture
+		// and the bleed is invented at print time (D-073).
+		$preview_path = $this->previews->build(
+			$master_path,
+			$public_id,
+			$spec,
+			SourceCatalogue::master_is_bled( SourceCatalogue::SEARCH )
+		);
 
 		$this->designs->update(
 			$design_id,

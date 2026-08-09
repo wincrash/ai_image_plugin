@@ -14,6 +14,7 @@ use AiCake\Domain\GenerationRequest;
 use AiCake\Domain\Job;
 use AiCake\Domain\JobRepository;
 use AiCake\Domain\PrintSpec;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Moderation\Moderator;
 use AiCake\Pipeline\PreviewPipeline;
 use AiCake\Pipeline\PromptBuilder;
@@ -352,7 +353,12 @@ class Runner {
 		$preview = $this->previews->build(
 			$path,
 			(string) $design['public_id'],
-			PrintSpec::for_design( $design )
+			PrintSpec::for_design( $design ),
+			// A generation is the picture alone — no bleed on it, so none to
+			// take back off (D-073). Read from the row rather than assumed,
+			// because this runner is the only thing that would have to change
+			// if a future source ever queued a job.
+			SourceCatalogue::master_is_bled( (string) ( $design['source'] ?? '' ) )
 		);
 
 		$this->designs->update(

@@ -177,6 +177,109 @@ class GdEngine {
 	}
 
 	/**
+	 * Fit the whole picture inside the trim box and invent the bleed round it.
+	 *
+	 * `cover()` is the right answer only when there is picture to spare. The
+	 * upload path frames the cut line and the 3 mm outside it is real
+	 * photograph (D-070); every other source hands us a picture with nothing
+	 * around it at all, and covering the *bled* box then enlarges it until the
+	 * outer 3 mm — 12% of a ⌀45 mm diameter — is the part the blade takes away.
+	 * The customer approved the whole of that picture in the preview, so taking
+	 * a ring off it is taking away what they bought (D-073).
+	 *
+	 * So the picture goes in at trim size, and the bleed ring is filled with the
+	 * same picture enlarged to the bled box underneath it. Not white — white in
+	 * the bleed is the pale sliver on the cut edge that bleed exists to prevent
+	 * (D-070) — and not mirrored, because what a slightly wide cut should reveal
+	 * is more of the same photograph.
+	 *
+	 * The seam is exactly on the cut line, which is the one place in the file
+	 * where a discontinuity costs nothing: the blade goes through it.
+	 *
+	 * @param GdImage $src    Source.
+	 * @param int     $trim_w Finished width, inside the cut line.
+	 * @param int     $trim_h Finished height, inside the cut line.
+	 * @param int     $bled_w Width including bleed.
+	 * @param int     $bled_h Height including bleed.
+	 */
+	public function bleed_out( GdImage $src, int $trim_w, int $trim_h, int $bled_w, int $bled_h ): ?GdImage {
+		if ( $trim_w < 1 || $trim_h < 1 || ( $trim_w >= $bled_w && $trim_h >= $bled_h ) ) {
+			// No bleed configured — the whole-sheet format — so there is nothing
+			// to invent and `cover()` already does the right thing.
+			return $this->cover( $src, $bled_w, $bled_h );
+		}
+
+		$canvas = $this->cover( $src, $bled_w, $bled_h );
+		$art    = $this->cover( $src, $trim_w, $trim_h );
+
+		if ( null === $canvas || null === $art ) {
+			$this->free( $canvas, $art );
+
+			return null;
+		}
+
+		/*
+		 * Copied rather than blended — the trim region *is* the picture,
+		 * whatever alpha it carries — and centred the way `paste()` centres,
+		 * because `FulfilPipeline` draws the cut line at `round( w / 2 )` and
+		 * the ring and the artwork have to be concentric to the pixel.
+		 */
+		$x = (int) round( $bled_w / 2 ) - (int) round( $trim_w / 2 );
+		$y = (int) round( $bled_h / 2 ) - (int) round( $trim_h / 2 );
+
+		imagealphablending( $canvas, false );
+		imagecopy( $canvas, $art, $x, $y, 0, 0, $trim_w, $trim_h );
+		imagesavealpha( $canvas, true );
+
+		$this->free( $art );
+
+		return $canvas;
+	}
+
+	/**
+	 * Take a box out of the middle, at the source's own resolution.
+	 *
+	 * The inverse of `bleed_out()`, and the reason it exists: a master that
+	 * already carries its bleed has to be previewed without it, or the customer
+	 * approves 3 mm more on every edge than the blade leaves them (D-073).
+	 *
+	 * No resampling. A crop that also scales is a crop whose errors are
+	 * invisible, and this one is measured against a cut line.
+	 *
+	 * @param GdImage $src    Source.
+	 * @param int     $width  Box width, clamped to the source.
+	 * @param int     $height Box height, clamped to the source.
+	 */
+	public function crop_centre( GdImage $src, int $width, int $height ): ?GdImage {
+		$src_w = imagesx( $src );
+		$src_h = imagesy( $src );
+
+		$width  = max( 1, min( $width, $src_w ) );
+		$height = max( 1, min( $height, $src_h ) );
+
+		$out = $this->blank( $width, $height );
+
+		if ( null === $out ) {
+			return null;
+		}
+
+		imagealphablending( $out, false );
+		imagecopy(
+			$out,
+			$src,
+			0,
+			0,
+			(int) floor( ( $src_w - $width ) / 2 ),
+			(int) floor( ( $src_h - $height ) / 2 ),
+			$width,
+			$height
+		);
+		imagesavealpha( $out, true );
+
+		return $out;
+	}
+
+	/**
 	 * Composite one image onto another, centred on a point.
 	 *
 	 * Imposition (§3.5) is the only caller: N copies of one topper onto a sheet.

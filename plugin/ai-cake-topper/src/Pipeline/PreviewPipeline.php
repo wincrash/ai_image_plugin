@@ -15,6 +15,7 @@ use AiCake\Imaging\Watermarker;
 use AiCake\Storage\PrivateStorage;
 use AiCake\Support\Logger;
 use AiCake\Support\Settings;
+use GdImage;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -76,12 +77,14 @@ class PreviewPipeline {
 	/**
 	 * Build a preview and write it next to the master.
 	 *
-	 * @param string        $master_path Absolute path to the clean generation.
-	 * @param string        $public_id   Design handle.
-	 * @param PrintSpec     $spec        Product geometry.
+	 * @param string    $master_path    Absolute path to the clean generation.
+	 * @param string    $public_id      Design handle.
+	 * @param PrintSpec $spec           Product geometry.
+	 * @param bool      $master_is_bled Whether the master already carries its bleed
+	 *                                  — `SourceCatalogue::master_is_bled()` (D-073).
 	 * @return string Path to the preview, or '' on failure.
 	 */
-	public function build( string $master_path, string $public_id, PrintSpec $spec ): string {
+	public function build( string $master_path, string $public_id, PrintSpec $spec, bool $master_is_bled = false ): string {
 		if ( ! is_readable( $master_path ) ) {
 			$this->logger->warning( 'Preview skipped: no master on disk.', array( 'path' => $master_path ) );
 
@@ -91,6 +94,12 @@ class PreviewPipeline {
 		// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_get_contents
 		$bytes  = (string) file_get_contents( $master_path );
 		$master = $this->images->from_string( $bytes );
+
+		if ( null === $master ) {
+			return '';
+		}
+
+		$master = $this->inside_the_cut_line( $master, $spec, $master_is_bled );
 
 		if ( null === $master ) {
 			return '';
@@ -124,6 +133,63 @@ class PreviewPipeline {
 			$this->storage->session_path( $public_id, 'preview.webp' ),
 			$webp
 		);
+	}
+
+	/**
+	 * Throw away anything the blade will (D-073).
+	 *
+	 * The preview is the picture the customer approves, so it has to show what
+	 * is inside the cut line and nothing else. For every source but one the
+	 * master already *is* that picture — `FulfilPipeline` invents the bleed
+	 * around it — and this is a no-op.
+	 *
+	 * An uploaded master is the exception: the cropper exports the bled box, so
+	 * 3 mm of every edge is picture the customer will never own. Previewing it
+	 * shows a ⌀45 mm cupcake as if it were ⌀51 mm and quietly promises 12% more
+	 * diameter than arrives.
+	 *
+	 * Proportional to the master rather than a straight crop to `trim_px()`,
+	 * because a master is not guaranteed to be exactly `target_px()` — the
+	 * upload endpoint re-encodes what the browser sent, and a device that
+	 * exported a pixel short would otherwise crop off-centre.
+	 *
+	 * @param GdImage   $master         Decoded master; freed if it is replaced.
+	 * @param PrintSpec $spec           Product geometry.
+	 * @param bool      $master_is_bled Whether the master already carries its bleed.
+	 */
+	private function inside_the_cut_line( GdImage $master, PrintSpec $spec, bool $master_is_bled ): ?GdImage {
+		if ( ! $master_is_bled ) {
+			return $master;
+		}
+
+		list( $bled_w, $bled_h ) = $spec->target_px();
+		list( $trim_w, $trim_h ) = $spec->trim_px();
+
+		if ( $bled_w < 1 || $bled_h < 1 || ( $trim_w >= $bled_w && $trim_h >= $bled_h ) ) {
+			return $master;
+		}
+
+		$keep = $this->images->crop_centre(
+			$master,
+			(int) round( imagesx( $master ) * $trim_w / $bled_w ),
+			(int) round( imagesy( $master ) * $trim_h / $bled_h )
+		);
+
+		if ( null === $keep ) {
+			// Better a preview showing 3 mm too much than no preview at all: the
+			// customer can still see their picture, and the print file is built
+			// from the master rather than from this.
+			$this->logger->warning(
+				'Could not trim the bleed off the preview; it shows the bled edge.',
+				array( 'master' => imagesx( $master ) . 'x' . imagesy( $master ) )
+			);
+
+			return $master;
+		}
+
+		$this->images->free( $master );
+
+		return $keep;
 	}
 
 	/**

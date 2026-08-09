@@ -129,8 +129,14 @@ A4 is 1:1.414. No image model offers that ratio.
 Two different margins, both needed, easy to conflate:
 
 - **Bleed** (+3 mm outside the trim line) — image extends past the cut so a slightly-off cut
-  doesn't leave a white sliver. Achieved by scaling the image up 3 mm beyond trim, not by
-  adding a border.
+  doesn't leave a white sliver. Never a plain border: white in the bleed is the sliver bleed
+  exists to prevent.
+  **Where those 3 mm come from depends on the master** (D-073). A cropped upload carries them
+  already — the customer framed the trim line and the cropper exported the bled box around it
+  (D-070), so the print scales nothing. Every other master is the picture and nothing else, so
+  the picture goes in **at trim size** and the bleed ring is filled with the same picture
+  enlarged underneath it. Scaling the whole picture up to the bled box instead is what put the
+  cut line 12% inside what the customer approved.
 - **Safe zone** (−5 mm inside the trim line) — nothing important, *especially text*, within
   5 mm of the edge. Enforced by the text renderer, and drawn as a guide in the admin preview.
 

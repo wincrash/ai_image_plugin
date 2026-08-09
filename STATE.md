@@ -19,14 +19,34 @@ are all done.
 | `ai` — fal generation | works, cart line at base + the AI price |
 | `search` — Openverse | works, **off by default**, commercial+modification licences only (D-067) |
 
-**Thirteen suites, all green:** `tests/run.php` 408 · `rest-check.sh` 16 · `wizard-check` 65 ·
+**Fourteen suites, all green:** `tests/run.php` 408 · `rest-check.sh` 16 · `wizard-check` 65 ·
 `text-check` 37 · `wcff-check` 47 · `order-check` 65 · `upload-check` 18 · `search-check` 18 ·
 `retention-check` 11 · `proof-check` 21 · `settings-check` 45 · `moderation-check` 34 ·
-**`crop-check.html` 9** (in a browser — see D-070).
+**`bleed-check` 12** (new — D-073) · **`crop-check.html` 9** (in a browser — see D-070).
 
 **Nineteen formats now — cake pops at ⌀2,5 / 3 / 3,5 cm are new (D-072)**, yielding 88 / 63 / 48
 to a sheet. Proofs for them are already downloadable from **AI Cake Topper → Print formats**. The
 label reads „Cake pop ⌀X cm" and is a placeholder for Ruslan's wording.
+
+### 🔴 The picture is the cut circle now — D-073, 2026-08-09
+
+Ruslan held a printed sheet beside the preview the order came from and the framings did not match:
+the cut line sat **inside** the picture the customer had approved. `FulfilPipeline` scaled every
+master up to the *bled* box and then cut at the trim line, so a generated or found picture lost its
+outer ring — **12% of the diameter on a ⌀45 mm cupcake**, 4% at ⌀15 cm. Only the upload path was
+right, because D-070 had already fixed it there.
+
+**The rule now: the master's picture is what is inside the cut line, and the bleed is added around
+it.** An upload still carries real photograph in its bleed; every other source gets the picture at
+trim size with the same picture enlarged underneath to fill the bleed ring. `PreviewPipeline` takes
+the bleed back off an uploaded master, so preview and print agree from either direction.
+`ProofPipeline` needed nothing — it had been drawing the right answer all along.
+
+`tools/bleed-check.php` is new, **12 assertions**, falsified two ways.
+
+> **Still Ruslan's to decide:** there is still ink outside the black line — that is the bleed, and
+> it gets cut away. If he wants the picture to stop *at* the line, that is `bleed_mm = 0` in
+> `FormatCatalogue` and it costs the margin for a crooked cut.
 
 ### 🔴 The print geometry moved on 2026-08-09 — D-070
 

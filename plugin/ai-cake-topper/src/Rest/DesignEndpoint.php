@@ -309,7 +309,14 @@ class DesignEndpoint {
 			);
 		}
 
-		$preview_path = $this->previews->build( $master_path, $public_id, $spec );
+		// A blank sheet is white to its edges, so bleed changes nothing here —
+		// stated rather than defaulted, so the answer is visible (D-073).
+		$preview_path = $this->previews->build(
+			$master_path,
+			$public_id,
+			$spec,
+			SourceCatalogue::master_is_bled( SourceCatalogue::NONE )
+		);
 
 		$this->designs->update(
 			$design_id,

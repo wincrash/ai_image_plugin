@@ -3310,5 +3310,108 @@ inferred from a two-format run.
 > editor draws a text box per piece — eighty-eight of them. Nothing says it breaks; nothing has
 > looked either. Worth a glance when the format is first printed.
 
-<!-- Next: D-073 -->
+---
+
+### D-073 · The picture is the cut circle. The bleed is added, never taken.
+**2026-08-09** · Ruslan · **found by comparing an order against its preview** · extends D-070 ·
+affects `Pipeline/FulfilPipeline.php`, `Pipeline/PreviewPipeline.php`, `Imaging/GdEngine.php`,
+`Domain/SourceCatalogue.php`
+
+Ruslan put the wizard's preview beside the printed sheet of the order it became:
+
+> *"the black line is inside the image, it should not be like this ... it should exactly fit to
+> circles on the right as final product, and the user see exactly what was created in preview,
+> but in orders i get another view."*
+
+He is right, and it is D-070's second half again — in the half of the system D-070 did not reach.
+
+#### What was wrong
+
+`FulfilPipeline::render_piece()` `cover()`ed every master to `target_px()`, the piece **plus** its
+3 mm of bleed, and then drew the cut line at `trim_px()`. For a cropped upload that is exactly
+right: the cropper exports the bled box, so `cover()` is a no-op and the cut line falls on the
+outline the customer dragged (D-070).
+
+For a generation, a found photograph or a blank sheet there is nothing outside the artwork.
+`cover()` therefore **enlarged the whole picture until the outer ring was bleed**, and the blade
+took that ring away:
+
+| Format | Trim | Bled | Of the picture, cut away |
+|---|---|---|---|
+| ⌀45 mm cupcake | 45 mm | 51 mm | **12% of the diameter** |
+| ⌀15 cm circle | 150 mm | 156 mm | 4% |
+
+And the preview showed the whole of it, because `PreviewPipeline` covered to the trim *aspect* and
+masked at that circle — the bled picture, drawn as if it were the finished piece. So the customer
+approved one framing and paid for a tighter one, on every source but upload. On a ⌀45 mm cupcake
+that is a picture 12% larger than the one that arrives.
+
+**Ruslan saw it on a photograph of a lion**, where a cut line sitting visibly inside the picture is
+obvious. On a centred AI generation with a white background it would have looked fine for a long
+time.
+
+#### The rule
+
+**A master's picture is what ends up inside the cut line. Bleed is added outside it, never taken
+out of it.**
+
+Two routes to a bled piece, and the source decides which:
+
+| Master | Route | Bleed is |
+|---|---|---|
+| `upload` | `cover()` to the bled box — a no-op, the cropper already did it | real photograph (D-070) |
+| `ai` · `search` · `none` | `GdEngine::bleed_out()` — picture at trim size, on top of itself enlarged to the bled box | the same picture, continued |
+
+The invented bleed is **not white and not mirrored.** White in the bleed is the pale sliver bleed
+exists to prevent — D-070 says so about the cropper's size limit and it is just as true here — and
+what a slightly wide cut should reveal is more of the same photograph. The seam is exactly on the
+cut line, which is the one place in the file a discontinuity costs nothing: the blade goes through
+it.
+
+`PreviewPipeline` gets the matching half. For every source but upload the master already *is* the
+finished picture, so nothing changes; an uploaded master has its bleed cropped off before the
+preview is built, or it promises 3 mm of every edge that the blade removes. **`ProofPipeline`
+needed no change at all** — it has always laid the preview into a `trim`-sized cell, so the proof
+had been drawing the correct answer while the print file drew a different one, and nobody compared
+those two either.
+
+#### Which master is which — the one thing the pixels cannot say
+
+`SourceCatalogue::master_is_bled()`, a function of the source, not a stored flag. A row that
+disagreed with the file on disk would print wrong and look right — the same argument as
+`costs_generation()`. `Fulfilment` and `Runner` read it off the design row; the three endpoints
+that store a master state it outright, so the answer is visible at the point the master is made
+rather than defaulted.
+
+#### Verified
+
+`tools/bleed-check.php` is new — **12 assertions**. A master carries a red ring at 0.8 of its own
+radius and the check measures what fraction of the *cut* circle that ring lands on, along four rays
+so a non-concentric paste shows up as a spread.
+
+```
+⌀150 mm · trim 1772 px · bled 1843 px
+1 · the ring lands on the trim radius, not the bled one   710.0 (want 708.8 ±4.0)
+6 · the upload mapping is unchanged, and agrees with 1    710.0 (want 708.8 ±4.0)
+```
+
+**Falsified twice, and the halves are independent.** Restoring the plain `cover()` turns 1 and 2
+red at **738.0 px** — the bled radius to within a pixel — and leaves 6 green, so the two routes are
+genuinely different rather than one hiding the other. Returning the master untouched from
+`inside_the_cut_line()` turns only 8 red, and nothing in the print half moves.
+
+Also asserted: the bleed ring is **inked, not padded white**; the cut line is still at the trim
+radius; the file is still a full A4 page (D-070); and `bleed_out()` with zero bleed is `cover()`,
+which is the whole-sheet format and must not change.
+
+Looked at as well as measured — a 24-up cupcake piece rendered from a picture with markers on its
+own edge, beside its preview. The markers sit on the circle edge in the preview and on the cut line
+in the print.
+
+> **What has not changed, and Ruslan should decide whether it should.** There is still ink outside
+> the black line — that is the bleed, and it is cut away. If he wants the picture to stop *at* the
+> line with nothing beyond it, that is `bleed_mm = 0` in `FormatCatalogue`, one number, and it
+> costs the margin for a crooked cut. The rest of this decision is what he asked for either way.
+
+<!-- Next: D-074 -->
 
