@@ -79,9 +79,9 @@ aicake_check( 'the AI product resolves', true, $product instanceof WC_Product );
 aicake_check( 'and it is simple, not variable', 'simple', $product->get_type() );
 
 /*
- * One flat list now, not three buckets (D-055). The counts below are the same
- * sixteen formats §3.5 has always specified — what changed is that the wizard
- * asks about them once instead of asking for a type and then a size.
+ * One flat list now, not three buckets (D-055). Nineteen since D-072 added cake
+ * pops — the counts are asserted per type as well as in total, because a list
+ * that silently lost one would still be "a list of formats".
  */
 $formats = $wizard->formats();
 
@@ -91,10 +91,11 @@ foreach ( $formats as $option ) {
 	$by_type[ $option['type'] ][] = $option;
 }
 
-aicake_check( 'sixteen formats in one list', 16, count( $formats ) );
+aicake_check( 'nineteen formats in one list', 19, count( $formats ) );
 aicake_check( 'one whole-sheet format', 1, count( $by_type[ FormatCatalogue::TYPE_SHEET ] ) );
 aicake_check( 'eleven circle sizes', 11, count( $by_type[ FormatCatalogue::TYPE_CIRCLE ] ) );
 aicake_check( 'four cupcake sizes', 4, count( $by_type[ FormatCatalogue::TYPE_CUPCAKE ] ) );
+aicake_check( 'three cake pop sizes', 3, count( $by_type[ FormatCatalogue::TYPE_POPCAKE ] ?? array() ) );
 
 /*
  * Largest first, so the one list reads as a single scale rather than three
@@ -102,7 +103,7 @@ aicake_check( 'four cupcake sizes', 4, count( $by_type[ FormatCatalogue::TYPE_CU
  */
 aicake_check( 'the whole sheet comes first', FormatCatalogue::TYPE_SHEET, $formats[0]['type'] );
 aicake_check( 'the largest circle comes second', 200.0, $formats[1]['mm'] );
-aicake_check( 'the smallest cupcake comes last', 40.0, $formats[ count( $formats ) - 1 ]['mm'] );
+aicake_check( 'the smallest cake pop comes last', 25.0, $formats[ count( $formats ) - 1 ]['mm'] );
 
 /*
  * Every card has to be drawable, or the grid renders as empty rectangles that
@@ -256,11 +257,34 @@ aicake_check( 'AI is one of the offered sources by default', true, in_array(
 	true
 ) );
 
-aicake_check( 'search is not, unless the shop turns it on', false, in_array(
+/*
+ * Search is off **by default** (D-067), and that is a claim about the code, not
+ * about this testbed. Read as ambient state it was neither: `search-check`
+ * legitimately switches search on to exercise it, so whether this passed
+ * depended on which suite had run last — it went red on 2026-08-09 for exactly
+ * that reason, reporting the testbed rather than the plugin.
+ *
+ * So the stored value is cleared, the default is asserted, and it is put back.
+ */
+$stored_search = $settings->get( 'source_search', null );
+
+$settings->update( array( 'source_search' => null ) );
+
+aicake_check( 'search is not offered by default', false, in_array(
 	SourceCatalogue::SEARCH,
 	array_column( $wizard->sources(), 'value' ),
 	true
 ) );
+
+$settings->update( array( 'source_search' => true ) );
+
+aicake_check( 'and it is, once the shop turns it on', true, in_array(
+	SourceCatalogue::SEARCH,
+	array_column( $wizard->sources(), 'value' ),
+	true
+) );
+
+$settings->update( array( 'source_search' => $stored_search ) );
 
 $settings->update( array( 'source_ai' => false ) );
 

@@ -227,13 +227,19 @@ its own labelled row on the cart and the order — which is the whole mechanism,
 ~2500 products. Prices are edited where they are edited today.
 
 **Format — shape, size, copies — is a wizard choice, recorded on the design row.** Not a fixed
-catalogue of SKUs but **three format types** (D-037):
+catalogue of SKUs but **four format types** (D-037, D-072):
 
 | Type | What the customer chooses | Geometry |
 |---|---|---|
 | **A4 visas lapas** | nothing | rect, the whole usable area |
 | **Vienas apskritimas** | a diameter from a fixed list — 20…10 cm in 1 cm steps | round, ×N as fits |
 | **Keksiukams** | one predefined case showing **count and diameter** | round, ⌀ as listed, ×N |
+| **Cake pop** | ⌀2,5 / 3 / 3,5 cm | round, ×N as fits — 88 / 63 / 48 |
+
+Since D-055 the customer is never asked which of the four it is: they pick a size and the type
+is derived from the diameter. That works only while the three round lists stay clear of each
+other, which is why the dividing lines sit in empty gaps (37 mm and 80 mm) and why every
+offered size is asserted to derive back to its own type.
 
 Both are **comboboxes over a hardcoded list of offered sizes** (D-038) — no free numeric input,
 so there is no ⌀17.5 cm and no floor to define.

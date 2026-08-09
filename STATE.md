@@ -19,10 +19,14 @@ are all done.
 | `ai` — fal generation | works, cart line at base + the AI price |
 | `search` — Openverse | works, **off by default**, commercial+modification licences only (D-067) |
 
-**Thirteen suites, all green:** `tests/run.php` 368 · `rest-check.sh` 16 · `wizard-check` 63 ·
+**Thirteen suites, all green:** `tests/run.php` 408 · `rest-check.sh` 16 · `wizard-check` 65 ·
 `text-check` 37 · `wcff-check` 47 · `order-check` 65 · `upload-check` 18 · `search-check` 18 ·
-`retention-check` 11 · `proof-check` 18 · `settings-check` 45 · `moderation-check` 34 ·
+`retention-check` 11 · `proof-check` 21 · `settings-check` 45 · `moderation-check` 34 ·
 **`crop-check.html` 9** (in a browser — see D-070).
+
+**Nineteen formats now — cake pops at ⌀2,5 / 3 / 3,5 cm are new (D-072)**, yielding 88 / 63 / 48
+to a sheet. Proofs for them are already downloadable from **AI Cake Topper → Print formats**. The
+label reads „Cake pop ⌀X cm" and is a placeholder for Ruslan's wording.
 
 ### 🔴 The print geometry moved on 2026-08-09 — D-070
 
@@ -86,8 +90,11 @@ the page it was drawn on, which no assertion asked about until a sheet came out 
 - **iOS is unmeasured.** `tools/phone-canvas-check.html` exists and takes 30 seconds; Ruslan has no
   iPhone. There is also a public copy of that page (published as an artifact) so it can be handed
   to anyone.
-- **The 339 MB peak has never been measured per item** — it came from a check rendering two formats
-  in one pass. Measure before treating M0.3 as real work (D-056).
+- **The 339 MB peak is measured per item now, and it is smaller than it looked** (D-072). One
+  render costs **80–84 MB** on top of the request, and an 88-up cake pop sheet costs 4 MB more
+  than a 24-up cupcake sheet — the canvas is what costs memory, not the piece count. The old
+  figure came from a check rendering two formats in one pass (D-056). Re-scope M0.3 against the
+  real number before doing any work on it.
 - **Ruslan reported (2026-08-09) that he has one more error and one modification to raise.** Not yet
   described. Ask him.
 

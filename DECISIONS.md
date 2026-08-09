@@ -3255,5 +3255,60 @@ a choice with no price rule and a choice that does not exist both add 0,00 €.
 
 **Suites:** `wcff-check` 37 → **47**, `settings-check` 35 → **45**, `wizard-check` 61 → **63**.
 
-<!-- Next: D-072 -->
+---
+
+### D-072 · Cake pops — a fourth format type, and the first real per-item memory figure
+**2026-08-09** · Ruslan · **agreed and built** · affects `Domain/FormatCatalogue.php`
+
+> *"add format type, for popcake, 2.5/3/3.5 cm."*
+
+Three sizes, one new type, and **no new mechanism**: `round_option()` builds them exactly as it
+builds cupcakes and circles, `SheetLayout` derives the grid, `ProofSheet` renders proofs for them
+without being told, and the wizard sorts them into place by diameter. The whole change is a list,
+a boundary and a label.
+
+| Size | Grid | Per sheet | Piece |
+|---|---|---|---|
+| ⌀2,5 cm | 8 × 11 | **88** | 367 px |
+| ⌀3 cm | 7 × 9 | **63** | 426 px |
+| ⌀3,5 cm | 6 × 8 | **48** | 485 px |
+
+All three clip a little bleed at the sheet edge, exactly as the 24-up cupcake sheet already does —
+reported, not disqualifying (D-039).
+
+#### The second boundary
+
+`type_for_diameter()` derives the type from the diameter (D-055), which is total only while the
+lists do not touch. There are three round lists now — 25–35, 40–60, 100–200 — and therefore two
+dividing lines, at **37 mm** and 80 mm, both sitting in empty gaps.
+
+**Asserted as a property, not as two constants.** `FormatCatalogueTest` now walks every offered
+format and requires it to derive back to the type it was built as, so adding ⌀38 mm to either list
+turns it red immediately. A size dropped into a gap would otherwise be mislabelled silently, one
+card at a time, on a page that still renders perfectly.
+
+#### What it cost to render, which answers an older open question
+
+D-056 left the 339 MB peak untrusted because it was measured across two formats in one pass, and
+M0.3 in `docs/migration.md` is about getting under production's 256M. An 88-up sheet is the most
+pieces this plugin has ever imposed, so it was measured:
+
+```
+⌀25 mm  88-up  0.71 s  delta 84.0 MB
+⌀45 mm  24-up  0.69 s  delta 80.0 MB
+```
+
+**The piece count is not what costs memory — the canvas is.** Eighty-eight pastes cost 4 MB and
+0.02 s more than twenty-four. So the new sizes carry no new risk, and the per-item render figure
+is now roughly **80–84 MB on top of whatever the request already holds**, measured rather than
+inferred from a two-format run.
+
+> **The label is „Cake pop ⌀X cm — N vnt." and that is a placeholder for Ruslan.** Customer-facing
+> wording is his; this is one `__()` call in `FormatCatalogue::label()`.
+
+> **Untested at this size: the text editor.** A ⌀2,5 cm piece is a 296 px trim circle, and the
+> editor draws a text box per piece — eighty-eight of them. Nothing says it breaks; nothing has
+> looked either. Worth a glance when the format is first printed.
+
+<!-- Next: D-073 -->
 

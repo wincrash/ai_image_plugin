@@ -15,7 +15,7 @@ use AiCake\Support\Mm;
 defined( 'ABSPATH' ) || exit;
 
 /**
- * The three format types (PLAN.md §4.1, D-037, D-038, D-039).
+ * The four format types (PLAN.md §4.1, D-037, D-038, D-039, D-072).
  *
  * Format is a property of the **design**, not of the product. There is one AI
  * product; what shape and size it comes out as is chosen in the wizard and
@@ -31,14 +31,16 @@ defined( 'ABSPATH' ) || exit;
  * to 30 and back to 35 inside one afternoon as the usable area was corrected
  * twice. `SheetLayout` re-derives; a table would have lied.
  *
- * "As many as fit" is the rule for both circles and cupcakes (D-039), so a
- * ⌀10 cm circle yields 4 rather than 1. The wizard must state the count.
+ * "As many as fit" is the rule for every round type (D-039), so a ⌀10 cm circle
+ * yields 4 rather than 1 and a ⌀2,5 cm cake pop yields 88. The wizard must state
+ * the count.
  */
 final class FormatCatalogue {
 
 	public const TYPE_SHEET   = 'sheet';
 	public const TYPE_CIRCLE  = 'circle';
 	public const TYPE_CUPCAKE = 'cupcake';
+	public const TYPE_POPCAKE = 'popcake';
 
 	/**
 	 * The largest diameter still called a cupcake.
@@ -50,6 +52,18 @@ final class FormatCatalogue {
 	 * derivation ambiguous and it would fail silently, one label at a time.
 	 */
 	public const CUPCAKE_MAX_MM = 80.0;
+
+	/**
+	 * The largest diameter still called a cake pop (D-072).
+	 *
+	 * Same rule as `CUPCAKE_MAX_MM`, one list further down: cake pops stop at
+	 * 35 mm and cupcakes start at 40 mm, so 37 mm is in the gap and nothing
+	 * legitimate is near it. **This is now the second boundary, and adding a
+	 * third list means finding a third gap** — the derivation is only total
+	 * while every list is separated from its neighbour, which `wizard-check`
+	 * asserts for every offered format rather than for the boundaries alone.
+	 */
+	public const POPCAKE_MAX_MM = 37.0;
 
 	/**
 	 * Single circles: 20 cm down to 10 cm in 1 cm steps (Ruslan, D-038).
@@ -74,6 +88,21 @@ final class FormatCatalogue {
 	}
 
 	/**
+	 * Cake pops — 2,5 / 3 / 3,5 cm (Ruslan, D-072).
+	 *
+	 * The smallest thing the shop prints, and the first list added since the
+	 * type stopped being asked for (D-055). Nothing about them is special: the
+	 * same `round_option()` builds them and the counts fall out of
+	 * `SheetLayout` — 88, 63 and 48 to a sheet, which is a lot of circles and
+	 * exactly why the wizard states the count.
+	 *
+	 * @return float[]
+	 */
+	public static function popcake_diameters_mm(): array {
+		return array( 25.0, 30.0, 35.0 );
+	}
+
+	/**
 	 * Every choice the wizard offers, with its derived count.
 	 *
 	 * @param float $usable_w_mm Usable width.
@@ -95,6 +124,10 @@ final class FormatCatalogue {
 
 		foreach ( self::cupcake_diameters_mm() as $diameter ) {
 			$options[] = self::round_option( self::TYPE_CUPCAKE, $diameter, $usable_w_mm, $usable_h_mm, $bleed_mm );
+		}
+
+		foreach ( self::popcake_diameters_mm() as $diameter ) {
+			$options[] = self::round_option( self::TYPE_POPCAKE, $diameter, $usable_w_mm, $usable_h_mm, $bleed_mm );
 		}
 
 		return $options;
@@ -191,6 +224,10 @@ final class FormatCatalogue {
 	public static function type_for_diameter( float $diameter_mm ): string {
 		if ( $diameter_mm <= 0.0 ) {
 			return self::TYPE_SHEET;
+		}
+
+		if ( $diameter_mm <= self::POPCAKE_MAX_MM ) {
+			return self::TYPE_POPCAKE;
 		}
 
 		return $diameter_mm <= self::CUPCAKE_MAX_MM ? self::TYPE_CUPCAKE : self::TYPE_CIRCLE;
@@ -344,6 +381,15 @@ final class FormatCatalogue {
 	 */
 	private static function label( string $type, float $diameter_mm, int $per_sheet ): string {
 		$cm = rtrim( rtrim( number_format( $diameter_mm / 10, 1, ',', '' ), '0' ), ',' );
+
+		if ( self::TYPE_POPCAKE === $type ) {
+			return sprintf(
+				/* translators: 1: diameter in cm, 2: how many fit on one sheet */
+				__( 'Cake pop ⌀%1$s cm — %2$d vnt.', 'ai-cake-topper' ),
+				$cm,
+				$per_sheet
+			);
+		}
 
 		return self::TYPE_CUPCAKE === $type
 			? sprintf(

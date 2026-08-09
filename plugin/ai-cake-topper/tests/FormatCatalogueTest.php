@@ -122,6 +122,56 @@ class FormatCatalogueTest extends TestCase {
 	}
 
 	/**
+	 * Cake pops, derived the same way everything else is (D-072).
+	 *
+	 * The counts are large — 88 circles on one sheet — and they are asserted
+	 * because they are the whole reason the wizard prints a count on every card.
+	 * Someone choosing ⌀2,5 cm expecting a handful gets eighty-eight.
+	 */
+	public function test_popcake_counts_are_derived(): void {
+		$expected = array(
+			25 => 88,
+			30 => 63,
+			35 => 48,
+		);
+
+		foreach ( $expected as $diameter => $count ) {
+			$option = FormatCatalogue::find( FormatCatalogue::TYPE_POPCAKE, (float) $diameter );
+
+			$this->assert_true( is_array( $option ), sprintf( '⌀%d mm is offered', $diameter ) );
+			$this->assert_same( $count, (int) $option['per_sheet'], sprintf( '⌀%d mm yields %d', $diameter, $count ) );
+		}
+	}
+
+	/**
+	 * **The boundaries are in the gaps, and every offered size clears them.**
+	 *
+	 * `type_for_diameter()` is total only while the three round lists do not
+	 * touch: cake pops 25–35, cupcakes 40–60, circles 100–200, with the
+	 * dividing lines at 37 and 80. A size added into either gap would be
+	 * mislabelled silently — one card at a time, on a page that still renders.
+	 *
+	 * So this asserts the property rather than the constants: every size the
+	 * catalogue offers derives back to the type it was built as. Adding ⌀38 mm
+	 * to either list turns it red.
+	 */
+	public function test_every_offered_size_derives_to_its_own_type(): void {
+		foreach ( FormatCatalogue::offerable() as $option ) {
+			$this->assert_same(
+				(string) $option['type'],
+				FormatCatalogue::type_for_diameter( (float) $option['diameter_mm'] ),
+				sprintf( '%s ⌀%s mm derives to its own type', $option['type'], $option['diameter_mm'] )
+			);
+		}
+
+		// And the boundaries themselves land where they are meant to, including
+		// the one value that is in neither list and must still answer.
+		$this->assert_same( FormatCatalogue::TYPE_POPCAKE, FormatCatalogue::type_for_diameter( 37.0 ), 'the pop/cupcake line is 37 mm' );
+		$this->assert_same( FormatCatalogue::TYPE_CUPCAKE, FormatCatalogue::type_for_diameter( 38.0 ), 'just above it is a cupcake' );
+		$this->assert_same( FormatCatalogue::TYPE_SHEET, FormatCatalogue::type_for_diameter( 0.0 ), 'zero is the whole sheet' );
+	}
+
+	/**
 	 * Clipped bleed is reported, and does not withdraw a product from sale.
 	 *
 	 * The 24-up sheet is the shop's highest-volume item and its outer circles
