@@ -1,0 +1,356 @@
+<meta charset="utf-8">
+<title>aicake — crop geometry check</title>
+
+<!--
+	Does what the customer framed end up inside the cut line? (D-070)
+
+	This is the one assertion in the upload path that no PHP suite can make.
+	`upload-check.php` proves the server accepts a 1843 px JPEG and re-encodes
+	it; it cannot know *which part of the photograph* those pixels came from,
+	because that decision is made entirely in the browser. So the geometry is
+	checked here, against the deployed `cropper.js` rather than a copy of it.
+
+	Ruslan, 2026-08-09: „in cropper we see the preview, so i want that exact
+	such would be in final printed circle." Before this the selection was the
+	**bled** circle, so the outer 3 mm of whatever was framed was cut away — 4%
+	off the diameter, invisible on screen, and only findable on a printed sheet.
+
+	Run it from the testbed, so the script is same-origin and `getImageData()`
+	works:
+
+	  copy this file to  plugins/ai-cake-topper/crop-check.html  on the testbed
+	  open               /wp-content/plugins/ai-cake-topper/crop-check.html
+
+	The next `sync.ps1` deletes it again — `/MIR` mirrors the plugin folder —
+	which is deliberate. It is a check, not a shipped file.
+-->
+
+<style>
+	body { font: 14px/1.5 ui-monospace, monospace; margin: 2rem; }
+	.ok   { color: #1a7f37; }
+	.fail { color: #b30000; font-weight: bold; }
+	canvas { border: 1px solid #ccc; vertical-align: top; }
+	#total { font-size: 1.2rem; margin-top: 1rem; }
+</style>
+
+<h1>Crop geometry (D-070)</h1>
+<div id="out">loading cropper.js…</div>
+<div id="total"></div>
+
+<p>
+	<canvas id="frame"></canvas>
+	<canvas id="preview"></canvas>
+	<canvas id="shot"></canvas>
+</p>
+
+<script src="./assets/js/cropper.js"></script>
+<script>
+( function () {
+	'use strict';
+
+	var out  = document.getElementById( 'out' );
+	var pass = 0;
+	var fail = 0;
+
+	function check( label, ok, detail ) {
+		var line = document.createElement( 'div' );
+
+		line.className = ok ? 'ok' : 'fail';
+		line.textContent = ( ok ? '  ok    ' : '  FAIL  ' ) + label + '   ' + ( detail === undefined ? '' : detail );
+		out.appendChild( line );
+
+		ok ? pass++ : fail++;
+	}
+
+	/*
+	 * A photograph whose colour says where in it you are: red is the x
+	 * position, green is y. That turns "which part of the picture did we get"
+	 * from a judgement into a subtraction.
+	 */
+	var SRC_W = 1200;
+	var SRC_H = 900;
+
+	function sourcePhoto() {
+		var c = document.createElement( 'canvas' );
+
+		c.width  = SRC_W;
+		c.height = SRC_H;
+
+		var g = c.getContext( '2d' );
+
+		/*
+		 * Red and green are smooth ramps, so a single pixel says where in the
+		 * photograph it came from. Blue is 16 px bars, because a ramp is a
+		 * terrible way to *detect* a small shift — 3 mm of bleed is 2% of the
+		 * frame, which moves a full-width ramp by three levels and is lost in
+		 * JPEG noise. Bars at that period decorrelate completely instead.
+		 */
+		for ( var x = 0; x < SRC_W; x++ ) {
+			var bar = ( Math.floor( x / 16 ) % 2 ) ? 255 : 0;
+
+			for ( var y = 0; y < SRC_H; y += 4 ) {
+				g.fillStyle = 'rgb(' + Math.round( x / SRC_W * 255 ) + ',' + Math.round( y / SRC_H * 255 ) + ',' + bar + ')';
+				g.fillRect( x, y, 1, 4 );
+			}
+		}
+
+		return c;
+	}
+
+	function redAt( x ) {
+		return Math.round( x / SRC_W * 255 );
+	}
+
+	// ⌀15 cm: 1772 px inside the cut line, 1843 px including 3 mm of bleed.
+	var FORMAT = {
+		shape: 'round',
+		targetW: 1843,
+		targetH: 1843,
+		trimW: 1772,
+		trimH: 1772
+	};
+
+	var photo   = sourcePhoto();
+	var frame   = document.getElementById( 'frame' );
+	var preview = document.getElementById( 'preview' );
+
+	if ( ! window.AiCakeCropper ) {
+		check( 'cropper.js loaded', false, 'window.AiCakeCropper is undefined' );
+
+		return;
+	}
+
+	out.textContent = '';
+
+	var cropper = window.AiCakeCropper(
+		{ i18n: { notAnImage: 'not an image' } },
+		{}
+	);
+
+	cropper.mount( frame, preview );
+	cropper.setFormat( FORMAT );
+
+	photo.toBlob( function ( blob ) {
+		var file = new File( [ blob ], 'photo.png', { type: 'image/png' } );
+
+		cropper.load( file ).then( run ).catch( function ( e ) {
+			check( 'the photograph loads', false, e.message );
+			done();
+		} );
+	} );
+
+	function run() {
+		check( 'the photograph loads', true, SRC_W + 'x' + SRC_H );
+
+		var url = cropper.exportCrop();
+
+		check( 'a crop is exported', 0 === url.indexOf( 'data:image/jpeg' ) );
+
+		var shot = document.getElementById( 'shot' );
+		var img  = new Image();
+
+		img.onload = function () {
+			shot.width  = 240;
+			shot.height = 240;
+			shot.getContext( '2d' ).drawImage( img, 0, 0, 240, 240 );
+
+			measure( img );
+			done();
+		};
+
+		img.src = url;
+	}
+
+	function measure( img ) {
+		check(
+			'the export is the bled size, not the trim size',
+			img.width === FORMAT.targetW && img.height === FORMAT.targetH,
+			img.width + 'x' + img.height
+		);
+
+		var c = document.createElement( 'canvas' );
+
+		c.width  = img.width;
+		c.height = img.height;
+
+		var g = c.getContext( '2d' );
+		g.drawImage( img, 0, 0 );
+
+		function red( x, y ) {
+			return g.getImageData( x, y, 1, 1 ).data[ 0 ];
+		}
+
+		/*
+		 * What the customer was shown: the selection, in the photograph's own
+		 * pixels. Recomputed here from the frame rather than read out of the
+		 * cropper, because the cropper's own numbers are the thing under test.
+		 */
+		var k     = SRC_W / frame.width;
+		var halfW = ( frame.width / 2 );
+
+		// `reset()` centres the selection and opens it as wide as it will go,
+		// so its centre is the middle of the photograph.
+		var centreRed = redAt( SRC_W / 2 );
+
+		check(
+			'the middle of the crop is the middle of what was framed',
+			Math.abs( red( img.width / 2, img.height / 2 ) - centreRed ) <= 3,
+			red( img.width / 2, img.height / 2 ) + ' vs ' + centreRed
+		);
+
+		/*
+		 * **The assertion this file exists for.**
+		 *
+		 * The cut line sits (target − trim) / 2 = 35.5 px inside the exported
+		 * image. The colour there must be the colour at the left edge of the
+		 * outline the customer dragged — that is what "what you framed is what
+		 * survives the blade" means, in a number.
+		 */
+		var inset  = ( FORMAT.targetW - FORMAT.trimW ) / 2;
+		var selLeft = ( frame.width / 2 ) - ( selectionWidth() / 2 );
+		var wantRed = redAt( selLeft * k );
+		var gotRed  = red( Math.round( inset ), Math.round( img.height / 2 ) );
+
+		check(
+			'the cut line falls on the edge of the selection',
+			Math.abs( gotRed - wantRed ) <= 3,
+			gotRed + ' vs ' + wantRed
+		);
+
+		/*
+		 * And the whole row agrees, not just that one pixel.
+		 *
+		 * Two candidate crops are rendered here from the original photograph:
+		 * the one this code should have produced — the selection plus its bleed
+		 * — and the one it produced before D-070, where the selection *was* the
+		 * exported image. The export is compared against both.
+		 *
+		 * This is what makes the assertion above more than decoration. A single
+		 * sample can be right by luck; a row of 16 px bars misaligned by 4%
+		 * cannot be. If the old mapping scored as well as the new one, there
+		 * would be nothing here worth checking.
+		 */
+		var selW  = selectionWidth() * k;
+		var selX  = selLeft * k;
+		var scale = FORMAT.targetW / FORMAT.trimW;
+
+		var correct = reference( selX - ( selW * ( scale - 1 ) / 2 ), selW * scale );
+		var naive   = reference( selX, selW );
+
+		var row     = g.getImageData( 0, Math.round( img.height / 2 ), img.width, 1 ).data;
+		var mine    = deviation( row, correct );
+		var theirs  = deviation( row, naive );
+
+		check(
+			'the whole cut circle matches the framing, bar for bar',
+			mine < 40,
+			'mean blue error ' + mine.toFixed( 1 )
+		);
+
+		check(
+			'and the pre-D-070 mapping does not',
+			theirs > mine * 2,
+			theirs.toFixed( 1 ) + ' vs ' + mine.toFixed( 1 )
+		);
+
+		/*
+		 * No white bite. The bleed is read from the photograph around the
+		 * selection, so the selection can never be so large or so close to an
+		 * edge that the bleed has to be invented — a transparent or white ring
+		 * in the bleed is a white sliver on the cut edge, which is the exact
+		 * thing bleed exists to prevent.
+		 */
+		var corners = [
+			[ 4, img.height / 2 ],
+			[ img.width - 5, img.height / 2 ],
+			[ img.width / 2, 4 ],
+			[ img.width / 2, img.height - 5 ]
+		];
+
+		var blank = corners.filter( function ( at ) {
+			var px = g.getImageData( Math.round( at[ 0 ] ), Math.round( at[ 1 ] ), 1, 1 ).data;
+
+			// The fill under the photograph is white; the photograph never is.
+			return px[ 0 ] > 250 && px[ 1 ] > 250 && px[ 2 ] > 250;
+		} );
+
+		check( 'the bleed is real picture, not invented white', 0 === blank.length, blank.length + ' blank edges' );
+
+		/*
+		 * The preview panel is the promise. It draws the selection, so its
+		 * centre has to be the same colour as the middle of the printed piece —
+		 * one number linking what is on screen to what comes off the printer.
+		 */
+		var pg = preview.getContext( '2d' );
+		var pc = pg.getImageData( Math.round( preview.width / 2 ), Math.round( preview.height / 2 ), 1, 1 ).data;
+
+		check(
+			'the preview shows the same picture as the print',
+			Math.abs( pc[ 0 ] - centreRed ) <= 3,
+			pc[ 0 ] + ' vs ' + centreRed
+		);
+	}
+
+	/**
+	 * One candidate crop, drawn from the original photograph at export size.
+	 *
+	 * @param {number} x Left edge in source pixels.
+	 * @param {number} w Width in source pixels.
+	 */
+	function reference( x, w ) {
+		var c = document.createElement( 'canvas' );
+
+		c.width  = FORMAT.targetW;
+		c.height = FORMAT.targetH;
+
+		var g = c.getContext( '2d' );
+
+		g.fillStyle = '#ffffff';
+		g.fillRect( 0, 0, c.width, c.height );
+		g.drawImage( photo, x, 0, w, w * ( FORMAT.targetH / FORMAT.targetW ), 0, 0, c.width, c.height );
+
+		return g.getImageData( 0, Math.round( c.height / 2 ), c.width, 1 ).data;
+	}
+
+	/**
+	 * Mean absolute blue-channel difference between two rows, inside the cut
+	 * line only — the bleed is not what is being compared.
+	 *
+	 * @param {Uint8ClampedArray} a One row.
+	 * @param {Uint8ClampedArray} b The other.
+	 */
+	function deviation( a, b ) {
+		var inset = ( FORMAT.targetW - FORMAT.trimW ) / 2;
+		var from  = Math.round( inset + ( FORMAT.trimW * 0.15 ) );
+		var to    = Math.round( inset + ( FORMAT.trimW * 0.85 ) );
+		var sum   = 0;
+
+		for ( var x = from; x < to; x++ ) {
+			sum += Math.abs( a[ ( x * 4 ) + 2 ] - b[ ( x * 4 ) + 2 ] );
+		}
+
+		return sum / ( to - from );
+	}
+
+	/**
+	 * The selection width the cropper settled on, measured off the frame.
+	 *
+	 * `reset()` opens it as wide as the photograph allows *once the bleed is
+	 * accounted for*, which is exactly the rule being verified — so it is
+	 * derived here independently rather than asked for.
+	 */
+	function selectionWidth() {
+		var bleedScale = FORMAT.targetW / FORMAT.trimW;
+
+		return Math.min( frame.width, frame.height ) / bleedScale;
+	}
+
+	function done() {
+		var total = document.getElementById( 'total' );
+
+		total.className = fail ? 'fail' : 'ok';
+		total.textContent = pass + ' passed, ' + fail + ' failed';
+		document.title = ( fail ? 'FAIL ' : 'OK ' ) + pass + '/' + ( pass + fail );
+	}
+}() );
+</script>

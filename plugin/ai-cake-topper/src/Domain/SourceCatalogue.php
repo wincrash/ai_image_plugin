@@ -113,15 +113,81 @@ final class SourceCatalogue {
 	/**
 	 * Does this source produce a generated image the shop paid for?
 	 *
-	 * The €1 AI surcharge keys off this and nothing else. It is a function of
-	 * the source rather than a stored flag, because a flag about whether money
-	 * was spent is exactly the thing a browser must not be trusted with
-	 * (D-044, D-058).
+	 * This is about **fal's invoice**, not about the customer's price. Since
+	 * D-071 every source can carry a surcharge of its own, so the two questions
+	 * have come apart: `search` costs the shop nothing and may still be priced
+	 * above `none` if that is how the shop wants to sell it. This one keeps
+	 * answering the first question — who spends money when the button is
+	 * pressed — and the budget guard is its only caller.
+	 *
+	 * A function of the source rather than a stored flag, because a flag about
+	 * whether money was spent is exactly the thing a browser must not be
+	 * trusted with (D-044, D-058).
 	 *
 	 * @param string $source One of the constants.
 	 */
 	public static function costs_generation( string $source ): bool {
 		return self::AI === $source;
+	}
+
+	/**
+	 * The settings key holding what this source is called in Fields Factory.
+	 *
+	 * @param string $source One of the constants.
+	 */
+	public static function value_key( string $source ): string {
+		return 'source_value_' . $source;
+	}
+
+	/**
+	 * The Fields Factory field that prices where the picture came from.
+	 *
+	 * A setting, not a constant, for the same reason the four values are
+	 * (D-071): WCFF resolves fields **by the label the admin typed**, and the
+	 * label is also what the customer reads beside the answer on their order.
+	 * So it is Ruslan's wording, and getting it wrong has to be fixable in
+	 * wp-admin rather than in a deploy. `docs/wizard-v2.md` calls this field
+	 * „Piešinio tipas"; the shipped default is „Paveikslėlio tipas", which
+	 * matches the product's own name. Either is one settings box away.
+	 */
+	public const DEFAULT_FIELD_LABEL = 'Paveikslėlio tipas';
+
+	/**
+	 * What that field is called in this shop.
+	 *
+	 * @param Settings $settings Configuration.
+	 */
+	public static function field_label( Settings $settings ): string {
+		$label = trim( (string) $settings->get( 'source_field_label', '' ) );
+
+		return '' === $label ? self::DEFAULT_FIELD_LABEL : $label;
+	}
+
+	/**
+	 * What the shop calls this source where it is priced (D-071).
+	 *
+	 * The string posted as the „Paveikslėlio tipas" radio, which WCFF matches
+	 * its price rule against and then writes on the order and into the e-mail.
+	 * So it is both a key and a sentence the customer reads, which is why it
+	 * lives in settings and not in a `__()` call: a translation layer between
+	 * our value and the shop's typed choice is a mismatch waiting to happen,
+	 * and the mismatch is silent — base price, and nothing on the order.
+	 *
+	 * Falls back to the source key rather than to an empty string. A field
+	 * whose choices nobody configured then shows `upload` on the order, which
+	 * is wrong in a way somebody notices, instead of showing nothing at all.
+	 *
+	 * @param string   $source   One of the constants.
+	 * @param Settings $settings Configuration.
+	 */
+	public static function field_value( string $source, Settings $settings ): string {
+		if ( ! self::known( $source ) ) {
+			return '';
+		}
+
+		$value = trim( (string) $settings->get( self::value_key( $source ), '' ) );
+
+		return '' === $value ? $source : $value;
 	}
 
 	/**

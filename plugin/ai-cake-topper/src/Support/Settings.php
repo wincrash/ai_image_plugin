@@ -130,6 +130,30 @@ class Settings {
 			'source_search'        => false,
 
 			/*
+			 * What each source is **called** in the Fields Factory field that
+			 * prices it (D-071).
+			 *
+			 * These are not decoration. WCFF stores a radio's posted value
+			 * verbatim as `user_val`, and that is the string it matches its
+			 * price rules against, shows in the cart, writes on the order and
+			 * puts in the customer's e-mail. So each of these has to be exactly
+			 * one of the choices typed into „Paveikslėlio tipas" — a phrase
+			 * that is one space or one letter different prices at base and says
+			 * nothing on the order, silently.
+			 *
+			 * Settings rather than constants for exactly that reason: the shop
+			 * owns the wording *and* the money (D-058), and when the two ends
+			 * disagree it has to be fixable in wp-admin rather than in a deploy.
+			 * The settings screen resolves each one against the field's real
+			 * choices and says which ones matched.
+			 */
+			'source_field_label'   => 'Paveikslėlio tipas',
+			'source_value_none'    => 'Tik užrašas',
+			'source_value_upload'  => 'Mano nuotrauka',
+			'source_value_ai'      => 'Sukurta su AI',
+			'source_value_search'  => 'Rasta internete',
+
+			/*
 			 * Retention — D-061. Storage grows with every generation, bought or
 			 * not, and production is a managed host with no shell.
 			 *

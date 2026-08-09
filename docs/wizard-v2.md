@@ -235,9 +235,19 @@ everything, and Ruslan edits amounts in wp-admin where he edits every other pric
 | Field | Options | Today |
 |---|---|---|
 | „Lakšto tipas" | krakmolo / storas / cukrinis | +0 / +1,00 / +1,50 — exists |
-| **„Piešinio tipas"** (new) | `none` / `upload` / `ai` / `search` | **amounts are Ruslan's** |
+| **„Paveikslėlio tipas"** | „Tik užrašas" / „Mano nuotrauka" / „Sukurta su AI" / „Rasta internete" | **built (D-071); amounts are Ruslan's** |
 
-This replaces today's binary „AI paveikslėlis: taip/ne" field with a four-option one.
+This replaces today's binary „AI paveikslėlis: taip/ne" field with a four-option one. **Built on
+2026-08-09 — D-071.** Two details the plan did not anticipate, both from reading WCFF rather than
+guessing at it:
+
+- **The posted value is the sentence the customer reads.** A radio stores its value verbatim as
+  `user_val`, and that is what appears in the cart, on the order and in the e-mail — so the four
+  values are Lithuanian phrases, not `none`/`upload`/`ai`/`search`.
+- **Those phrases, and the field label, are settings.** WCFF matches its price rules against the
+  string and resolves the field by its label, so both are the shop's wording and a mismatch is
+  silent — base price, nothing on the order. The settings screen resolves all four against the
+  field's real choices and reports what it found.
 
 **The value is derived server-side from the design's `source` and never posted.** That is D-044's
 control and the reason it exists: *a posted flag about whether money was spent can never be

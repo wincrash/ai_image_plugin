@@ -189,6 +189,26 @@ class PrintSpec {
 	}
 
 	/**
+	 * The **finished** size of one piece in pixels — inside the cut line.
+	 *
+	 * `target_px()` is this plus the bleed, and the two are 3 mm apart on every
+	 * edge. That difference is invisible on a screen and decisive on a sheet:
+	 * the cropper frames what the customer is buying, so it has to frame *this*
+	 * and take the bleed from the photograph around it (D-070). Framing the
+	 * bled size instead quietly cuts 3 mm off every edge of what they chose.
+	 *
+	 * @return array{0:int, 1:int}
+	 */
+	public function trim_px(): array {
+		list( $w, $h ) = $this->trim_mm();
+
+		return array(
+			Mm::to_px( $w, $this->dpi ),
+			Mm::to_px( $h, $this->dpi ),
+		);
+	}
+
+	/**
 	 * The aspect ratio to ask the image provider for.
 	 *
 	 * Round and square both take 1:1. A4 is 1:1.414 and no model offers it, so

@@ -40,13 +40,6 @@
 		type: '',
 		mm: null,
 		sheet: config.sheets.length ? config.sheets[ 0 ].value : '',
-		/*
-		 * Whether AI was used, which is what the €1 surcharge keys off. Set
-		 * here for the running total only — the server derives its own answer
-		 * from whether the design actually has a generated image, because a
-		 * posted flag about whether money was spent cannot be trusted.
-		 */
-		ai: 'ne',
 		design: null,
 		/*
 		 * The format the chosen design was generated for, which is not always
@@ -94,6 +87,28 @@
 	}
 
 	/* ----------------------------------------------------------- sources */
+
+	/**
+	 * Which price to quote right now.
+	 *
+	 * Before a source is picked there is no answer, and the honest stand-in is
+	 * the cheapest thing on offer — `SourceCatalogue::all()` is ordered cheapest
+	 * first and `config.sources` inherits that order, so the first available
+	 * card is it. The alternative is a blank price on the first screen, which
+	 * reads as broken rather than as undecided.
+	 *
+	 * It can only move upward from there, which is the right direction for a
+	 * figure shown before a choice is made.
+	 */
+	function priceKey() {
+		var source = state.source;
+
+		if ( '' === source && config.sources.length ) {
+			source = config.sources[ 0 ].value;
+		}
+
+		return state.sheet + '|' + source;
+	}
 
 	/**
 	 * The source the customer picked, or null.
@@ -321,7 +336,15 @@
 			pieces.textContent = '';
 		}
 
-		var entry = config.prices[ state.sheet + '|' + state.ai ];
+		/*
+		 * Priced by where the picture comes from, not by whether a generation
+		 * has happened yet (D-071). The customer picks that on this very step,
+		 * so the total is right from the moment they choose rather than moving
+		 * under them later — and the server derives its own answer from the
+		 * design row at add-to-cart, because a posted claim about which of four
+		 * prices applies cannot be trusted.
+		 */
+		var entry = config.prices[ priceKey() ];
 
 		if ( entry ) {
 			price.innerHTML = entry.html;
@@ -433,12 +456,6 @@
 		state.design = design.id;
 		state.designLayout = design.layoutKey || '';
 
-		/*
-		 * A generated image is what makes the surcharge apply, so the running
-		 * total moves the moment one exists rather than at the cart.
-		 */
-		state.ai = 'taip';
-
 		if ( step2.preview ) { step2.preview.src = design.url; }
 
 		reveal( step2.stage, true );
@@ -470,7 +487,6 @@
 
 		state.design = null;
 		state.designLayout = null;
-		state.ai = 'ne';
 		mountedFor = null;
 
 		if ( step2.preview ) { step2.preview.removeAttribute( 'src' ); }
@@ -1059,7 +1075,7 @@
 		}
 
 		if ( step4.price ) {
-			var entry = config.prices[ state.sheet + '|' + state.ai ];
+			var entry = config.prices[ priceKey() ];
 
 			step4.price.innerHTML = entry ? entry.html : '';
 		}
@@ -1071,7 +1087,10 @@
 		 * therefore unsubmitted, which is the safe direction: the customer pays
 		 * the base price rather than the browser inventing a key.
 		 *
-		 * The AI field is not here on purpose. `CartIntegration` derives it.
+		 * The „Paveikslėlio tipas" field is not here on purpose.
+		 * `CartIntegration` derives it from the design row and the disk — a
+		 * customer choosing their own price is exactly what posting it would
+		 * allow (D-071).
 		 */
 		if ( step4.sheetField && config.sheetField ) {
 			step4.sheetField.name = config.sheetField;

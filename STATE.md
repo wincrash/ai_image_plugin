@@ -9,47 +9,77 @@ to read the code that ships). Phases 1–7 built, Phase 8 almost entirely cut (D
 ## 👋 Start here — where things actually are, 2026-08-09
 
 **Wizard v2 is complete and working on the testbed. All four sources go end to end to a real cart
-line.** `docs/wizard-v2.md` is the design; **D-054 → D-069** are the decisions. Steps 0–7 of §14
+line.** `docs/wizard-v2.md` is the design; **D-054 → D-071** are the decisions. Steps 0–7 of §14
 are all done.
 
 | Source | State |
 |---|---|
-| `none` — text only | works, no AI fee, cart line at 3,50 € |
+| `none` — text only | works, cart line at base |
 | `upload` — the customer's photo | works, whole photo + movable selection + live preview (D-069) |
-| `ai` — fal generation | works, cart line at 4,50 € with „AI paveikslėlis: taip" |
+| `ai` — fal generation | works, cart line at base + the AI price |
 | `search` — Openverse | works, **off by default**, commercial+modification licences only (D-067) |
 
-**Twelve suites, all green:** `tests/run.php` 368 · `rest-check.sh` 16 · `wizard-check` 61 ·
-`text-check` 37 · `wcff-check` 37 · `order-check` 63 · `upload-check` 18 · `search-check` 18 ·
-`retention-check` 11 · `proof-check` 18 · `settings-check` 35 · `moderation-check` 34.
+**Thirteen suites, all green:** `tests/run.php` 368 · `rest-check.sh` 16 · `wizard-check` 63 ·
+`text-check` 37 · `wcff-check` 47 · `order-check` 65 · `upload-check` 18 · `search-check` 18 ·
+`retention-check` 11 · `proof-check` 18 · `settings-check` 45 · `moderation-check` 34 ·
+**`crop-check.html` 9** (in a browser — see D-070).
+
+### 🔴 The print geometry moved on 2026-08-09 — D-070
+
+**Every print file is now a full A4 page**, mounted at the same origin `ProofSheet` uses. It was
+not: an order rendered only the *usable* area (210 × 282 mm), or for a single topper a bare
+156 mm square, and the print dialog decided where on the page that went. "Actual size" centred it
+— 7.5 mm off the proof; "fit to page" scaled it 5.3% — a ⌀45 mm cupcake at 47.4 mm. Both look
+correct on screen, which is why it reached a printed sheet before anyone noticed.
+
+**And the cropper's selection is now the cut line, not the bled edge.** The outer 3 mm of whatever
+a customer framed used to be cut away.
+
+> **What is still Ruslan's to confirm: a printed sheet.** The geometry is asserted, falsified two
+> ways, and matches the proof pixel for pixel — but D-040's standard is paper, and this has not
+> been on paper yet. Print one order file and one proof of the same format and hold them together.
+
+### 🔴 Pricing is per source now — D-071
+
+„AI paveikslėlis" (yes/no) is replaced by **„Paveikslėlio tipas"**, one radio with four answers,
+each with its own WC Fields Factory price rule. The plugin still prices nothing; it derives which
+of the four is true from the design row and the disk and overwrites what the browser posted.
+
+**Ruslan has to create that field in WC Fields Factory before any of it charges anything** — see
+"What is waiting on Ruslan" below. Until he does, every type sells at the base price, and the
+settings screen says so.
 
 ### 🔴 The rule this session cost the most to learn
 
 **Test logged out, in a real browser, before believing anything.** Ruslan, 2026-08-09: *"most users
 are firstly not logged or as guest, they create account on checkout only."*
 
-Three separate bugs this session were **invisible to a logged-in tester and invisible to every
-committed suite**, because a logged-in page carries a printed nonce and the suites run server-side
-with their own:
+Three bugs that session were **invisible to a logged-in tester and invisible to every committed
+suite**, because a logged-in page carries a printed nonce and the suites run server-side with
+their own: **D-063** (no anonymous customer could ever save a text layer), **D-066** (an init
+exception killed `loadSession()`, so anonymous generation 403ed), **D-068** (the cart’s hidden
+design field was written only by the AI path). None could have been caught by a suite.
 
-- **D-063** — no anonymous customer could save a text layer, ever. `/text-layer` and `/layout` went
-  out with no nonce at all.
-- **D-066** — an init exception killed `loadSession()`, so anonymous generation 403'd.
-- **D-068** — the cart's hidden design field was only filled by the AI path, so three of the four
-  sources added nothing to the cart.
-
-None of them could have been caught by a suite. **A logged-out browser run, all the way to a cart
-line, is a required step before anything ships.**
+**And D-070 adds the other half of the same rule: some things are only true on paper.** Twelve
+green suites said the print geometry was right. It was right about everything except the size of
+the page it was drawn on, which no assertion asked about until a sheet came out of the printer.
 
 ### What is waiting on Ruslan
 
-1. **Every price.** The WCFF field and its rules are built; the amounts are his (D-058). Today
-   `upload`, `search` and `none` all attract no surcharge and only `ai` does.
-2. **Attribution for search results** — most CC licences require crediting the creator. Licence,
+1. **The „Paveikslėlio tipas" field, in WC Fields Factory.** D-071 built the machinery; the field
+   itself is admin work, and until it exists every picture type sells at the base price. Add a
+   **radio** to the `ai_image` group, label it exactly „Paveikslėlio tipas", give it these four
+   choices — „Tik užrašas", „Mano nuotrauka", „Sukurta su AI", „Rasta internete" — and set a
+   price rule per choice. The names and the field label are all editable under **AI Cake Topper →
+   Nustatymai → Paveikslėlio tipas ir kaina**, which also reports which ones it matched. The old
+   „AI paveikslėlis" field can then be deleted.
+2. **Every price.** The amounts are his (D-058), one per choice above plus the sheet types.
+3. **Attribution for search results** — most CC licences require crediting the creator. Licence,
    creator, source and title are stored on every design so whatever he decides can be honoured
    (D-067).
-3. **A look at the format grid** — he asked to review the representation once built (D-055).
-4. **An iPhone.** Still the one unmeasured thing that matters — see the canvas section below.
+4. **A look at the format grid** — he asked to review the representation once built (D-055).
+5. **A printed sheet against the proof** — D-070's geometry has not been on paper yet.
+6. **An iPhone.** Still the one unmeasured thing that matters — see the canvas section below.
 
 ### Known open, not blocking
 

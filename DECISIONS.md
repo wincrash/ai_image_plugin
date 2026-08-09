@@ -3125,4 +3125,135 @@ puzzle.
 > screen. `min-width: 0` is what actually lets it shrink. Side by side is the
 > arrangement; without that one line there was no arrangement.
 
-<!-- Next: D-070 -->
+---
+
+### D-070 · Every print file is a page. The crop is the cut line.
+**2026-08-09** · Ruslan · **found by printing it** · supersedes the placement half of D-037 ·
+affects `Pipeline/FulfilPipeline.php`, `Imaging/SheetLayout.php`, `assets/js/cropper.js`
+
+Ruslan uploaded a photograph, cropped it round, ordered it, printed it, and reported two things:
+
+> *"the resulting image of order is different compared with our template, i mean location of
+> circles on paper, next also my cropped uploaded image is outside of cutting line."*
+
+They are two faults, and the first one is ours in a way the code had already written down.
+
+#### 1. The print file was not a page
+
+Measured off the real order files on the testbed, not reasoned about:
+
+| File | Pixels | Physical |
+|---|---|---|
+| `ProofSheet` — the template he checked in D-040 | 2481 × 3508 | **210 × 297 mm, full A4** |
+| a 24-up cupcake order | 2481 × 3331 | 210 × **282** mm |
+| a ⌀15 cm topper order | 1843 × 1843 | **156 × 156 mm** |
+
+The proof is a page. The print file was only the *usable area* — A4 less the 15 mm of bare icing —
+and for a single topper it was a small square. So the print dialog had to place it, and both of
+its answers are wrong:
+
+- **"Actual size"** centres it, moving every circle **7.5 mm** down the page against the proof.
+- **"Fit to page"** scales it by 297 / 282 = **5.3%**, so a ⌀45 mm cupcake prints at 47.4 mm.
+
+Both produce a file that looks perfectly correct on screen. That is why it reached a printed sheet.
+
+**The rule was already written, in `ProofSheet`'s own docblock:** *a file that is not page-sized
+has to be placed by whoever prints it, and one "fit to page" turns a 150 mm topper into a 143 mm
+one.* It cites D-033 as making every print file page-sized. The proof obeyed it; the print file
+never did, and nothing compared the two.
+
+**Fixed by mounting the finished artwork on a white A4 at the same origin the proof uses** —
+usable area at the top-left, bare strip at the bottom, which D-040 confirmed on paper is the end
+the printer actually leaves bare. A single piece goes at the centre `SheetLayout` derives for it,
+which is the same coordinate `ProofSheet` rings. **The order file now overlays the proof exactly.**
+
+Mounted **last**, after the cut lines and the text layer, and that ordering is load-bearing: the
+text layer is authored at `PrintSpec::canvas_px()` and refused if it does not match, so enlarging
+the canvas any earlier would make every stored layer the wrong size. Nothing else in the system
+learns a new coordinate — the editor, the endpoints and the stored layers all still work in
+usable-area coordinates.
+
+> **D-037 said placement inside the page does not matter.** That was Ruslan's answer when the
+> question was *may the artwork sit anywhere*, and it was right then. It stopped being right when
+> there was a proof to line up against: he cuts by the printed black line, and a file the driver
+> may move or scale cannot be lined up with anything. Size was the invariant; now position is too.
+
+#### 2. The crop framed the bleed, not the cut
+
+> *"in cropper we see the preview, so i want that exact such would be in final printed circle."*
+
+The cropper exported at `target_px()` — the piece **plus** 3 mm of bleed on every edge — while the
+circle the customer dragged, and the preview beside it, showed that whole bled area. So the outer
+3 mm of everything anyone framed was cut away: 4% of the diameter, invisible on a screen, and
+findable only on a printed sheet.
+
+**The selection is now the trim line**, and the bleed is read from the photograph *around* it. Two
+rectangles, one multiplication apart, so the printed cut line lands exactly on the outline the
+customer was shown. The size limit moved with it — the **bled** box is what must fit inside the
+photograph now, because inventing the bleed means white in it, and white in the bleed is the
+sliver on the cut edge that bleed exists to prevent.
+
+#### How each half is verified
+
+`order-check` gains four assertions: both files are full A4, and the cut line of each is where the
+proof draws it. Falsified twice — skipping the mount turns exactly those four red; mounting it
+*centred* instead turns five red, including two of D-033's existing text-layer assertions, which
+is how the top-left origin is shown to be load-bearing rather than arbitrary.
+
+The crop is browser-only and no PHP suite can reach it: `upload-check` proves the server accepts a
+1843 px JPEG, not **which part of the photograph** it came from. So `tools/crop-check.html` is new
+— it drives the deployed `cropper.js` against a photograph whose colour encodes position, and
+compares the export against two candidate crops. The correct mapping scores a mean error of 3.5;
+the pre-D-070 mapping scores 93.4. **9 assertions, run in Chrome against the testbed.**
+
+---
+
+### D-071 · The picture type is a price, not a yes/no
+**2026-08-09** · Ruslan · **agreed and built** · replaces the „AI paveikslėlis" field ·
+affects `Domain/SourceCatalogue.php`, `WooCommerce/CartIntegration.php`, `Frontend/Wizard.php`
+
+> *"it should not answer only yes/no, but the type itself, like textonly, custom upload, ai
+> generated, ai search, and on each fixed type i would able add some my + price if i want. it
+> gives me more flexibility on the marketing type."*
+
+The Fields Factory field becomes one radio with four answers — one per source — each carrying its
+own price rule. `docs/wizard-v2.md` had already anticipated this field; this is it, built.
+
+**The plugin still prices nothing** (D-036). It posts a value; WCFF matches it, charges it,
+displays it in the cart, writes it on the order and puts it in the e-mail.
+
+#### What changed about the derivation
+
+`CartIntegration` used to answer one bit: *was AI used?* It now answers which of four, from the
+design row and the disk, and overwrites whatever the browser posted. Everything unproven settles
+to the text-only value — a design with no picture **is** a text-only decoration, and it is also
+the cheapest answer, so the failure direction can never overcharge anyone.
+
+That the fee is derived used to be a single bit, so "cannot dodge" and "cannot invent" covered it.
+With four prices there is a third lie: **passing one paid type off as another**, which every
+previous assertion would have missed. It has its own line in `wcff-check` now.
+
+#### The wording is the shop's, and so is the field's name
+
+WCFF stores a radio's posted value **verbatim** as `user_val` — read from `wcff_persister.php`,
+not assumed — so the string the plugin posts is also the sentence the customer reads on their
+order. And WCFF resolves fields by the label the admin typed. Both are therefore Ruslan's text,
+and both live in settings rather than in constants: „Paveikslėlio tipas" and the four answers ship
+as defaults and are editable in wp-admin.
+
+**Because this seam fails silently, it is reported rather than trusted.** A value one letter away
+from the typed choice matches no rule, charges base, and says nothing on the order — nothing
+throws and nothing logs. So the settings screen resolves each of the four against the field's real
+choices and prints what it found, and `has_choice()` exists because `surcharge()` cannot answer it:
+a choice with no price rule and a choice that does not exist both add 0,00 €.
+
+> **`costs_generation()` did not change and must not.** It answers *who spends money when the
+> button is pressed* — fal's invoice — and the budget guard is its only caller. The customer's
+> price is now a separate question: `search` costs the shop nothing and may still be sold above
+> `none`. The two were one function while there was one surcharge; conflating them again would
+> put the budget guard in the pricing business.
+
+**Suites:** `wcff-check` 37 → **47**, `settings-check` 35 → **45**, `wizard-check` 61 → **63**.
+
+<!-- Next: D-072 -->
+

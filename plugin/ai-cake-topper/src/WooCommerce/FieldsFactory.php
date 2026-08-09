@@ -134,6 +134,64 @@ class FieldsFactory {
 	}
 
 	/**
+	 * Every answer a field offers, as posted values.
+	 *
+	 * WCFF stores choices as `value|label;value|label;`, and the shop's own
+	 * fields are written with the two the same — „Cukrinis lakštas" is both.
+	 * Only the value half is returned, because the value is what gets posted,
+	 * priced, and written on the order.
+	 *
+	 * @param string $label      Field label.
+	 * @param string $group_slug Group post slug.
+	 *
+	 * @return string[]
+	 */
+	public function choices( string $label, string $group_slug = self::GROUP_SLUG ): array {
+		$key    = $this->field_key( $label, $group_slug );
+		$fields = $this->fields( $group_slug );
+
+		if ( null === $key || ! isset( $fields[ $key ] ) ) {
+			return array();
+		}
+
+		$values = array();
+
+		foreach ( explode( ';', (string) ( $fields[ $key ]['choices'] ?? '' ) ) as $choice ) {
+			$parts = explode( '|', $choice, 2 );
+			$value = trim( $parts[0] );
+
+			if ( '' !== $value ) {
+				$values[] = $value;
+			}
+		}
+
+		return $values;
+	}
+
+	/**
+	 * Does this field actually offer this answer?
+	 *
+	 * Asked so that a value which matches nothing can be *reported* rather than
+	 * silently priced at zero. `surcharge()` cannot answer it: a choice with no
+	 * price rule and a choice that does not exist both add 0,00 € (D-071).
+	 *
+	 * @param string $label      Field label.
+	 * @param string $value      The value that would be posted.
+	 * @param string $group_slug Group post slug.
+	 */
+	public function has_choice( string $label, string $value, string $group_slug = self::GROUP_SLUG ): bool {
+		$wanted = $this->normalise( $value );
+
+		foreach ( $this->choices( $label, $group_slug ) as $choice ) {
+			if ( $this->normalise( $choice ) === $wanted ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * What a field's price rules add, for a given chosen value.
 	 *
 	 * Read-only, and *not* used to charge anything — WCFF does that. This

@@ -74,7 +74,9 @@ Triggered by the real `woocommerce_order_status_processing` transition. One Acti
 | 3 | Upscale, **only if the SKU needs it** | **PHP + GD bicubic** | free |
 | 4 | Bleed, shape mask, text at **300 DPI** | PHP + GD | free |
 | 5 | Imposition — N-up for cupcake sheets | PHP + GD | free |
-| 6 | Flatten on white, PNG with a correct `pHYs` chunk | PHP + GD | free |
+| 6 | Flatten on white, draw the cut lines | PHP + GD | free |
+| 6b | **Mount on a full A4 page** at the proof's origin (D-070) | PHP + GD | free |
+| 6c | PNG with a correct `pHYs` chunk | PHP + GD | free |
 | 7 | Archive: `sessions/` → `orders/`, DB repoint, `.json` sidecar | PHP | free |
 | 8 | Status → `aicake-approval` once **every** item has a file | PHP | free |
 
@@ -83,6 +85,10 @@ this is pixels and arithmetic. That is why a retry is safe and why the reprint b
 
 Two things worth knowing:
 
+- **The file that comes out is A4, 2481 × 3508 at 300 DPI, and it is meant to be printed at
+  100%** — never "fit to page", which would scale it 5.3% and turn a ⌀45 mm cupcake into a
+  47.4 mm one. It overlays the format's proof sheet exactly, so the printed cut lines land where
+  the proof says (D-070).
 - **Idempotency is the print file itself.** If the item already has a readable print file, the
   job returns without re-rendering. That is what makes the retry button, a duplicated status
   transition and an AS sweep all safe.

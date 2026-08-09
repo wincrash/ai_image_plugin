@@ -364,6 +364,87 @@ if ( ! $user ) {
 	aicake_check( 'the shop\'s own reset time is put back', $epoch_had, ( new Settings() )->get( 'throttle_epoch', '' ) );
 }
 
+/* ------------------------------- D-071: the source-to-price mapping */
+
+echo "
+== what each picture type is called where it is priced
+";
+
+/*
+ * The seam this whole feature balances on. The plugin posts a string, WC Fields
+ * Factory matches it against its own choices and charges. When the two disagree
+ * nothing throws — the customer simply pays the base price and the order says
+ * nothing about what they bought. So the mapping is asserted here, and the
+ * settings screen reports it live, because neither a log nor an exception will
+ * ever mention it.
+ */
+$factory   = new AiCake\WooCommerce\FieldsFactory();
+$live      = new Settings();
+$defaults  = Settings::defaults();
+
+foreach ( AiCake\Domain\SourceCatalogue::all() as $aicake_source ) {
+	$key = AiCake\Domain\SourceCatalogue::value_key( $aicake_source );
+
+	aicake_check(
+		sprintf( '%s ships with a name', $aicake_source ),
+		true,
+		'' !== (string) ( $defaults[ $key ] ?? '' )
+	);
+}
+
+/*
+ * Four *different* names. A copy-paste that gave two sources the same string
+ * would price them identically and be invisible in every other assertion.
+ */
+$named = array();
+
+foreach ( AiCake\Domain\SourceCatalogue::all() as $aicake_source ) {
+	$named[] = AiCake\Domain\SourceCatalogue::field_value( $aicake_source, $live );
+}
+
+aicake_check( 'and all four names are distinct', 4, count( array_unique( $named ) ) );
+
+// Whatever the shop has typed, the plugin never posts an empty string: an empty
+// setting falls back to the source key, which is wrong in a way somebody sees.
+$had_upload = (string) $live->get( AiCake\Domain\SourceCatalogue::value_key( 'upload' ), '' );
+
+$live->update( array( AiCake\Domain\SourceCatalogue::value_key( 'upload' ) => '' ) );
+
+aicake_check(
+	'an empty name never posts as empty',
+	'upload',
+	AiCake\Domain\SourceCatalogue::field_value( 'upload', new Settings() )
+);
+
+( new Settings() )->update( array( AiCake\Domain\SourceCatalogue::value_key( 'upload' ) => $had_upload ) );
+
+aicake_check( 'and the typed name is put back', $had_upload, ( new Settings() )->get( AiCake\Domain\SourceCatalogue::value_key( 'upload' ), '' ) );
+
+/*
+ * And the mismatch is detectable. `surcharge()` cannot do it — a choice with no
+ * price rule and a choice that does not exist both return 0.0 — which is the
+ * entire reason `has_choice()` was added rather than inferring it from a zero.
+ */
+if ( null !== $factory->field_key( AiCake\Domain\SourceCatalogue::field_label( $live ) ) ) {
+	aicake_check(
+		'a configured name is found in the field',
+		true,
+		$factory->has_choice( AiCake\Domain\SourceCatalogue::field_label( $live ), AiCake\Domain\SourceCatalogue::field_value( 'ai', $live ) )
+	);
+
+	aicake_check(
+		'and one letter off is not',
+		false,
+		$factory->has_choice( AiCake\Domain\SourceCatalogue::field_label( $live ), AiCake\Domain\SourceCatalogue::field_value( 'ai', $live ) . 'x' )
+	);
+
+	aicake_check(
+		'while case and stray spaces still match',
+		true,
+		$factory->has_choice( AiCake\Domain\SourceCatalogue::field_label( $live ), ' ' . mb_strtoupper( AiCake\Domain\SourceCatalogue::field_value( 'ai', $live ), 'UTF-8' ) . ' ' )
+	);
+}
+
 /* ----------------------------------------------------------------- restore */
 
 echo "\n== restore\n";

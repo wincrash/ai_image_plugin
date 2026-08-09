@@ -39,9 +39,13 @@ class ProofSheet {
 
 	/**
 	 * A4, the paper rather than the usable area.
+	 *
+	 * Aliases of `SheetLayout`'s, which is where the paper is defined now that
+	 * the print file is mounted on it too (D-070). Two classes each holding
+	 * their own 297.0 is exactly how the proof and the print came to disagree.
 	 */
-	public const PAPER_W_MM = 210.0;
-	public const PAPER_H_MM = 297.0;
+	public const PAPER_W_MM = SheetLayout::PAPER_W_MM;
+	public const PAPER_H_MM = SheetLayout::PAPER_H_MM;
 
 	private GdEngine $gd;
 

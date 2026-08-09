@@ -515,7 +515,18 @@ aicake_check( 'a design with a layer still produces a print file', true, '' !== 
 if ( is_readable( $layer_print ) ) {
 	$printed = imagecreatefrompng( $layer_print );
 
-	aicake_check( 'the print is the design format, not the product', $canvas_w, imagesx( $printed ) );
+	/*
+	 * The page, not the artwork. Since D-070 every print file is a full A4 sheet
+	 * with the usable area at the top-left, so this no longer distinguishes the
+	 * design's format from the product's — the ink assertions below do that, and
+	 * they still go red if `for_design()` is reverted, because a layer authored
+	 * at 2481 x 3331 is refused outright by a canvas built for a 15 cm topper.
+	 */
+	aicake_check(
+		'the print is a full A4 page',
+		array( AiCake\Support\Mm::to_px( 210.0 ), AiCake\Support\Mm::to_px( 297.0 ) ),
+		array( imagesx( $printed ), imagesy( $printed ) )
+	);
 
 	$at_mark = imagecolorat( $printed, $marked['cx'], $marked['cy'] );
 
@@ -623,10 +634,59 @@ echo "\ngeometry (§3)\n";
 $single_print = (string) $order->get_item( $item_ids[646] )->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT );
 $sheet_print  = (string) $order->get_item( $item_ids[649] )->get_meta( AiCake\WooCommerce\Fulfilment::META_PRINT );
 
+/*
+ * **Both files are A4, and that is the whole of D-070.**
+ *
+ * They used to be the artwork's own size — 1843 px square for a 15 cm topper,
+ * 210 x 282 mm for a sheet — which meant the print dialog decided where on the
+ * page they went. "Actual size" centres, "fit to page" scales by 5.3%, and
+ * neither lands where `ProofSheet` draws the same format. Ruslan cuts by the
+ * printed black line against a proof he has already verified on paper (D-040),
+ * so a file that is not a page is a file whose circles are somewhere else.
+ */
+$page = array( AiCake\Support\Mm::to_px( 210.0 ), AiCake\Support\Mm::to_px( 297.0 ) );
+
 if ( is_readable( $single_print ) ) {
 	$s = getimagesize( $single_print );
-	// 150 mm trim + 3 mm bleed per edge = 156 mm at 300 dpi.
-	aicake_check( '15 cm topper is 1843 px square', array( 1843, 1843 ), array( $s[0], $s[1] ) );
+
+	aicake_check( 'a single topper is a full A4 page', $page, array( $s[0], $s[1] ) );
+
+	/*
+	 * And the piece is where the proof puts it, not merely somewhere on the
+	 * page. Centring it instead would also be "A4" and would still print in the
+	 * wrong place — the assertion has to name the coordinate.
+	 *
+	 * Measured off the cut line, because that is the thing being aligned:
+	 * sample the trim circle all the way round at the centre `SheetLayout`
+	 * derived, and require ink on every sample.
+	 */
+	$plan   = AiCake\Domain\FormatCatalogue::spec( AiCake\Domain\FormatCatalogue::TYPE_CIRCLE, 150.0 )->sheet_plan();
+	$at     = $plan['centres_px'][0];
+	$radius = AiCake\Support\Mm::to_px( 150.0 ) / 2;
+	$page_image = imagecreatefrompng( $single_print );
+	$inked  = 0;
+	$taken  = 0;
+
+	for ( $deg = 0; $deg < 360; $deg += 15 ) {
+		$px = (int) round( $at['x'] + $radius * cos( deg2rad( $deg ) ) );
+		$py = (int) round( $at['y'] + $radius * sin( deg2rad( $deg ) ) );
+
+		if ( $px < 0 || $py < 0 || $px >= $page[0] || $py >= $page[1] ) {
+			continue;
+		}
+
+		++$taken;
+
+		$rgb = imagecolorat( $page_image, $px, $py );
+
+		if ( ( $rgb >> 16 & 0xFF ) < 90 && ( $rgb >> 8 & 0xFF ) < 90 && ( $rgb & 0xFF ) < 90 ) {
+			++$inked;
+		}
+	}
+
+	aicake_check( 'and its cut line is where the proof draws it', true, $taken > 20 && $inked === $taken );
+
+	imagedestroy( $page_image );
 }
 
 if ( is_readable( $sheet_print ) ) {
@@ -641,13 +701,53 @@ if ( is_readable( $sheet_print ) ) {
 	 * the usable area at all.
 	 */
 	aicake_check(
-		'24-up sheet is the usable A4 area',
+		'24-up sheet is a full A4 page',
 		array(
-			AiCake\Support\Mm::to_px( AiCake\Imaging\SheetLayout::USABLE_WIDTH_MM ),
-			AiCake\Support\Mm::to_px( AiCake\Imaging\SheetLayout::USABLE_HEIGHT_MM ),
+			AiCake\Support\Mm::to_px( AiCake\Imaging\SheetLayout::PAPER_W_MM ),
+			AiCake\Support\Mm::to_px( AiCake\Imaging\SheetLayout::PAPER_H_MM ),
 		),
 		array( $s[0], $s[1] )
 	);
+
+	/*
+	 * The 15 mm that carries no icing is *below* the artwork, not split around
+	 * it. Mounting the usable area centred instead would leave 7.5 mm of white
+	 * above the top row and push the bottom row 7.5 mm into the bare strip — a
+	 * file that passes the size assertion above and still prints half a row on
+	 * backing paper.
+	 *
+	 * Not asserted by sampling the strip, which is white either way and would be
+	 * green whatever the code did. Asserted on the first circle's **cut line**,
+	 * at the coordinate `SheetLayout` derives and `ProofSheet` rings: shift the
+	 * mount by a single millimetre and the samples fall off the ink.
+	 */
+	$page_image = imagecreatefrompng( $sheet_print );
+	$at     = AiCake\Domain\FormatCatalogue::spec( AiCake\Domain\FormatCatalogue::TYPE_CUPCAKE, 45.0 )
+		->sheet_plan()['centres_px'][0];
+	$radius = AiCake\Support\Mm::to_px( 45.0 ) / 2;
+	$inked  = 0;
+	$taken  = 0;
+
+	for ( $deg = 0; $deg < 360; $deg += 15 ) {
+		$px = (int) round( $at['x'] + $radius * cos( deg2rad( $deg ) ) );
+		$py = (int) round( $at['y'] + $radius * sin( deg2rad( $deg ) ) );
+
+		if ( $px < 0 || $py < 0 || $px >= $s[0] || $py >= $s[1] ) {
+			continue;
+		}
+
+		++$taken;
+
+		$rgb = imagecolorat( $page_image, $px, $py );
+
+		if ( ( $rgb >> 16 & 0xFF ) < 90 && ( $rgb >> 8 & 0xFF ) < 90 && ( $rgb & 0xFF ) < 90 ) {
+			++$inked;
+		}
+	}
+
+	aicake_check( 'and the top-left cupcake is where the proof draws it', true, $taken > 20 && $inked === $taken );
+
+	imagedestroy( $page_image );
 }
 
 /* -------------------------------------------------------------- sidecar */

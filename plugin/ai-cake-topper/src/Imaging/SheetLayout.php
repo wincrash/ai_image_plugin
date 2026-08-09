@@ -47,6 +47,21 @@ final class SheetLayout {
 	public const ICING_SHORTFALL_MM = 15.0;
 
 	/**
+	 * The **paper**, which is not the same thing as the usable area, and every
+	 * file that goes to a printer is this size.
+	 *
+	 * `USABLE_HEIGHT_MM` is this less `ICING_SHORTFALL_MM`. The difference is
+	 * the whole point: a file rendered at the usable size is 15 mm short of a
+	 * page, so the print dialog has to place it — and "fit to page" then scales
+	 * a ⌀45 mm circle to 47.4 mm while looking perfectly correct on screen.
+	 * D-033 said every print file is page-sized; the proof obeyed it and the
+	 * print file did not, which is how the order and the proof ended up with
+	 * their circles in different places (D-070).
+	 */
+	public const PAPER_W_MM = 210.0;
+	public const PAPER_H_MM = 297.0;
+
+	/**
 	 * Not instantiable.
 	 */
 	private function __construct() {}

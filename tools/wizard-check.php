@@ -169,19 +169,30 @@ echo "\nThe quoted price against the charged price\n";
 
 $prices = $wizard->prices( $product );
 
-aicake_check( 'a price for every sheet type and AI state', 6, count( $prices ) );
+/*
+ * Three sheet types x four picture types (D-071). The table used to be sheet x
+ * yes/no, and the count is asserted because a source silently missing from it
+ * shows up as a running total that simply stops moving.
+ */
+aicake_check( 'a price for every sheet type and picture type', 12, count( $prices ) );
 
 /*
  * The one that matters. `wcff-check.php` proves WooCommerce charges these
  * figures; this proves the wizard quotes the same ones. Two sources of truth
  * for a price is exactly how a shop ends up showing 5,00 € and taking 6,00 €.
+ *
+ * The fees are `wcff-check`'s fixture — 0 / 0,50 / 1,00 / 0,75 — so these two
+ * files agree by running against the same field rather than by both hardcoding
+ * the shop's real prices, which are Ruslan's and change without notice.
  */
 $expected = array(
-	'Krakmolo lakštas|ne'         => 3.50,
-	'Krakmolo lakštas|taip'       => 4.50,
-	'Storas krakmolo lakštas|ne'  => 4.50,
-	'Cukrinis lakštas|ne'         => 5.00,
-	'Cukrinis lakštas|taip'       => 6.00,
+	'Krakmolo lakštas|none'         => 3.50,
+	'Krakmolo lakštas|upload'       => 4.00,
+	'Krakmolo lakštas|ai'           => 4.50,
+	'Krakmolo lakštas|search'       => 4.25,
+	'Storas krakmolo lakštas|none'  => 4.50,
+	'Cukrinis lakštas|none'         => 5.00,
+	'Cukrinis lakštas|ai'           => 6.00,
 );
 
 foreach ( $expected as $key => $amount ) {

@@ -13,6 +13,7 @@ use AiCake\Domain\PrintFile;
 use AiCake\Domain\PrintSpec;
 use AiCake\Domain\TextLayer;
 use AiCake\Imaging\GdEngine;
+use AiCake\Imaging\SheetLayout;
 use AiCake\Providers\ProviderRegistry;
 use AiCake\Support\Logger;
 use AiCake\Support\Mm;
@@ -126,6 +127,8 @@ class FulfilPipeline {
 		$this->draw_cut_lines( $canvas, $spec );
 		$this->composite_layer( $canvas, $layer );
 
+		$canvas = $this->mount_on_page( $canvas, $spec );
+
 		$png = $this->images->to_png( $canvas, $spec->dpi );
 
 		$result = new PrintFile(
@@ -213,6 +216,98 @@ class FulfilPipeline {
 			// hairline while reporting success.
 			$this->images->ring( $canvas, (int) $centre['x'], (int) $centre['y'], $diameter, $black, $thick );
 		}
+	}
+
+	/**
+	 * Put the finished artwork on a page (D-070).
+	 *
+	 * **Everything above this composes the artwork; this makes it a sheet of
+	 * paper.** Without it the file is only the usable area — 210 × 282 mm for a
+	 * cupcake sheet, and a bare 156 mm square for a single ⌀15 cm topper — and
+	 * whoever prints it has to decide where on the A4 that goes. "Actual size"
+	 * centres it and shifts every circle 7.5 mm against the proof; "fit to page"
+	 * scales it by 5.3% and a ⌀45 mm cupcake comes out 47.4 mm. Both look
+	 * perfectly correct on screen, which is why this survived to a printed sheet.
+	 *
+	 * `ProofSheet` has always been full A4 with the usable area at the top-left
+	 * and the bare icing strip drawn at the bottom, and D-040 confirmed on paper
+	 * that the strip lands at the right end. So the page origin is settled, and
+	 * mounting here at the same origin makes the order file **overlay the proof
+	 * exactly** — which is what makes cutting by the printed line reliable.
+	 *
+	 * Done last, after the cut lines and the text layer, deliberately. The layer
+	 * is authored at `PrintSpec::canvas_px()` and `composite_layer()` refuses
+	 * anything else; enlarging the canvas earlier would make every text layer
+	 * the wrong size for it. Mounting a finished canvas changes no geometry that
+	 * anything else knows about — the editor, the endpoints and the stored
+	 * layers all still work in usable-area coordinates.
+	 *
+	 * @param GdImage   $canvas Finished artwork, freed if it is replaced.
+	 * @param PrintSpec $spec   Product geometry.
+	 */
+	private function mount_on_page( GdImage $canvas, PrintSpec $spec ): GdImage {
+		$page_w = Mm::to_px( SheetLayout::PAPER_W_MM, $spec->dpi );
+		$page_h = Mm::to_px( SheetLayout::PAPER_H_MM, $spec->dpi );
+
+		if ( imagesx( $canvas ) >= $page_w && imagesy( $canvas ) >= $page_h ) {
+			return $canvas;
+		}
+
+		$page = $this->images->blank( $page_w, $page_h, false );
+
+		if ( null === $page ) {
+			// Better a file that has to be placed by hand than no file at all on
+			// an order somebody has paid for. Loud, because the printed result
+			// is wrong in a way that only a ruler catches.
+			$this->logger->error(
+				'Could not allocate the print page; the file is not page-sized.',
+				array( 'page' => $page_w . 'x' . $page_h )
+			);
+
+			return $canvas;
+		}
+
+		list( $centre_x, $centre_y ) = $this->page_anchor( $canvas, $spec );
+
+		$this->images->paste( $page, $canvas, $centre_x, $centre_y );
+		$this->images->free( $canvas );
+
+		return $page;
+	}
+
+	/**
+	 * Where on the page the artwork's centre goes.
+	 *
+	 * Two cases, and both are "the same place the proof draws it".
+	 *
+	 * An imposed sheet, or the whole-A4 format, *is* the usable area: it sits at
+	 * the page's top-left, so its centre is half its own size. A single piece is
+	 * one bled circle with nothing around it, so it goes at the centre
+	 * `SheetLayout` computed for it — the same coordinate `ProofSheet` rings.
+	 * Deriving it from the plan rather than centring the piece on the page is
+	 * what keeps a ⌀15 cm order and a ⌀15 cm proof superimposable.
+	 *
+	 * @param GdImage   $canvas Finished artwork.
+	 * @param PrintSpec $spec   Product geometry.
+	 * @return array{0:int, 1:int}
+	 */
+	private function page_anchor( GdImage $canvas, PrintSpec $spec ): array {
+		$own_centre = array(
+			(int) round( imagesx( $canvas ) / 2 ),
+			(int) round( imagesy( $canvas ) / 2 ),
+		);
+
+		if ( ! $spec->is_round() || $spec->is_sheet() ) {
+			return $own_centre;
+		}
+
+		$centres = (array) ( $spec->sheet_plan()['centres_px'] ?? array() );
+
+		if ( empty( $centres ) ) {
+			return $own_centre;
+		}
+
+		return array( (int) $centres[0]['x'], (int) $centres[0]['y'] );
 	}
 
 	/**

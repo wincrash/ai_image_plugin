@@ -10,12 +10,14 @@ declare( strict_types=1 );
 namespace AiCake\Admin;
 
 use AiCake\Capabilities;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Pipeline\PromptBuilder;
 use AiCake\Queue\Dispatcher;
 use AiCake\Support\SecretStore;
 use AiCake\Support\Settings;
 use AiCake\Throttle\BudgetGuard;
 use AiCake\Throttle\RateLimiter;
+use AiCake\WooCommerce\FieldsFactory;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -79,25 +81,30 @@ class SettingsPage {
 
 	private BudgetGuard $budget;
 
+	private FieldsFactory $fields;
+
 	/**
 	 * @param Settings     $settings     Configuration.
 	 * @param Capabilities $capabilities Host report, for the diagnostics panel.
 	 * @param Dispatcher   $dispatcher   Loopback state.
 	 * @param RateLimiter  $limiter      Counters and resets.
 	 * @param BudgetGuard  $budget       Spend to date.
+	 * @param FieldsFactory $fields      Fields Factory reader, for the price panel.
 	 */
 	public function __construct(
 		Settings $settings,
 		Capabilities $capabilities,
 		Dispatcher $dispatcher,
 		RateLimiter $limiter,
-		BudgetGuard $budget
+		BudgetGuard $budget,
+		FieldsFactory $fields
 	) {
 		$this->settings     = $settings;
 		$this->capabilities = $capabilities;
 		$this->dispatcher   = $dispatcher;
 		$this->limiter      = $limiter;
 		$this->budget       = $budget;
+		$this->fields       = $fields;
 	}
 
 	/**
@@ -143,6 +150,7 @@ class SettingsPage {
 
 		$saved[] = $this->save_keys();
 		$saved[] = $this->save_limits();
+		$saved[] = $this->save_sources();
 		$saved[] = $this->save_style();
 
 		set_transient(
@@ -306,6 +314,57 @@ class SettingsPage {
 	}
 
 	/**
+	 * What each source is called in the field that prices it (D-071).
+	 *
+	 * Empty is not saved as empty. A blank box would make the plugin post
+	 * nothing, WCFF store nothing, and the order say nothing about what kind of
+	 * picture was bought — so a cleared field falls back to the shipped default,
+	 * which is at least a real answer. Nothing here is a secret and nothing is
+	 * HTML, so `sanitize_text_field()` is the whole of the validation.
+	 *
+	 * @return string A line for the notice, or '' when unchanged.
+	 */
+	private function save_sources(): string {
+		$values  = array();
+		$changed = false;
+
+		if ( isset( $_POST['source_field_label'] ) ) {
+			$posted = trim( sanitize_text_field( wp_unslash( $_POST['source_field_label'] ) ) );
+
+			$values['source_field_label'] = '' === $posted
+				? SourceCatalogue::DEFAULT_FIELD_LABEL
+				: $posted;
+
+			$changed = $values['source_field_label'] !== (string) $this->settings->get( 'source_field_label', '' );
+		}
+
+		foreach ( SourceCatalogue::all() as $source ) {
+			$key = SourceCatalogue::value_key( $source );
+
+			if ( ! isset( $_POST[ $key ] ) ) {
+				continue;
+			}
+
+			$posted = trim( sanitize_text_field( wp_unslash( $_POST[ $key ] ) ) );
+			$stored = (string) $this->settings->get( $key, '' );
+
+			$values[ $key ] = '' === $posted ? ( Settings::defaults()[ $key ] ?? $source ) : $posted;
+
+			if ( $values[ $key ] !== $stored ) {
+				$changed = true;
+			}
+		}
+
+		if ( ! $changed ) {
+			return '';
+		}
+
+		$this->settings->update( $values );
+
+		return __( 'Paveikslėlio tipų pavadinimai išsaugoti.', 'ai-cake-topper' );
+	}
+
+	/**
 	 * The house style suffix.
 	 *
 	 * @return string A line for the notice, or '' when unchanged.
@@ -404,6 +463,7 @@ class SettingsPage {
 
 		$this->render_keys();
 		$this->render_limits();
+		$this->render_sources();
 		$this->render_style();
 
 		submit_button( __( 'Išsaugoti', 'ai-cake-topper' ) );
@@ -609,6 +669,133 @@ class SettingsPage {
 		}
 
 		echo '</tbody></table>';
+	}
+
+	/**
+	 * What each source is called where it is priced, and what that costs today.
+	 *
+	 * **This screen exists because the seam is invisible when it breaks**
+	 * (D-071). The plugin does not price anything — it posts a value and WC
+	 * Fields Factory matches it against „Paveikslėlio tipas" and charges. If the
+	 * value here is one letter away from the choice typed there, WCFF matches
+	 * nothing, the customer pays the base price, and the order says nothing
+	 * about which kind of picture it was. Nothing errors and nothing logs;
+	 * a wrong price simply looks like a price.
+	 *
+	 * So each row is resolved live against the real field and reports what it
+	 * found: the surcharge if the value matched a choice, and a warning if it
+	 * did not. That turns a silent mismatch into a visible one, on the screen
+	 * where it would be fixed.
+	 */
+	private function render_sources(): void {
+		echo '<h2>' . esc_html__( 'Paveikslėlio tipas ir kaina', 'ai-cake-topper' ) . '</h2>';
+
+		$label      = $this->source_label();
+		$key        = $this->fields->field_key( $label );
+		$configured = null !== $key;
+
+		printf(
+			'<p class="description">%s</p>',
+			esc_html(
+				$configured
+					? sprintf(
+						/* translators: %s: the Fields Factory field label */
+						__( 'Kainas nustatote WC Fields Factory lauke „%s". Čia tik pasakoma, kuris atsakymas atitinka kurį paveikslėlio šaltinį — tekstas turi sutapti raidė į raidę.', 'ai-cake-topper' ),
+						$this->source_label()
+					)
+					: sprintf(
+						/* translators: %s: the Fields Factory field label */
+						__( 'Laukas „%s" dar nesukurtas WC Fields Factory grupėje. Kol jo nėra, visi tipai kainuoja vienodai — bazinę kainą.', 'ai-cake-topper' ),
+						$this->source_label()
+					)
+			)
+		);
+
+		echo '<table class="form-table" role="presentation"><tbody>';
+
+		/*
+		 * The field's own name, first, because everything under it is matched
+		 * against *this* field. WCFF has no stable id to key off — it resolves
+		 * by label — so a shop that names the field something else has nothing
+		 * to change in code, only here.
+		 */
+		printf(
+			'<tr><th scope="row"><label for="source_field_label">%1$s</label></th><td>'
+				. '<input type="text" class="regular-text" id="source_field_label" name="source_field_label" value="%2$s">'
+				. '<p class="description">%3$s</p></td></tr>',
+			esc_html__( 'Lauko pavadinimas', 'ai-cake-topper' ),
+			esc_attr( $label ),
+			esc_html__( 'Turi sutapti su WC Fields Factory lauko pavadinimu.', 'ai-cake-topper' )
+				. ' ' . ( $configured
+					? esc_html__( '✓ Toks laukas rastas.', 'ai-cake-topper' )
+					: esc_html__( '⚠ Tokio lauko nėra — kainos nepridedamos.', 'ai-cake-topper' ) )
+		);
+
+		$labels = array(
+			SourceCatalogue::NONE   => __( 'Tik užrašas', 'ai-cake-topper' ),
+			SourceCatalogue::UPLOAD => __( 'Pirkėjo nuotrauka', 'ai-cake-topper' ),
+			SourceCatalogue::AI     => __( 'AI generavimas', 'ai-cake-topper' ),
+			SourceCatalogue::SEARCH => __( 'Paieška internete', 'ai-cake-topper' ),
+		);
+
+		foreach ( $labels as $source => $label ) {
+			$value = SourceCatalogue::field_value( $source, $this->settings );
+
+			printf(
+				'<tr><th scope="row"><label for="%1$s">%2$s</label></th><td>'
+					. '<input type="text" class="regular-text" id="%1$s" name="%1$s" value="%3$s">'
+					. '<p class="description">%4$s</p></td></tr>',
+				esc_attr( SourceCatalogue::value_key( $source ) ),
+				esc_html( $label ),
+				esc_attr( $value ),
+				wp_kses_post( $this->source_price_note( $configured, $value ) )
+			);
+		}
+
+		echo '</tbody></table>';
+	}
+
+	/**
+	 * What this value resolves to in Fields Factory right now.
+	 *
+	 * @param bool   $configured Whether the field exists at all.
+	 * @param string $value      The value the plugin would post.
+	 */
+	private function source_label(): string {
+		return SourceCatalogue::field_label( $this->settings );
+	}
+
+	/**
+	 * What this value resolves to in Fields Factory right now.
+	 *
+	 * @param bool   $configured Whether the field exists at all.
+	 * @param string $value      The value the plugin would post.
+	 */
+	private function source_price_note( bool $configured, string $value ): string {
+		if ( ! $configured || '' === $value ) {
+			return '';
+		}
+
+		/*
+		 * A choice can legitimately add nothing, so "matched" and "adds 0,00 €"
+		 * are different answers and the note has to distinguish them — otherwise
+		 * the free-by-design source and the typo look identical.
+		 */
+		if ( ! $this->fields->has_choice( $this->source_label(), $value ) ) {
+			return '<strong>' . esc_html__( '⚠ Tokio atsakymo lauke nėra — bus imama tik bazinė kaina.', 'ai-cake-topper' ) . '</strong>';
+		}
+
+		$adds = $this->fields->surcharge( $this->source_label(), $value );
+
+		return sprintf(
+			/* translators: %s: formatted price the surcharge adds */
+			esc_html__( 'Prideda %s.', 'ai-cake-topper' ),
+			// This screen loads without WooCommerce — the plugin degrades to a
+			// base price rather than fataling if it is switched off (D-036).
+			function_exists( 'wc_price' )
+				? wp_strip_all_tags( (string) wc_price( $adds ) )
+				: number_format_i18n( $adds, 2 )
+		);
 	}
 
 	/**

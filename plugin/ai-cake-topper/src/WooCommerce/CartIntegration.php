@@ -14,6 +14,7 @@ use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\PrintSpec;
 use AiCake\Domain\SourceCatalogue;
 use AiCake\Frontend\Wizard;
+use AiCake\Support\Settings;
 use AiCake\Throttle\IdentityResolver;
 
 defined( 'ABSPATH' ) || exit;
@@ -28,12 +29,13 @@ defined( 'ABSPATH' ) || exit;
  * PLAN.md §16 requires ownership verified on add-to-cart *and* on every file
  * request; this is the first half.
  *
- * **Whether AI was used.** That answer decides a €1 surcharge, and it is
- * derived here from whether the design really has a generated image — never
- * read from the request. The Fields Factory field is an ordinary visible radio
- * on the product page, so a customer could otherwise answer it themselves: use
- * AI and not pay, or pay and not use it. Hiding the field would be
- * presentation; deriving the value is the control (D-036).
+ * **Where the picture came from.** That answer decides the surcharge — since
+ * D-071 each of the four sources carries its own — and it is derived here from
+ * what the design row and the disk actually say, never read from the request.
+ * The Fields Factory field is an ordinary visible radio on the product page, so
+ * a customer could otherwise answer it themselves: pick the picture they want
+ * and the price they like. Hiding the field would be presentation; deriving the
+ * value is the control (D-036).
  */
 class CartIntegration {
 
@@ -45,15 +47,24 @@ class CartIntegration {
 
 	private FieldsFactory $fields;
 
+	private Settings $settings;
+
 	/**
 	 * @param DesignRepository $designs  Designs.
 	 * @param IdentityResolver $identity Identity.
-	 * @param FieldsFactory    $fields   Fields Factory reader, for the AI field key.
+	 * @param FieldsFactory    $fields   Fields Factory reader, for the field key.
+	 * @param Settings         $settings Configuration, for what each source is called.
 	 */
-	public function __construct( DesignRepository $designs, IdentityResolver $identity, FieldsFactory $fields ) {
+	public function __construct(
+		DesignRepository $designs,
+		IdentityResolver $identity,
+		FieldsFactory $fields,
+		Settings $settings
+	) {
 		$this->designs  = $designs;
 		$this->identity = $identity;
 		$this->fields   = $fields;
+		$this->settings = $settings;
 	}
 
 	/**
@@ -183,35 +194,88 @@ class CartIntegration {
 	}
 
 	/**
-	 * Answer "was AI used?" from the design, and put that answer in the request.
+	 * Answer "where did this picture come from?" and put that in the request.
 	 *
-	 * The €1 surcharge keys off a Fields Factory radio, and WCFF mines
+	 * The surcharge keys off a Fields Factory radio, and WCFF mines
 	 * `$_REQUEST[ <field key> ]` at priority 10 on `woocommerce_add_cart_item_data`
 	 * to decide what to charge, display, and write to the order. Writing the
 	 * value there first is what makes WCFF price the truth rather than whatever
 	 * arrived from the browser — and it means we still write no pricing code
 	 * (D-036).
 	 *
-	 * **Overwritten, not validated.** A posted flag about whether money was
-	 * spent cannot be trusted even enough to check: the wizard does not post
-	 * this field at all, and a customer posting it by hand from the product
-	 * page has it replaced. The evidence is a provider having produced a master.
+	 * **Overwritten, not validated.** A posted claim about which of four prices
+	 * applies cannot be trusted even enough to check: the wizard does not post
+	 * this field at all, and a customer posting it by hand from the product page
+	 * has it replaced. The evidence is the design row and the file on disk.
 	 *
-	 * A missing or unowned design settles to `ne` rather than being left alone,
-	 * because "left alone" means whatever the customer typed.
+	 * A missing or unowned design settles to the text-only value rather than
+	 * being left alone, because "left alone" means whatever the customer typed.
 	 *
 	 * @param array<string, mixed>|null $design The owned design row, or null.
 	 */
-	private function settle_ai_field( ?array $design ): void {
-		$key = $this->fields->field_key( Wizard::AI_LABEL );
+	private function settle_source_field( ?array $design ): void {
+		$key = $this->fields->field_key( SourceCatalogue::field_label( $this->settings ) );
 
 		if ( null === $key ) {
-			// No such field configured. The shop simply does not surcharge for
-			// AI, which is a pricing decision and not our business (D-036).
+			// No such field configured. The shop simply does not surcharge by
+			// source, which is a pricing decision and not our business (D-036).
 			return;
 		}
 
-		$_REQUEST[ $key ] = ( null !== $design && $this->used_ai( $design ) ) ? 'taip' : 'ne';
+		$_REQUEST[ $key ] = SourceCatalogue::field_value( $this->derive_source( $design ), $this->settings );
+	}
+
+	/**
+	 * Which of the four sources this design really is (D-071).
+	 *
+	 * The column is the claim and the disk is the evidence, and where they
+	 * disagree the disk wins. A design row can say `ai` because a generation was
+	 * *started*; only a provider and a readable master say one finished. The
+	 * same holds for an uploaded or searched picture — the row is written before
+	 * the file lands, so a source with no image is a job that failed, not a
+	 * product.
+	 *
+	 * Everything unproven settles to `none`, which is the honest answer: a
+	 * design with no picture **is** a text-only decoration, and it is also the
+	 * cheapest value, so the failure direction cannot overcharge anyone.
+	 *
+	 * @param array<string, mixed>|null $design The owned design row, or null.
+	 */
+	private function derive_source( ?array $design ): string {
+		if ( null === $design ) {
+			return SourceCatalogue::NONE;
+		}
+
+		/*
+		 * Defaulting a missing column to `ai` is the schema-5 backfill (D-054):
+		 * every row written before the column existed was a generation.
+		 */
+		$source = (string) ( $design['source'] ?? SourceCatalogue::AI );
+
+		if ( ! SourceCatalogue::known( $source ) || SourceCatalogue::NONE === $source ) {
+			return SourceCatalogue::NONE;
+		}
+
+		if ( SourceCatalogue::AI === $source ) {
+			return $this->used_ai( $design ) ? $source : SourceCatalogue::NONE;
+		}
+
+		return $this->has_image( $design ) ? $source : SourceCatalogue::NONE;
+	}
+
+	/**
+	 * Is there really a picture behind this design?
+	 *
+	 * Both halves, for the same reason `used_ai()` wants both: a recorded path
+	 * is a claim, and `master_is_intact()` only says a path that exists is
+	 * readable — an empty one passes it, because a text-only design legitimately
+	 * has none.
+	 *
+	 * @param array<string, mixed> $design The design row.
+	 */
+	private function has_image( array $design ): bool {
+		return '' !== (string) ( $design['file_master'] ?? '' )
+			&& $this->master_is_intact( $design );
 	}
 
 	/**
@@ -274,7 +338,7 @@ class CartIntegration {
 		 * AI, silently and in the shop's disfavour. This hook runs on every
 		 * route, including a plain `add_to_cart()` call.
 		 */
-		$this->settle_ai_field( $design );
+		$this->settle_source_field( $design );
 
 		if ( null === $design ) {
 			return $data;

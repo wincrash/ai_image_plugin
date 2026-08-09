@@ -322,7 +322,7 @@ class Plugin {
 		 */
 		if ( class_exists( 'WooCommerce' ) ) {
 			( new ProductFields() )->register();
-			( new CartIntegration( $this->designs, $this->identity, new FieldsFactory() ) )->register();
+			( new CartIntegration( $this->designs, $this->identity, new FieldsFactory(), $this->settings ) )->register();
 			( new Wizard( $this->settings, new FieldsFactory(), $this->logger ) )->register();
 
 			/*
@@ -350,7 +350,8 @@ class Plugin {
 				$this->capabilities,
 				$this->dispatcher,
 				$this->rate_limiter,
-				$this->budget_guard
+				$this->budget_guard,
+				new FieldsFactory()
 			) )->register();
 			( new BlocklistPage( $this->moderator, $this->settings ) )->register();
 			( new FormatsPage( $this->images, $this->fonts ) )->register();

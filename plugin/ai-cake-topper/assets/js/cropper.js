@@ -78,6 +78,12 @@
 		 *
 		 * Height is derived from the format rather than stored, so a selection
 		 * can never drift out of the shape it is going to be printed in.
+		 *
+		 * **The selection is the cut line, not the exported image** (D-070). It
+		 * outlines the finished decoration — what the blade leaves — and the
+		 * bleed is taken from the photograph *outside* it at export time. It
+		 * used to be the bled size, which meant the outer 3 mm of whatever the
+		 * customer framed was cut off, with nothing on screen to say so.
 		 */
 		var sel = { cx: 0, cy: 0, w: 0 };
 
@@ -98,14 +104,35 @@
 		}
 
 		/**
+		 * How much wider the exported piece is than the finished one.
+		 *
+		 * 1843 / 1772 for a ⌀15 cm topper — 3 mm of bleed on each edge, which
+		 * is 4% on the diameter. 1 for the whole-A4 format, which has no bleed
+		 * because the artwork already fills every printable millimetre.
+		 */
+		function bleedScale() {
+			if ( ! format || ! format.trimW || ! format.targetW ) {
+				return 1;
+			}
+
+			return format.targetW / format.trimW;
+		}
+
+		/**
 		 * The largest selection that still fits inside the photograph.
+		 *
+		 * Measured on the **bled** box, not the selection: the export reaches
+		 * past the cut line on every edge, and a selection sized to the picture
+		 * exactly would have to invent that margin. Inventing it means white,
+		 * and white in the bleed is the sliver on the cut edge that bleed exists
+		 * to prevent.
 		 */
 		function maxWidth() {
 			if ( ! canvas ) {
 				return 0;
 			}
 
-			return Math.min( canvas.width, canvas.height / ratio() );
+			return Math.min( canvas.width, canvas.height / ratio() ) / bleedScale();
 		}
 
 		/**
@@ -121,8 +148,11 @@
 
 			sel.w = Math.min( max, Math.max( max / MAX_ZOOM, sel.w ) );
 
-			var halfW = sel.w / 2;
-			var halfH = selHeight() / 2;
+			// The bled box is what has to stay inside the photograph, so it is
+			// what the edges are measured against — the selection itself stops
+			// 3 mm short of them.
+			var halfW = ( sel.w * bleedScale() ) / 2;
+			var halfH = ( selHeight() * bleedScale() ) / 2;
 
 			sel.cx = Math.min( canvas.width - halfW, Math.max( halfW, sel.cx ) );
 			sel.cy = Math.min( canvas.height - halfH, Math.max( halfH, sel.cy ) );
@@ -229,6 +259,9 @@
 		 * The canvas is the photograph scaled down, so one factor converts
 		 * between them. Deriving it in a single place is what keeps what the
 		 * customer saw and what gets printed the same picture.
+		 *
+		 * This is the **finished** piece — inside the cut line. It is what the
+		 * preview panel draws, and it is therefore the promise being made.
 		 */
 		function sourceRect() {
 			var k = image.width / canvas.width;
@@ -238,6 +271,27 @@
 				y: ( sel.cy - ( selHeight() / 2 ) ) * k,
 				w: sel.w * k,
 				h: selHeight() * k
+			};
+		}
+
+		/**
+		 * The same box grown to include the bleed, about its own centre.
+		 *
+		 * This is what gets exported: the piece plus the 3 mm on every edge that
+		 * the blade goes through. Grown about the centre rather than re-derived,
+		 * so the printed cut line lands exactly on the outline the customer was
+		 * shown — the two cannot drift, because there is one rectangle and one
+		 * multiplication.
+		 */
+		function exportRect() {
+			var box   = sourceRect();
+			var scale = bleedScale();
+
+			return {
+				x: box.x - ( box.w * ( scale - 1 ) / 2 ),
+				y: box.y - ( box.h * ( scale - 1 ) / 2 ),
+				w: box.w * scale,
+				h: box.h * scale
 			};
 		}
 
@@ -272,7 +326,9 @@
 				return;
 			}
 
-			var box = sourceRect();
+			// Measured on what is actually exported, so the figure being compared
+			// against `targetW` is the one that will be resampled to it.
+			var box = exportRect();
 			var max = maxWidth();
 
 			hooks.onZoom( {
@@ -561,7 +617,14 @@
 					return '';
 				}
 
-				var box = sourceRect();
+				/*
+				 * The bled box, not the selection. `out` is `targetW` — the
+				 * piece *plus* its bleed — so drawing the selection into it
+				 * would scale the finished circle up by 4% and put the cut line
+				 * 3 mm inside what the customer framed. That is the bug this
+				 * pair of rectangles exists to prevent (D-070).
+				 */
+				var box = exportRect();
 
 				target.fillStyle = '#ffffff';
 				target.fillRect( 0, 0, out.width, out.height );

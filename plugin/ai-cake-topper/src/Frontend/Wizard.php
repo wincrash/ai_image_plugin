@@ -58,8 +58,6 @@ class Wizard {
 
 	public const SHEET_LABEL = 'Lakšto tipas';
 
-	public const AI_LABEL = 'AI paveikslėlis';
-
 	private Settings $settings;
 
 	private FieldsFactory $fields;
@@ -75,6 +73,25 @@ class Wizard {
 		$this->settings = $settings;
 		$this->fields   = $fields;
 		$this->logger   = $logger;
+	}
+
+	/**
+	 * The Fields Factory field that prices *where the picture came from*.
+	 *
+	 * It replaces „AI paveikslėlis", which was a yes/no and could therefore only
+	 * express one price (D-071). Ruslan's reason for the change is marketing
+	 * rather than accounting: with a choice per source he can price an uploaded
+	 * photograph differently from a searched one differently from a generated
+	 * one, and change his mind without a deploy.
+	 *
+	 * The label itself is a **setting**, because WCFF resolves fields by the
+	 * label the admin typed and that label is also what the customer reads on
+	 * their order — so it is the shop's wording, not ours. `SourceCatalogue`
+	 * holds it; this method is here so the wizard reads it the same way as
+	 * everything else that needs it.
+	 */
+	private function source_label(): string {
+		return SourceCatalogue::field_label( $this->settings );
 	}
 
 	/**
@@ -373,6 +390,17 @@ class Wizard {
 			 */
 			list( $target_w, $target_h ) = null === $spec ? array( 0, 0 ) : $spec->target_px();
 
+			/*
+			 * And the finished size, inside the cut line. The cropper frames
+			 * *this* and reads the bleed out of the photograph around it, so
+			 * what the customer sees in the preview is what survives the blade
+			 * (D-070, Ruslan: „in cropper we see the preview, so i want that
+			 * exact such would be in final printed circle"). Both numbers are
+			 * needed and neither is derivable from the other in the browser
+			 * without the bleed, which is a server setting.
+			 */
+			list( $trim_w, $trim_h ) = null === $spec ? array( 0, 0 ) : $spec->trim_px();
+
 			$formats[] = array(
 				'type'     => (string) $option['type'],
 				'mm'       => (float) $option['diameter_mm'],
@@ -380,6 +408,8 @@ class Wizard {
 				'perSheet' => (int) $option['per_sheet'],
 				'targetW'  => (int) $target_w,
 				'targetH'  => (int) $target_h,
+				'trimW'    => (int) $trim_w,
+				'trimH'    => (int) $trim_h,
 				'shape'    => (string) $option['shape'],
 				'cols'     => (int) $option['cols'],
 				'rows'     => (int) $option['rows'],
@@ -519,10 +549,16 @@ class Wizard {
 	/**
 	 * Every price the customer can end up at, formatted by WooCommerce.
 	 *
-	 * Precomputed server-side, one entry per sheet type × AI, because the
+	 * Precomputed server-side, one entry per sheet type × source, because the
 	 * browser must never do tax arithmetic: whether these figures include VAT
 	 * depends on two shop settings, and a running total that disagrees with
 	 * the cart by 21% is worse than no running total.
+	 *
+	 * **Every source, not only the ones on offer.** A source switched off has no
+	 * card in the wizard, so it can never be the running total — but building
+	 * the table from the full list keeps this loop out of the business of
+	 * deciding what is available, which `SourceCatalogue` already answers in one
+	 * place (D-059).
 	 *
 	 * @param WC_Product $product The product.
 	 *
@@ -530,15 +566,19 @@ class Wizard {
 	 */
 	public function prices( WC_Product $product ): array {
 		$base = (float) $product->get_price();
-		$ai   = $this->fields->surcharge( self::AI_LABEL, 'taip' );
 
 		$prices = array();
 
 		foreach ( $this->sheet_types() as $sheet ) {
-			foreach ( array( 'ne', 'taip' ) as $with_ai ) {
-				$total = $base + (float) $sheet['surcharge'] + ( 'taip' === $with_ai ? $ai : 0.0 );
+			foreach ( SourceCatalogue::all() as $source ) {
+				$total = $base
+					+ (float) $sheet['surcharge']
+					+ $this->fields->surcharge(
+						$this->source_label(),
+						SourceCatalogue::field_value( $source, $this->settings )
+					);
 
-				$prices[ $sheet['value'] . '|' . $with_ai ] = array(
+				$prices[ $sheet['value'] . '|' . $source ] = array(
 					'amount' => round( $total, 2 ),
 					'html'   => wc_price( wc_get_price_to_display( $product, array( 'price' => $total ) ) ),
 				);

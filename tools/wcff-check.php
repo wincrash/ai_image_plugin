@@ -66,7 +66,29 @@ function aicake_check( string $label, $expect, $actual ): void {
 
 const AICAKE_PRODUCT_SLUG = 'ai-paveikslelis';
 const AICAKE_SHEET_LABEL  = 'Lakšto tipas';
-const AICAKE_AI_LABEL     = 'AI paveikslėlis';
+/*
+ * Read from settings rather than typed, because the plugin resolves this field
+ * by whatever the shop called it (D-071). A fixture with its own spelling would
+ * build a field the plugin never looks for.
+ */
+define( 'AICAKE_SOURCE_LABEL', AiCake\Domain\SourceCatalogue::field_label( AiCake\Plugin::instance()->settings() ) );
+
+/**
+ * What this fixture charges for each source, keyed by source (D-071).
+ *
+ * **Four different numbers on purpose, and none of them the shop's.** Ruslan
+ * sets the real prices in the Fields Factory UI; what this check has to prove is
+ * that the four are told apart, and a fixture where two sources cost the same
+ * cannot tell a correct derivation from one that confuses them. `none` has no
+ * rule at all rather than a rule adding zero, because that is how a shop that
+ * does not surcharge text would really leave it.
+ */
+const AICAKE_SOURCE_FEES = array(
+	'none'   => 0.0,
+	'upload' => 0.5,
+	'ai'     => 1.0,
+	'search' => 0.75,
+);
 
 /**
  * The single AI product (D-035) — created once, reused after.
@@ -126,22 +148,48 @@ function aicake_bind_group( int $product_id ): void {
 }
 
 /**
- * Add the AI surcharge field to the group, if it is not there yet.
+ * Add the „Paveikslėlio tipas" field to the group, if it is not there yet.
  *
  * In production an admin adds this in the Fields Factory UI; here it is
  * scripted so the check can run from nothing. The *key* is stable only because
  * this script writes it — the plugin still resolves keys by label at runtime
  * (`FieldsFactory::field_key()`), because a hand-added field gets a random one.
+ *
+ * The choices are the plugin's own settings values, read rather than retyped.
+ * That is the seam D-071 is most likely to break on: WCFF matches its price
+ * rule against the posted string, so a fixture with its own spelling would
+ * assert that this file agrees with itself.
  */
-function aicake_ensure_ai_field(): void {
+function aicake_ensure_source_field(): void {
 	$factory  = new FieldsFactory();
 	$group_id = $factory->group_id();
 
-	if ( 0 === $group_id || null !== $factory->field_key( AICAKE_AI_LABEL ) ) {
+	if ( 0 === $group_id || null !== $factory->field_key( AICAKE_SOURCE_LABEL ) ) {
 		return;
 	}
 
-	$key = 'wccpf_aicakeAiFee';
+	$settings = AiCake\Plugin::instance()->settings();
+	$key      = 'wccpf_aicakeSourceFee';
+	$choices  = array();
+	$rules    = array();
+
+	foreach ( AiCake\Domain\SourceCatalogue::all() as $source ) {
+		$value     = AiCake\Domain\SourceCatalogue::field_value( $source, $settings );
+		$choices[] = $value;
+
+		if ( 0.0 === AICAKE_SOURCE_FEES[ $source ] ) {
+			continue;
+		}
+
+		$rules[] = array(
+			'expected_value' => $value,
+			'amount'         => (string) AICAKE_SOURCE_FEES[ $source ],
+			'ptype'          => 'add',
+			'tprice'         => 'cost',
+			'title'          => $value,
+			'logic'          => 'equal',
+		);
+	}
 
 	update_post_meta(
 		$group_id,
@@ -151,11 +199,18 @@ function aicake_ensure_ai_field(): void {
 				array(
 					'key'            => $key,
 					'type'           => 'radio',
-					'label'          => AICAKE_AI_LABEL,
+					'label'          => AICAKE_SOURCE_LABEL,
 					'order'          => '1',
 					'is_enable'      => true,
 					'is_unremovable' => false,
-					'choices'        => 'taip|Taip;ne|Ne;',
+					/*
+					 * Value and label the same, exactly as the shop writes its
+					 * sheet types. A radio stores the posted *value* verbatim as
+					 * `user_val` and that is what the order and the e-mail show,
+					 * so a `value|label` pair here would put „upload" in front of
+					 * a customer.
+					 */
+					'choices'        => implode( ';', $choices ) . ';',
 					'render_method'  => 'none',
 					'layout'         => 'horizontal',
 					'required'       => 'no',
@@ -166,16 +221,7 @@ function aicake_ensure_ai_field(): void {
 					'cart_editable'  => 'no',
 					'cloneable'      => 'yes',
 					'initial_show'   => 'yes',
-					'pricing_rules'  => array(
-						array(
-							'expected_value' => 'taip',
-							'amount'         => '1',
-							'ptype'          => 'add',
-							'tprice'         => 'cost',
-							'title'          => 'AI paveikslėlio mokestis',
-							'logic'          => 'equal',
-						),
-					),
+					'pricing_rules'  => $rules,
 				)
 			)
 		)
@@ -222,12 +268,12 @@ function aicake_reset_native_flag(): void {
 /**
  * A finished design belonging to the current user.
  *
- * `$with_ai` is what the €1 turns on, and it is written the way the pipeline
- * writes it: a provider name and a master file. Both, because a master with no
- * provider is what an uploaded photo will look like when that arrives, and a
+ * Written the way the pipeline writes each source (D-071): a picture on disk
+ * for all three that have one, and a provider name only for `ai` — a master
+ * with no provider is what an uploaded or searched photograph looks like, and a
  * provider with no master is a generation that failed.
  *
- * @param bool   $with_ai Whether a provider actually generated an image.
+ * @param string $source  One of the four sources.
  * @param string $format  Format type recorded on the design.
  * @param float  $mm      Format size.
  * @param int    $user_id Owner.
@@ -252,7 +298,9 @@ function aicake_fake_master(): string {
 	return $path;
 }
 
-function aicake_design( bool $with_ai, string $format = 'circle', float $mm = 150.0, int $user_id = 1 ): string {
+function aicake_design( string $source = 'ai', string $format = 'circle', float $mm = 150.0, int $user_id = 1 ): string {
+	$has_image = AiCake\Domain\SourceCatalogue::NONE !== $source;
+
 	$designs = AiCake\Plugin::instance()->designs();
 
 	$id = $designs->create(
@@ -260,14 +308,15 @@ function aicake_design( bool $with_ai, string $format = 'circle', float $mm = 15
 			'session_key'  => 'wcff-check',
 			'ip_hash'      => 'wcff-check',
 			'user_id'      => $user_id,
-			'prompt_raw'   => 'wcff-check ' . ( $with_ai ? 'ai' : 'plain' ),
+			'prompt_raw'   => 'wcff-check ' . $source,
 			'aspect'       => '1:1',
 			'product_id'   => aicake_product(),
 			'format_type'  => $format,
 			'format_mm'    => $mm,
 			'status'       => AiCake\Domain\DesignRepository::STATUS_DONE,
 			'file_preview' => 'wcff-check-preview.webp',
-			'provider'     => $with_ai ? 'fal' : null,
+			'source'       => $source,
+			'provider'     => AiCake\Domain\SourceCatalogue::AI === $source ? 'fal' : null,
 			/*
 			 * A real file on disk, not just a path. The cart now asks whether
 			 * the master is readable rather than whether the column is
@@ -276,7 +325,7 @@ function aicake_design( bool $with_ai, string $format = 'circle', float $mm = 15
 			 * (see "a design whose files were deleted" below). A fixture whose
 			 * master never existed cannot tell those apart.
 			 */
-			'file_master'  => $with_ai ? aicake_fake_master() : null,
+			'file_master'  => $has_image ? aicake_fake_master() : null,
 		)
 	);
 
@@ -346,7 +395,7 @@ $factory    = new FieldsFactory();
 $product_id = aicake_product();
 
 aicake_bind_group( $product_id );
-aicake_ensure_ai_field();
+aicake_ensure_source_field();
 
 echo "\nFields Factory wiring\n";
 
@@ -354,105 +403,153 @@ aicake_check( 'WCFF is active', true, $factory->is_active() );
 aicake_check( 'group ai_image found', true, $factory->group_id() > 0 );
 aicake_check( 'group is bound to the AI product', true, in_array( $product_id, $factory->bound_product_ids(), true ) );
 
-$sheet_key = $factory->field_key( AICAKE_SHEET_LABEL );
-$ai_key    = $factory->field_key( AICAKE_AI_LABEL );
+$sheet_key  = $factory->field_key( AICAKE_SHEET_LABEL );
+$source_key = $factory->field_key( AICAKE_SOURCE_LABEL );
+$settings   = AiCake\Plugin::instance()->settings();
 
 aicake_check( 'sheet-type key resolves by label', true, is_string( $sheet_key ) );
-aicake_check( 'AI key resolves by label', true, is_string( $ai_key ) );
+aicake_check( 'picture-type key resolves by label', true, is_string( $source_key ) );
 
 /*
  * The keys are random by design (`wccpf_qkKQtVWBjYfI` on the testbed), so this
  * asserts they were *found*, never that they equal a constant. A check that
  * hardcoded them would pass here and fail on production.
  */
-aicake_check( 'sheet-type key is not the AI key', true, $sheet_key !== $ai_key );
+aicake_check( 'sheet-type key is not the picture-type key', true, $sheet_key !== $source_key );
+
+/*
+ * And every source the plugin can post is an answer the field really offers.
+ * This is the silent failure D-071 is built around: a value one letter away
+ * from the choice matches no rule, charges base, and writes nothing on the
+ * order. Nothing throws, so only an assertion finds it.
+ */
+foreach ( AiCake\Domain\SourceCatalogue::all() as $aicake_source ) {
+	aicake_check(
+		'the field offers „' . AiCake\Domain\SourceCatalogue::field_value( $aicake_source, $settings ) . '"',
+		true,
+		$factory->has_choice( AICAKE_SOURCE_LABEL, AiCake\Domain\SourceCatalogue::field_value( $aicake_source, $settings ) )
+	);
+}
 
 echo "\nWhat the rules say (read-only, for the wizard's running total)\n";
 
 aicake_check( 'krakmolo adds nothing', 0.0, $factory->surcharge( AICAKE_SHEET_LABEL, 'Krakmolo lakštas' ) );
 aicake_check( 'storas krakmolo adds 1.00', 1.0, $factory->surcharge( AICAKE_SHEET_LABEL, 'Storas krakmolo lakštas' ) );
 aicake_check( 'cukrinis adds 1.50', 1.5, $factory->surcharge( AICAKE_SHEET_LABEL, 'Cukrinis lakštas' ) );
-aicake_check( 'AI adds 1.00', 1.0, $factory->surcharge( AICAKE_AI_LABEL, 'taip' ) );
-aicake_check( 'no AI adds nothing', 0.0, $factory->surcharge( AICAKE_AI_LABEL, 'ne' ) );
+foreach ( AICAKE_SOURCE_FEES as $aicake_source => $aicake_fee ) {
+	aicake_check(
+		'source „' . $aicake_source . '" adds ' . number_format( $aicake_fee, 2 ),
+		$aicake_fee,
+		$factory->surcharge( AICAKE_SOURCE_LABEL, AiCake\Domain\SourceCatalogue::field_value( $aicake_source, $settings ) )
+	);
+}
+
+/*
+ * A value the field does not offer adds nothing — which is exactly why
+ * `surcharge()` cannot be the mismatch detector and `has_choice()` exists.
+ */
+aicake_check( 'an unknown answer adds nothing', 0.0, $factory->surcharge( AICAKE_SOURCE_LABEL, 'Sukurta su AI ' . uniqid() ) );
 
 echo "\nWhat WooCommerce actually charges\n";
 
 /*
- * The AI answer now comes from the design, never from the request — so each
- * scenario names which kind of design it is adding, and the posted `$ai_key`
+ * The picture type now comes from the design, never from the request — so each
+ * scenario names which kind of design it is adding, and the posted `$source_key`
  * below is deliberately the *wrong* one in places.
  */
 wp_set_current_user( 1 );
 
-$ai_design    = aicake_design( true );
-$plain_design = aicake_design( false );
+$handles = array();
 
-aicake_check(
-	'krakmolo, no AI',
-	3.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $plain_design )
-);
+foreach ( AiCake\Domain\SourceCatalogue::all() as $aicake_source ) {
+	$handles[ $aicake_source ] = aicake_design( $aicake_source );
+}
 
-aicake_check(
-	'storas krakmolo, no AI',
-	4.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Storas krakmolo lakštas' ), $plain_design )
-);
+/*
+ * One line per source, all on the cheapest sheet, so the only thing moving
+ * between them is the picture type. 3,50 base + the fixture's fee.
+ */
+foreach ( AICAKE_SOURCE_FEES as $aicake_source => $aicake_fee ) {
+	aicake_check(
+		'krakmolo + ' . $aicake_source,
+		round( 3.50 + $aicake_fee, 2 ),
+		aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $handles[ $aicake_source ] )
+	);
+}
 
+// And the sheet type still stacks on top of it, which is the whole pricing
+// surface: base + sheet + source (D-037, D-071).
 aicake_check(
-	'cukrinis, no AI',
-	5.00,
-	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas' ), $plain_design )
-);
-
-aicake_check(
-	'cukrinis + AI',
+	'cukrinis + ai',
 	6.00,
-	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas' ), $ai_design )
+	aicake_line_price( $product_id, array( $sheet_key => 'Cukrinis lakštas' ), $handles['ai'] )
 );
 
 aicake_check(
-	'krakmolo + AI',
-	4.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $ai_design )
+	'storas krakmolo + upload',
+	5.00,
+	aicake_line_price( $product_id, array( $sheet_key => 'Storas krakmolo lakštas' ), $handles['upload'] )
 );
 
-echo "\nThe AI fee is derived, not posted\n";
+echo "
+The picture type is derived, not posted
+";
 
 /*
  * The control D-036 leaves open and this closes. The Fields Factory field is a
  * visible radio on the product page, so a customer can answer it themselves —
- * and the answer is worth €1. `CartIntegration` overwrites it from whether the
- * design really has a generated image, so both lies below are ignored.
+ * and since D-071 the answer is worth a different amount for each of four
+ * choices, so it is worth answering dishonestly in both directions.
+ * `CartIntegration` overwrites it from what the design row and the disk say, so
+ * every lie below is ignored.
  *
- * The wizard does not post this field at all. These do, because the attack
- * does.
+ * The wizard does not post this field at all. These do, because the attack does.
  */
+$cheapest  = AiCake\Domain\SourceCatalogue::field_value( 'none', $settings );
+$dearest   = AiCake\Domain\SourceCatalogue::field_value( 'ai', $settings );
+
 aicake_check(
-	'a posted "ne" cannot dodge the fee',
+	'claiming the cheapest type cannot dodge the AI fee',
 	4.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $ai_key => 'ne' ), $ai_design )
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $source_key => $cheapest ), $handles['ai'] )
 );
 
 aicake_check(
-	'a posted "taip" cannot invent the fee',
+	'claiming AI cannot invent the AI fee',
 	3.50,
-	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $ai_key => 'taip' ), $plain_design )
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $source_key => $dearest ), $handles['none'] )
+);
+
+/*
+ * And a lie *between* two paid sources is overwritten too. Worth its own line:
+ * the yes/no field only had a cheap answer and a dear one, so "the fee is
+ * derived" used to be one bit. It is now a choice of four, and an upload priced
+ * as a search would have been invisible to every assertion above.
+ */
+aicake_check(
+	'and one paid type cannot be passed off as another',
+	4.00,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas', $source_key => $dearest ), $handles['upload'] )
 );
 
 /*
  * And it reaches the order the same way any WCFF field does, because it *is*
  * one — the derived value goes into the request before WCFF mines it, so the
  * cart line, the order meta and the email all agree without us writing any of
- * them.
+ * them. It is also the string the customer reads, so it is asserted as the
+ * Lithuanian phrase rather than as `upload`.
  */
 $charged = '';
 
 foreach ( WC()->cart->get_cart() as $item ) {
-	$charged = (string) ( $item[ $ai_key ]['user_val'] ?? '' );
+	$charged = (string) ( $item[ $source_key ]['user_val'] ?? '' );
 }
 
-aicake_check( 'the cart line records the derived answer', 'ne', $charged );
+aicake_check(
+	'the cart line records the derived answer, in Lithuanian',
+	AiCake\Domain\SourceCatalogue::field_value( 'upload', $settings ),
+	$charged
+);
 
 /* --------------------------------------------- a design whose files are gone */
 
@@ -471,7 +568,7 @@ A design whose files were deleted
  * took the money, and then could not render. There is no worse moment to find
  * out.
  */
-$orphan = aicake_design( true );
+$orphan = aicake_design( 'ai' );
 $gone   = (string) ( AiCake\Plugin::instance()->designs()->find_by_public_id( $orphan )['file_master'] ?? '' );
 
 aicake_check( 'the fixture really wrote a master', true, '' !== $gone && is_readable( $gone ) );
@@ -490,7 +587,8 @@ aicake_check(
  * And through a route that never runs validation — `WC_Cart::add_to_cart()`
  * does not apply the filter — the line must at least not carry the AI fee.
  * 3.50 rather than 4.50 is the assertion: the customer is not charged for a
- * picture that no longer exists.
+ * picture that no longer exists, and „Tik užrašas" is what a design with no
+ * picture honestly is (D-071).
  */
 aicake_check(
 	'and no route can charge the AI fee for it',
@@ -501,16 +599,16 @@ aicake_check(
 /* -------------------------------- D-058: the source has the first word */
 
 /*
- * A design that says it came from somewhere other than AI must never attract
- * the AI fee, **even when the rest of the row looks exactly like a generation**.
+ * A design that says it came from somewhere other than AI must be priced as what
+ * it says it is, **even when the rest of the row looks exactly like a
+ * generation** — a provider name and a master on disk.
  *
- * This state cannot occur today — a text-only design has no provider, so the
- * older evidence already answers no. It is constructed here on purpose, because
- * an untested guard is a guard nobody knows is broken: the moment `upload` or
- * `search` starts recording a provider name of its own, this is the line that
- * decides whether those customers are charged a euro for AI they never used.
+ * Under D-058 this asserted "not charged for AI", which a plugin that had simply
+ * stopped charging would also pass. With a price per source it asserts something
+ * stronger and cheaper to get wrong: the row is charged the *upload* price, so
+ * the source is being read rather than merely not-AI.
  */
-$mislabelled = aicake_design( true );
+$mislabelled = aicake_design( 'ai' );
 
 AiCake\Plugin::instance()->designs()->update(
 	(int) AiCake\Plugin::instance()->designs()->find_by_public_id( $mislabelled )['id'],
@@ -518,9 +616,33 @@ AiCake\Plugin::instance()->designs()->update(
 );
 
 aicake_check(
-	'a non-AI source is not charged for AI, whatever else the row says',
+	'a relabelled source is priced as what it says, whatever else the row says',
+	4.00,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $mislabelled )
+);
+
+/*
+ * And a source claiming a picture it does not have falls back to the cheapest
+ * answer rather than being charged for one. The row keeps `source = upload`;
+ * only the file goes. This is `has_image()`, and without it a design row written
+ * before its upload finished would be sold as an uploaded photograph.
+ */
+$vanished = (string) ( AiCake\Plugin::instance()->designs()->find_by_public_id( $mislabelled )['file_master'] ?? '' );
+
+AiCake\Plugin::instance()->designs()->update(
+	(int) AiCake\Plugin::instance()->designs()->find_by_public_id( $mislabelled )['id'],
+	array( 'file_master' => null )
+);
+
+aicake_check(
+	'and a source with no picture behind it is charged as text only',
 	3.50,
 	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $mislabelled )
+);
+
+AiCake\Plugin::instance()->designs()->update(
+	(int) AiCake\Plugin::instance()->designs()->find_by_public_id( $mislabelled )['id'],
+	array( 'file_master' => $vanished )
 );
 
 /*
@@ -576,11 +698,11 @@ function aicake_validates( int $product_id, string $design = '' ): bool {
  * falls through as an ordinary sale: no design on the order, and a €3.50 line
  * that fulfilment cannot print.
  */
-aicake_check( 'a real design passes validation', true, aicake_validates( $product_id, $ai_design ) );
+aicake_check( 'a real design passes validation', true, aicake_validates( $product_id, $handles['ai'] ) );
 aicake_check( 'no design at all is refused', false, aicake_validates( $product_id ) );
 aicake_check( 'an unknown handle is refused', false, aicake_validates( $product_id, str_repeat( 'a', 32 ) ) );
 
-$strangers = aicake_design( true, 'circle', 150.0, 999 );
+$strangers = aicake_design( 'ai', 'circle', 150.0, 999 );
 
 aicake_check( "someone else's design is refused", false, aicake_validates( $product_id, $strangers ) );
 
@@ -595,10 +717,10 @@ echo "\nWhat the cart line says the customer bought\n";
  * One design carrying a proof, because the thumbnail assertions below need one
  * and the line assertions do not care either way.
  */
-$rich = aicake_design( true, 'cupcake', 45.0 );
+$rich = aicake_design( 'ai', 'cupcake', 45.0 );
 
-$designs = AiCake\Plugin::instance()->designs();
-$designs->update( (int) $designs->find_by_public_id( $rich )['id'], array( 'file_proof' => 'wcff-check-proof.webp' ) );
+$repository = AiCake\Plugin::instance()->designs();
+$repository->update( (int) $repository->find_by_public_id( $rich )['id'], array( 'file_proof' => 'wcff-check-proof.webp' ) );
 
 aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $rich );
 
@@ -650,14 +772,18 @@ foreach ( WC()->cart->get_cart() as $item ) {
 }
 
 aicake_check( 'cart item carries both field values', 2, count( $titles ) );
-aicake_check( 'cart item records the AI choice', 'taip', $titles[ $ai_key ] ?? '' );
+aicake_check(
+	'cart item records the picture type',
+	AiCake\Domain\SourceCatalogue::field_value( 'ai', $settings ),
+	$titles[ $source_key ] ?? ''
+);
 
 /*
  * Last, because it leaves a non-AI design in the cart: falling back matters as
  * much as the proof itself. A design with no text has no proof, and neither
  * does any design saved before D-045 — neither may show a broken image.
  */
-aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $plain_design );
+aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $handles['none'] );
 
 $fallback = '';
 
@@ -665,7 +791,7 @@ foreach ( WC()->cart->get_cart() as $key => $item ) {
 	$fallback = (string) apply_filters( 'woocommerce_cart_item_thumbnail', '', $item, $key );
 }
 
-aicake_check( 'and falls back to the preview with no proof', true, false !== strpos( $fallback, '/' . $plain_design . '/preview' ) );
+aicake_check( 'and falls back to the preview with no proof', true, false !== strpos( $fallback, '/' . $handles['none'] . '/preview' ) );
 
 WC()->cart->empty_cart();
 
