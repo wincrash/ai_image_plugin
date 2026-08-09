@@ -327,6 +327,8 @@
 			price.innerHTML = entry.html;
 		}
 
+		syncDesignField();
+
 		/*
 		 * One question means one unmet condition — there is no longer a state
 		 * where a type is chosen and a size is not (D-055), so `pickSize` has
@@ -438,7 +440,6 @@
 		state.ai = 'taip';
 
 		if ( step2.preview ) { step2.preview.src = design.url; }
-		if ( step2.design ) { step2.design.value = design.id; }
 
 		reveal( step2.stage, true );
 		renderHistory();
@@ -472,7 +473,6 @@
 		state.ai = 'ne';
 		mountedFor = null;
 
-		if ( step2.design ) { step2.design.value = ''; }
 		if ( step2.preview ) { step2.preview.removeAttribute( 'src' ); }
 
 		reveal( step2.stage, false );
@@ -1005,7 +1005,31 @@
 	 * recomputed for display, because a proof that derives its own version of
 	 * the answer is a proof of the wrong thing.
 	 */
+	/**
+	 * Put the current design into the field the add-to-cart form posts.
+	 *
+	 * **Derived from state, never written alongside it.** It used to be set
+	 * inside `chooseDesign()` — the AI path, and only the AI path. When three
+	 * more ways to get a design arrived (D-054), each set `state.design` and
+	 * none knew about the form, so the field stayed empty, `CartIntegration`
+	 * refused a design that plainly existed, and pressing „Į krepšelį" did
+	 * nothing whatsoever. Reported by Ruslan, 2026-08-09.
+	 *
+	 * Called from `renderReview()`, which runs every time step 4 opens and is
+	 * therefore guaranteed to have run before the form can be submitted — and
+	 * from `update()`, so the field is never stale in between. A fifth source
+	 * cannot reintroduce this by forgetting a line, because there is no line
+	 * for it to forget.
+	 */
+	function syncDesignField() {
+		if ( step2.design ) {
+			step2.design.value = state.design || '';
+		}
+	}
+
 	function renderReview() {
+		syncDesignField();
+
 		var option = currentOption();
 
 		if ( step4.proof && editor ) {

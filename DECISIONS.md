@@ -3028,4 +3028,41 @@ all.
 > a check that blames the plugin for someone else's outage sends people to
 > debug code that is fine.
 
-<!-- Next: D-068 -->
+---
+
+## D-068 · The cart field is derived from state, not written beside it
+
+**2026-08-09, Ruslan:** *"it almost working, firstly it didnt add to cart any
+generated product."*
+
+The add-to-cart form carries a hidden `aicake_design`. It was written in exactly
+one place — inside `chooseDesign()`, which is the AI path and nothing else.
+
+When D-054 added three more ways to get a design, each of them set
+`state.design` and **none of them knew the form existed**. The field stayed
+empty, `CartIntegration` refused a design that was plainly on the screen, and
+pressing „Į krepšelį" did nothing at all.
+
+**The server was right and the client was wrong**, which is why no suite caught
+it: `wcff-check` already asserts that a missing design is refused, and it was
+being refused correctly. The bug was that the design never arrived.
+
+**The fix is not three more assignments.** `syncDesignField()` derives the field
+from `state.design` and is called from `renderReview()` — which runs every time
+step 4 opens, and so is guaranteed to have run before the form can be submitted
+— and from `update()`, so it is never stale in between. **A fifth source cannot
+reintroduce this by forgetting a line, because there is no line to forget.**
+
+> **This is the same shape as D-057 and D-063: state that four paths write and
+> one path reads.** Every time, the fix is to make the read derive from the
+> state rather than to add another write. Worth reaching for that first when
+> the next source arrives.
+
+**No server-side gate covers it**, and that is stated rather than papered over —
+the failure is entirely in the browser, between a JavaScript variable and a
+form field. What covers it is the rule D-066 arrived at: **a logged-out browser
+run, all the way to a cart line, is a required step before shipping.** Both
+paths were verified that way — text-only at 3,50 € with „AI paveikslėlis: ne",
+AI at 4,50 € with „taip".
+
+<!-- Next: D-069 -->
