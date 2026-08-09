@@ -30,6 +30,13 @@
  * only **8** red, at 308.0 px against 320.0, and nothing in the print half
  * moves.
  *
+ * **D-074 falsifies on its own number.** Putting `FormatCatalogue::BLEED_MM`
+ * back to 3.0 turns **10 and 13** red — the offered ⌀15 cm grows a bleed, and
+ * the page stops being bare outside the cut line — while 11 and 12 stay green,
+ * because where the picture is framed is D-073's answer and does not depend on
+ * whether there is bleed around it. That is the whole relationship between the
+ * two decisions, in two assertions each.
+ *
  * `wp eval-file` eval()s this, so no `declare( strict_types=1 )` — a declare
  * must be the first statement of a *script* and is a fatal inside an eval.
  *
@@ -252,7 +259,17 @@ $storage  = $plugin->storage();
 $prints   = $plugin->prints();
 $previews = $plugin->previews();
 
-$spec = FormatCatalogue::spec( FormatCatalogue::TYPE_CIRCLE, 150.0 );
+/*
+ * **Bleed is forced to 3 mm for the measurements below, and that is the point
+ * of the parameter.** This shop sells no bleed at all now (D-074), which makes
+ * `trim_px()` and `target_px()` equal and every question here degenerate: the
+ * ring cannot land in the wrong place if there is only one place. So D-073's
+ * mechanism is exercised against a format that *has* bleed, and D-074 — that
+ * the shop's own formats have none, and the picture reaches the line with
+ * nothing beyond it — is asserted separately at the bottom of the file, on the
+ * real catalogue.
+ */
+$spec = FormatCatalogue::spec( FormatCatalogue::TYPE_CIRCLE, 150.0, SheetLayout::USABLE_WIDTH_MM, SheetLayout::USABLE_HEIGHT_MM, 3.0 );
 
 if ( null === $spec ) {
 	fwrite( STDERR, "The ⌀15 cm circle is not in the catalogue; this check has nothing to measure.\n" );
@@ -389,6 +406,57 @@ foreach ( array(
 	imagedestroy( $image );
 }
 
+/* ------------------------------------- D-074 — the picture stops at the line */
+
+echo "\nWhat the shop actually sells — no bleed, and nothing outside the line\n";
+
+$shop = FormatCatalogue::spec( FormatCatalogue::TYPE_CIRCLE, 150.0 );
+
+aicake_check(
+	'10 · the offered ⌀15 cm has no bleed at all',
+	true,
+	null !== $shop && $shop->trim_px() === $shop->target_px() && 0.0 === $shop->bleed_mm
+);
+
+$shop_id   = 'bleedchk-shop';
+$shop_path = $storage->store_master( $shop_id, aicake_ring_master( 1200, $fraction, 24 ) );
+
+$print = $prints->render( $shop_path, $shop, null, SourceCatalogue::master_is_bled( SourceCatalogue::SEARCH ) );
+
+$page = null === $print ? null : imagecreatefromstring( $print->bytes );
+
+if ( $page ) {
+	$shop_r = $shop->trim_px()[0] / 2;
+
+	list( $red ) = aicake_red_radius( $page, $cx, $cy );
+
+	aicake_near( '11 · the framing is the same with bleed or without', $fraction * $shop_r, $red, 4.0 );
+	aicake_near( '12 · the cut line is still at the trim radius', $shop_r, aicake_cut_radius( $page, $cx, $cy ), 4.0 );
+
+	/*
+	 * Ruslan's actual instruction, as a measurement: *"image should stop at the
+	 * line."* Sampled a comfortable 30 px — 2.5 mm — outside the cut line, on
+	 * all four axes, because a single sample would sit inside the mask's
+	 * feathered edge and prove nothing.
+	 */
+	$outside = true;
+
+	foreach ( array( array( 1, 0 ), array( -1, 0 ), array( 0, 1 ), array( 0, -1 ) ) as $ray ) {
+		$rgb = imagecolorat( $page, $cx + (int) ( $ray[0] * ( $shop_r + 30 ) ), $cy + (int) ( $ray[1] * ( $shop_r + 30 ) ) );
+
+		$outside = $outside
+			&& ( ( $rgb >> 16 ) & 0xFF ) > 245
+			&& ( ( $rgb >> 8 ) & 0xFF ) > 245
+			&& ( $rgb & 0xFF ) > 245;
+	}
+
+	aicake_check( '13 · the page is bare outside the cut line', true, $outside );
+
+	imagedestroy( $page );
+}
+
+$storage->delete( $shop_path );
+
 /* ------------------------------------------------- the format with no bleed */
 
 echo "\nThe whole-sheet format — no bleed, so nothing to invent\n";
@@ -399,7 +467,7 @@ $covered = $images->cover( $flat, 600, 800 );
 $bled    = $images->bleed_out( $flat, 600, 800, 600, 800 );
 
 aicake_check(
-	'9 · bleed_out() with no bleed is cover()',
+	'14 · bleed_out() with no bleed is cover()',
 	true,
 	null !== $covered && null !== $bled
 		&& imagecolorat( $covered, 300, 400 ) === imagecolorat( $bled, 300, 400 )

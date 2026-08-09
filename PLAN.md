@@ -128,9 +128,15 @@ A4 is 1:1.414. No image model offers that ratio.
 
 Two different margins, both needed, easy to conflate:
 
-- **Bleed** (+3 mm outside the trim line) — image extends past the cut so a slightly-off cut
-  doesn't leave a white sliver. Never a plain border: white in the bleed is the sliver bleed
-  exists to prevent.
+- **Bleed** — 🔴 **this shop sells none** (D-074, Ruslan: *"set bleed to 0, image should stop at
+  the line"*). Every offered format is trim only: the printed circle is the whole picture and the
+  page is bare outside the cut line. What that costs is the margin for a crooked cut — a cut wide
+  of the line leaves a white crescent rather than more picture — and it is his call, made against
+  his own scissors.
+  The mechanism below is intact and `FormatCatalogue::BLEED_MM` is the only number in it.
+  **When a format does have bleed** (+3 mm outside the trim line), the image extends past the cut
+  so a slightly-off cut leaves no white sliver. Never a plain border: white in the bleed is the
+  sliver bleed exists to prevent.
   **Where those 3 mm come from depends on the master** (D-073). A cropped upload carries them
   already — the customer framed the trim line and the cropper exported the bled box around it
   (D-070), so the print scales nothing. Every other master is the picture and nothing else, so

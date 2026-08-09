@@ -58,7 +58,7 @@ class PrintSpec {
 		public string $shape = self::SHAPE_ROUND,
 		public float $width_mm = 150.0,
 		public float $height_mm = 0.0,
-		public float $bleed_mm = Mm::BLEED_MM,
+		public float $bleed_mm = FormatCatalogue::BLEED_MM,
 		public float $safe_mm = Mm::SAFE_MM,
 		public int $copies = 1,
 		public string $sheet = 'a4',
@@ -131,7 +131,7 @@ class PrintSpec {
 		$spec->shape        = self::SHAPE_RECT === $read( 'shape', self::SHAPE_ROUND ) ? self::SHAPE_RECT : self::SHAPE_ROUND;
 		$spec->width_mm     = max( 10.0, (float) $read( 'width_mm', 150.0 ) );
 		$spec->height_mm    = max( 0.0, (float) $read( 'height_mm', 0.0 ) );
-		$spec->bleed_mm     = max( 0.0, (float) $read( 'bleed_mm', Mm::BLEED_MM ) );
+		$spec->bleed_mm     = max( 0.0, (float) $read( 'bleed_mm', FormatCatalogue::BLEED_MM ) );
 		$spec->safe_mm      = max( 0.0, (float) $read( 'safe_mm', Mm::SAFE_MM ) );
 		$spec->copies       = max( 1, (int) $read( 'copies', 1 ) );
 		$spec->sheet        = (string) $read( 'sheet', 'a4' );
@@ -191,11 +191,14 @@ class PrintSpec {
 	/**
 	 * The **finished** size of one piece in pixels — inside the cut line.
 	 *
-	 * `target_px()` is this plus the bleed, and the two are 3 mm apart on every
-	 * edge. That difference is invisible on a screen and decisive on a sheet:
-	 * the cropper frames what the customer is buying, so it has to frame *this*
-	 * and take the bleed from the photograph around it (D-070). Framing the
-	 * bled size instead quietly cuts 3 mm off every edge of what they chose.
+	 * `target_px()` is this plus the bleed. **On this shop's formats they are
+	 * equal**, because `FormatCatalogue::BLEED_MM` is zero (D-074) — but they are
+	 * still two methods, and the distinction is the one this project got wrong
+	 * twice. The cropper frames what the customer is buying, so it frames *this*
+	 * and takes the bleed from the photograph around it (D-070); the print
+	 * pipeline puts a picture that has no bleed in at *this* size and invents the
+	 * ring outside it (D-073). Collapse them into one method and both fixes
+	 * become unexpressible the moment a format wants bleed again.
 	 *
 	 * @return array{0:int, 1:int}
 	 */

@@ -19,10 +19,11 @@ are all done.
 | `ai` — fal generation | works, cart line at base + the AI price |
 | `search` — Openverse | works, **off by default**, commercial+modification licences only (D-067) |
 
-**Fourteen suites, all green:** `tests/run.php` 408 · `rest-check.sh` 16 · `wizard-check` 65 ·
+**Fourteen suites, all green:** `tests/run.php` 446 · `rest-check.sh` 16 · `wizard-check` 65 ·
 `text-check` 37 · `wcff-check` 47 · `order-check` 65 · `upload-check` 18 · `search-check` 18 ·
 `retention-check` 11 · `proof-check` 21 · `settings-check` 45 · `moderation-check` 34 ·
-**`bleed-check` 12** (new — D-073) · **`crop-check.html` 9** (in a browser — see D-070).
+**`bleed-check` 16** (new — D-073, D-074) · `crop-check.html` 9 (in a browser — **vacuous since
+D-074**, see there).
 
 **Nineteen formats now — cake pops at ⌀2,5 / 3 / 3,5 cm are new (D-072)**, yielding 88 / 63 / 48
 to a sheet. Proofs for them are already downloadable from **AI Cake Topper → Print formats**. The
@@ -42,11 +43,27 @@ trim size with the same picture enlarged underneath to fill the bleed ring. `Pre
 the bleed back off an uploaded master, so preview and print agree from either direction.
 `ProofPipeline` needed nothing — it had been drawing the right answer all along.
 
-`tools/bleed-check.php` is new, **12 assertions**, falsified two ways.
+### 🔴 And the shop now sells no bleed at all — D-074
 
-> **Still Ruslan's to decide:** there is still ink outside the black line — that is the bleed, and
-> it gets cut away. If he wants the picture to stop *at* the line, that is `bleed_mm = 0` in
-> `FormatCatalogue` and it costs the margin for a crooked cut.
+Ruslan's answer to D-073's open question: **„set bleed to 0, image should stop at the line."**
+`FormatCatalogue::BLEED_MM` is `0.0`, so every format is trim only — the printed circle is the
+whole picture and the page is bare outside the cut line. **The cost is the margin for a crooked
+cut**: a cut wide of the line now leaves a white crescent instead of more picture. His call, made
+against his own scissors.
+
+The mechanism is intact and that constant is the only number — putting 3.0 back restores bleed
+everywhere on the next render, with nothing else to change.
+
+**It exposed a real defect.** The cut line was drawn on the artwork canvas, and with no bleed that
+canvas *is* the trim circle — so the ring ran along its own outermost pixel and GD clipped the far
+side of every one away. A cut line with a 0.085 mm gap in it, invisible on screen. `order-check`'s
+D-070 assertion caught it. **The lines are drawn after the page mount now**, and therefore over the
+text rather than under it, which is the right way round: a letter allowed up to the trim (D-042)
+must not be able to erase the line the shop cuts by.
+
+`tools/bleed-check.php` covers both decisions — **16 assertions**, each half falsified on its own.
+`crop-check.html` is now vacuous: with no bleed, D-070's crop mapping and the one it replaced are
+the same mapping. Leave it, but do not count it.
 
 ### 🔴 The print geometry moved on 2026-08-09 — D-070
 

@@ -128,10 +128,22 @@ class FulfilPipeline {
 			return null;
 		}
 
-		$this->draw_cut_lines( $canvas, $spec );
 		$this->composite_layer( $canvas, $layer );
 
 		$canvas = $this->mount_on_page( $canvas, $spec );
+
+		/*
+		 * **After the mount, and that moved for a reason** (D-074). With no
+		 * bleed the artwork canvas *is* the trim circle, so a line drawn on it
+		 * runs along its own outermost pixel and GD clips the far side of every
+		 * ring away — a cut line with a gap in it, 0.085 mm wide and invisible
+		 * on screen. On the page there is paper to draw on.
+		 *
+		 * It also puts the line over the text rather than under it, which is the
+		 * right way round: the line is what the shop cuts by, and a letter
+		 * allowed right up to the trim (D-042) must not be able to erase it.
+		 */
+		$this->draw_cut_lines( $canvas, $spec );
 
 		$png = $this->images->to_png( $canvas, $spec->dpi );
 
@@ -180,11 +192,9 @@ class FulfilPipeline {
 	 * clipped by the printer's own margins rather than guiding anything.
 	 *
 	 * The centres come from `sheet_plan()`, which is what `impose()` pasted
-	 * against. Deriving them separately is how the printed line and the printed
-	 * artwork drift apart by one rounding step (D-038, the same argument as the
-	 * formats page).
+	 * against — see `cut_centres()`.
 	 *
-	 * @param GdImage   $canvas The imposed or flattened sheet.
+	 * @param GdImage   $canvas The mounted page.
 	 * @param PrintSpec $spec   Product geometry.
 	 */
 	private function draw_cut_lines( GdImage $canvas, PrintSpec $spec ): void {
@@ -201,12 +211,41 @@ class FulfilPipeline {
 		$diameter = Mm::to_px( $spec->width_mm, $spec->dpi );
 		$thick    = max( 1, Mm::to_px( self::CUT_LINE_MM, $spec->dpi ) );
 
-		if ( $spec->is_sheet() ) {
-			$centres = (array) ( $spec->sheet_plan()['centres_px'] ?? array() );
-		} else {
-			// One piece, centred on its own canvas. The artwork is bled, so the
-			// trim circle sits inside the canvas edge rather than on it.
-			$centres = array(
+		foreach ( $this->cut_centres( $canvas, $spec ) as $centre ) {
+			// `GdEngine::ring()`, not `imageellipse()` — GD ignores
+			// `imagesetthickness()` for ellipses and would draw a 0.085 mm
+			// hairline while reporting success.
+			$this->images->ring( $canvas, (int) $centre['x'], (int) $centre['y'], $diameter, $black, $thick );
+		}
+	}
+
+	/**
+	 * Where the rings go, in the coordinates of the file being written.
+	 *
+	 * One list for both cases, now that the lines are drawn on the page: a sheet
+	 * rings every cell, a single piece rings the first one, and `page_anchor()`
+	 * mounted that piece at exactly that coordinate. Two derivations of the same
+	 * point is how the printed line and the printed artwork drift apart by one
+	 * rounding step (D-038).
+	 *
+	 * The fallback is for the one case where the plan is not page coordinates —
+	 * `mount_on_page()` could not allocate the page, said so at error level, and
+	 * handed back the bare artwork. Ringing plan coordinates on that would put
+	 * the line off the file entirely; its own centre is right for it.
+	 *
+	 * @param GdImage   $canvas What is about to be written.
+	 * @param PrintSpec $spec   Product geometry.
+	 * @return array<int, array{x:int, y:int}>
+	 */
+	private function cut_centres( GdImage $canvas, PrintSpec $spec ): array {
+		$centres = (array) ( $spec->sheet_plan()['centres_px'] ?? array() );
+
+		if ( ! $spec->is_sheet() ) {
+			$centres = array_slice( $centres, 0, 1 );
+		}
+
+		if ( empty( $centres ) || imagesx( $canvas ) < Mm::to_px( SheetLayout::PAPER_W_MM, $spec->dpi ) ) {
+			return array(
 				array(
 					'x' => (int) round( imagesx( $canvas ) / 2 ),
 					'y' => (int) round( imagesy( $canvas ) / 2 ),
@@ -214,12 +253,7 @@ class FulfilPipeline {
 			);
 		}
 
-		foreach ( $centres as $centre ) {
-			// `GdEngine::ring()`, not `imageellipse()` — GD ignores
-			// `imagesetthickness()` for ellipses and would draw a 0.085 mm
-			// hairline while reporting success.
-			$this->images->ring( $canvas, (int) $centre['x'], (int) $centre['y'], $diameter, $black, $thick );
-		}
+		return $centres;
 	}
 
 	/**

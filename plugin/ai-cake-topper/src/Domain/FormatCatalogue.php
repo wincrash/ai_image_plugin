@@ -10,7 +10,6 @@ declare( strict_types=1 );
 namespace AiCake\Domain;
 
 use AiCake\Imaging\SheetLayout;
-use AiCake\Support\Mm;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -66,6 +65,26 @@ final class FormatCatalogue {
 	public const POPCAKE_MAX_MM = 37.0;
 
 	/**
+	 * How much bleed this shop sells — **none** (D-074).
+	 *
+	 * Ruslan's instruction, immediately after D-073 put the picture inside the
+	 * cut line: *"set bleed to 0, image should stop at the line."* So it does.
+	 * Every format the wizard offers is trim only, the printed circle is the
+	 * whole picture, and there is nothing outside the black line at all.
+	 *
+	 * **The mechanism is untouched and this is the only number.** `Mm::BLEED_MM`
+	 * still says what bleed is when a format has it, `GdEngine::bleed_out()` and
+	 * D-070's cropper mapping both still work, and `SheetLayout` still reports
+	 * clipping. Putting 3.0 here brings all of it back on the next render.
+	 *
+	 * What it costs is the margin for a crooked cut: with no ink past the trim
+	 * line, a cut a millimetre wide leaves a white crescent instead of more
+	 * picture. That is the trade Ruslan made, and he owns the printer and the
+	 * scissors (D-040).
+	 */
+	public const BLEED_MM = 0.0;
+
+	/**
 	 * Single circles: 20 cm down to 10 cm in 1 cm steps (Ruslan, D-038).
 	 *
 	 * ⌀20 cm is the declared maximum and it fits with 4 mm to spare — but only
@@ -114,7 +133,7 @@ final class FormatCatalogue {
 	public static function options(
 		float $usable_w_mm = SheetLayout::USABLE_WIDTH_MM,
 		float $usable_h_mm = SheetLayout::USABLE_HEIGHT_MM,
-		float $bleed_mm = Mm::BLEED_MM
+		float $bleed_mm = self::BLEED_MM
 	): array {
 		$options = array( self::sheet_option( $usable_w_mm, $usable_h_mm ) );
 
@@ -150,7 +169,7 @@ final class FormatCatalogue {
 	public static function offerable(
 		float $usable_w_mm = SheetLayout::USABLE_WIDTH_MM,
 		float $usable_h_mm = SheetLayout::USABLE_HEIGHT_MM,
-		float $bleed_mm = Mm::BLEED_MM
+		float $bleed_mm = self::BLEED_MM
 	): array {
 		return array_values(
 			array_filter(
@@ -180,7 +199,7 @@ final class FormatCatalogue {
 		float $diameter_mm = 0.0,
 		float $usable_w_mm = SheetLayout::USABLE_WIDTH_MM,
 		float $usable_h_mm = SheetLayout::USABLE_HEIGHT_MM,
-		float $bleed_mm = Mm::BLEED_MM
+		float $bleed_mm = self::BLEED_MM
 	): ?array {
 		foreach ( self::offerable( $usable_w_mm, $usable_h_mm, $bleed_mm ) as $option ) {
 			if ( $option['type'] !== $type ) {
@@ -264,7 +283,7 @@ final class FormatCatalogue {
 		float $diameter_mm = 0.0,
 		float $usable_w_mm = SheetLayout::USABLE_WIDTH_MM,
 		float $usable_h_mm = SheetLayout::USABLE_HEIGHT_MM,
-		float $bleed_mm = Mm::BLEED_MM
+		float $bleed_mm = self::BLEED_MM
 	): ?PrintSpec {
 		$option = self::find( $type, $diameter_mm, $usable_w_mm, $usable_h_mm, $bleed_mm );
 

@@ -75,14 +75,34 @@ class FormatCatalogueTest extends TestCase {
 	 * It fits only because no printer margin is deducted: 200 mm of trim plus
 	 * 6 mm of bleed against a 210 mm sheet leaves 4 mm. I twice argued it was
 	 * impossible, from margins I had assumed rather than measured.
+	 *
+	 * The bleed is passed in rather than taken from the catalogue's own default,
+	 * which is now zero (D-074). Reading the default here would make this test
+	 * agree with the shop's current answer instead of checking the arithmetic
+	 * D-039 turned on — and it would have gone quietly green on a change that
+	 * has nothing to do with what it is asking.
 	 */
 	public function test_twenty_centimetre_circle_fits(): void {
-		$option = FormatCatalogue::find( FormatCatalogue::TYPE_CIRCLE, 200.0 );
+		$option = FormatCatalogue::find( FormatCatalogue::TYPE_CIRCLE, 200.0, SheetLayout::USABLE_WIDTH_MM, SheetLayout::USABLE_HEIGHT_MM, 3.0 );
 
 		$this->assert_true( is_array( $option ), '20 cm is offered' );
 		$this->assert_true( (bool) $option['fits'], '20 cm fits' );
 		$this->assert_same( 1, (int) $option['per_sheet'], 'one 20 cm circle per sheet' );
-		$this->assert_true( ! $option['bleed_clipped'], '20 cm keeps its full bleed' );
+		$this->assert_true( ! $option['bleed_clipped'], '20 cm keeps its full bleed, at 3 mm' );
+	}
+
+	/**
+	 * And what the shop actually sells has no bleed at all (D-074).
+	 *
+	 * Ruslan: *"set bleed to 0, image should stop at the line."* Asserted on the
+	 * offered formats rather than on the constant, because the constant being
+	 * zero is worth nothing if a caller still passes 3 mm past it.
+	 */
+	public function test_the_offered_formats_carry_no_bleed(): void {
+		foreach ( FormatCatalogue::offerable() as $option ) {
+			$this->assert_same( 0.0, (float) $option['bleed_mm'], $option['type'] . ' ' . $option['diameter_mm'] . ' mm has no bleed' );
+			$this->assert_true( ! $option['bleed_clipped'], $option['type'] . ' ' . $option['diameter_mm'] . ' mm clips no bleed' );
+		}
 	}
 
 	/**
@@ -177,9 +197,12 @@ class FormatCatalogueTest extends TestCase {
 	 * The 24-up sheet is the shop's highest-volume item and its outer circles
 	 * do lose a sliver of bleed. Refusing to offer it would prevent a defect
 	 * that needs a bad cut as well, at the cost of the best-selling format.
+	 *
+	 * At 3 mm, which the shop no longer sells (D-074) — the rule is what is
+	 * under test, and it has to keep holding for whenever bleed comes back.
 	 */
 	public function test_clipped_bleed_is_advisory_not_disqualifying(): void {
-		$option = FormatCatalogue::find( FormatCatalogue::TYPE_CUPCAKE, 45.0 );
+		$option = FormatCatalogue::find( FormatCatalogue::TYPE_CUPCAKE, 45.0, SheetLayout::USABLE_WIDTH_MM, SheetLayout::USABLE_HEIGHT_MM, 3.0 );
 
 		$this->assert_true( (bool) $option['fits'], '24-up still fits' );
 		$this->assert_true( (bool) $option['bleed_clipped'], '24-up loses bleed at the edge' );

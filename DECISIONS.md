@@ -3413,5 +3413,76 @@ in the print.
 > line with nothing beyond it, that is `bleed_mm = 0` in `FormatCatalogue`, one number, and it
 > costs the margin for a crooked cut. The rest of this decision is what he asked for either way.
 
-<!-- Next: D-074 -->
+---
+
+### D-074 · This shop sells no bleed. The picture stops at the line.
+**2026-08-09** · Ruslan · **instructed** · narrows D-070 and §3.3 ·
+affects `Domain/FormatCatalogue.php`, `Pipeline/FulfilPipeline.php`
+
+Offered as a choice at the end of D-073 — there is still ink outside the black line, that is the
+bleed, and removing it costs the margin for a crooked cut — and taken:
+
+> *"yes, set bleed to 0, image should stop at the line."*
+
+**One number: `FormatCatalogue::BLEED_MM = 0.0`.** Every offered format is trim only, so
+`trim_px()` and `target_px()` are equal, the printed circle is the whole picture, and the page is
+bare outside the cut line.
+
+#### What it costs, stated once because it is the whole trade
+
+Bleed exists so that a cut a millimetre wide of the line still lands on picture. With none, that
+cut leaves a **white crescent** on the finished piece instead of more photograph. Ruslan cuts these
+himself and has printed and measured every format (D-040), so this is his call to make against his
+own scissors — which is the same reason D-042 moved the text limit out to the trim line.
+
+#### What did **not** change, deliberately
+
+The mechanism is intact and this is the only number in it. `Mm::BLEED_MM` still says what bleed is
+when a format has it — its docblock now says outright that it is the arithmetic's default and not
+this shop's answer — `GdEngine::bleed_out()` still invents a bleed ring, D-070's cropper mapping
+still reads the bleed out of the photograph, and `SheetLayout` still reports clipping. Putting 3.0
+back brings all of it on the next render, with nothing else to change.
+
+Two unit tests had to start passing 3.0 explicitly. They were asserting things about bleed —
+⌀20 cm keeps its full bleed, the 24-up sheet clips a sliver and is offered anyway — while reading
+the shop's default, so they had been quietly testing two things at once. They now test the
+arithmetic, and a new test asserts the shop's own answer against every offered format rather than
+against the constant, because a zero constant is worth nothing if a caller still passes 3 mm past
+it.
+
+#### The defect zero bleed exposed
+
+**The cut line was being drawn on the artwork canvas, and with no bleed that canvas *is* the trim
+circle.** So the ring ran along its own outermost pixel and GD clipped the far side of every one
+away — a cut line with a gap in it, 0.085 mm wide, invisible on screen and only findable by
+sampling the circle all the way round. `order-check`'s D-070 assertion did exactly that and went
+red, which is the assertion earning its place.
+
+**The lines are drawn after the mount now**, on the page, where there is paper to draw on.
+`cut_centres()` is one derivation for both cases — a sheet rings every cell, a single piece rings
+the first, and `page_anchor()` mounted it at that same coordinate, so the line and the artwork
+cannot drift apart (D-038). It also puts the line **over** the text rather than under it, which is
+the right way round: a letter allowed right up to the trim (D-042) must not be able to erase the
+line the shop cuts by.
+
+#### Verified
+
+`bleed-check` is **16**, was 12. Assertions 10–13 are D-074's: the offered ⌀15 cm has no bleed at
+all, the framing is the same with bleed or without, the cut line is still at the trim radius, and
+**the page is bare 2,5 mm outside it, on all four axes**.
+
+**Falsified on its own number.** `BLEED_MM = 3.0` turns 10 and 13 red and leaves 11 and 12 green —
+where the picture is framed is D-073's answer and does not depend on whether there is bleed around
+it. That relationship is the two decisions, in two assertions each.
+
+`text-check` also went red, at 7 assertions, and it was the check's fault: three fixtures built a
+text layer at a hardcoded **1843** — the ⌀15 cm *bled* canvas — while the rest of the file derived
+it from `canvas_px()`. Derived now, everywhere.
+
+> **`tools/crop-check.html` is now vacuous and should be read as such.** It scores D-070's crop
+> mapping against the pre-D-070 one; with no bleed the two are the same mapping, so it cannot fail.
+> Leave it — it becomes meaningful again the moment any format wants bleed — but do not count it as
+> cover for the cropper.
+
+<!-- Next: D-075 -->
 

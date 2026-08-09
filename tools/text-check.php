@@ -453,7 +453,7 @@ aicake_check( 'an immediate second is throttled', 429, $status );
 aicake_clear_cooldown();
 
 $faint = aicake_taint_alpha(
-	aicake_fixture_layer( 1843, 1843, array( '#c62828' ) ),
+	aicake_fixture_layer( $cw, $ch, array( '#c62828' ) ),
 	0,
 	255,
 	64,
@@ -470,7 +470,7 @@ aicake_check( 'a faint off-palette edge pixel is tolerated', 200, $status );
  */
 aicake_clear_cooldown();
 
-$solid = aicake_taint( aicake_fixture_layer( 1843, 1843, array( '#c62828' ) ), 0, 255, 64 );
+$solid = aicake_taint( aicake_fixture_layer( $cw, $ch, array( '#c62828' ) ), 0, 255, 64 );
 
 list( $status ) = aicake_post_layer( $circle['public_id'], $solid, array( '#c62828' ) );
 aicake_check( 'the same colour at full opacity is still refused', 422, $status );
@@ -491,7 +491,7 @@ aicake_check( 'the same colour at full opacity is still refused', 422, $status )
 
 aicake_clear_cooldown();
 
-$blank = aicake_fixture_layer( 1843, 1843, array(), 0 );
+$blank = aicake_fixture_layer( $cw, $ch, array(), 0 );
 
 list( $status, $body ) = aicake_post_layer( $circle['public_id'], $blank, array( '#c62828' ), '' );
 aicake_check( 'a blank layer is refused', 422, $status );

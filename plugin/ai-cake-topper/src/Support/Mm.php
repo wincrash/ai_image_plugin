@@ -37,6 +37,14 @@ final class Mm {
 	/**
 	 * Bleed outside the trim line: the image extends past the cut so a
 	 * slightly-off cut leaves no white sliver (§3.3).
+	 *
+	 * > **This is the arithmetic's default, not this shop's bleed.**
+	 * > `FormatCatalogue::BLEED_MM` is what the shop actually sells, and it is
+	 * > **zero** (D-074) — every offered format is trim only. Nothing in the
+	 * > running system reaches this constant: every real caller is handed a
+	 * > bleed by the spec it is working on. It stays 3 mm so the functions below
+	 * > keep being testable as arithmetic, and so a format that wants bleed has
+	 * > a sensible number to want.
 	 */
 	public const BLEED_MM = 3.0;
 
