@@ -2965,4 +2965,67 @@ that makes the session call independent of anything that might throw after it.
 A browser run of the anonymous path is a required step before shipping, not an
 optional one.
 
-<!-- Next: D-067 -->
+---
+
+## D-067 · Image search means Openverse, and only licences that permit selling
+
+**2026-08-09, building step 7.** D-060 recorded Ruslan's decision to build image
+search, and recorded the objection alongside it: this shop **prints the picture
+and sells it**, and a general web-image search licenses its results for display,
+not for commercial reproduction.
+
+**Openverse resolves that rather than accepting it.** It is WordPress.org's own
+service, it indexes openly-licensed work, and it can be asked for **only those
+licences that permit commercial use and modification** — which is exactly what
+printing a decoration on an icing sheet and putting a name over it is.
+
+`license_type=commercial,modification` on the query. That turns "somebody
+else's copyrighted work" into "work whose licence says yes", and it enforces it
+at the point where results are *fetched* rather than with a warning nobody
+reads.
+
+> **Falsified, and the result is the argument.** Remove that one parameter and
+> the very first search returns **BY-NC, BY-NC-ND and BY-NC-SA** — `NC` forbids
+> commercial use, `ND` forbids modification, and this shop needs both. The
+> assertion names the safe set (`CC0`, `PDM`, `BY`, `BY-SA`) rather than merely
+> checking that *a* licence came back, because the weaker version passed
+> happily with the filter gone.
+
+**Attribution is left to Ruslan.** Most CC licences require it, and what a shop
+does about that is a business decision, not a default this code should invent.
+So the licence, the creator, the source and the title are stored on the design
+when it is picked — whatever he decides can be honoured without going back to
+find them, which would mean hoping the result is still there.
+
+### Three things that make it safe
+
+- **The browser sends an identifier, never a URL.** The address that gets
+  fetched comes from asking Openverse about that identifier. A client-supplied
+  URL would make the shop's server fetch whatever it was handed, including
+  addresses on the host's own network that nothing outside can reach. The route
+  declares no `url` argument at all, and the check asserts that through the
+  router rather than by reading the code.
+- **A downloaded picture crosses the same boundary as an upload** (D-062):
+  dimensions from the header before any decode, then decode, then re-encode to
+  PNG and throw the original away. A picture from the open internet is at least
+  as untrusted as one from a customer's phone — nobody chose it deliberately.
+- **The query is moderated before it is spent.** Layers 0 and 1 cannot see the
+  pictures that come back — that is D-060's point and why Ruslan at the printer
+  remains the real control — but a franchise asked for by name is the most
+  likely way this goes wrong, and they catch that for free.
+
+**The Lithuanian query is translated first**, through the same
+`analyse()` call the generation path already makes. Openverse indexes English;
+sending „linksmas dinozauras" would find nothing and look like a broken feature
+rather than a language mismatch. On failure the Lithuanian is used unchanged —
+a search that finds little beats a search that refuses.
+
+**Off by default** (D-059), so the shop turns this on deliberately or not at
+all.
+
+> `tools/search-check.php` talks to the live service. When Openverse is
+> unreachable the network half **says so and skips** rather than going red —
+> a check that blames the plugin for someone else's outage sends people to
+> debug code that is fine.
+
+<!-- Next: D-068 -->

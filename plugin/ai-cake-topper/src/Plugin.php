@@ -45,8 +45,10 @@ use AiCake\Rest\JobStatusEndpoint;
 use AiCake\Rest\LayoutEndpoint;
 use AiCake\Rest\RestController;
 use AiCake\Rest\TextLayerEndpoint;
+use AiCake\Rest\SearchEndpoint;
 use AiCake\Rest\SessionEndpoint;
 use AiCake\Rest\UploadEndpoint;
+use AiCake\Providers\Search\OpenverseProvider;
 use AiCake\Storage\OrderArchive;
 use AiCake\Storage\PrivateStorage;
 use AiCake\Storage\Retention;
@@ -245,6 +247,18 @@ class Plugin {
 			new UploadEndpoint(
 				$this->designs,
 				$this->identity,
+				$this->images,
+				$this->storage,
+				$this->previews,
+				$this->settings,
+				$this->logger
+			),
+			new SearchEndpoint(
+				$this->designs,
+				$this->identity,
+				$this->moderator,
+				$this->providers,
+				new OpenverseProvider( $this->http, $this->logger ),
 				$this->images,
 				$this->storage,
 				$this->previews,

@@ -1127,17 +1127,22 @@
 	 */
 	function showBranch() {
 		var uploading = 'upload' === state.source;
+		var searching = 'search' === state.source;
 
 		if ( upload.branch ) {
 			upload.branch.hidden = ! uploading;
 		}
 
+		if ( search.branch ) {
+			search.branch.hidden = ! searching;
+		}
+
 		if ( upload.prompt ) {
-			upload.prompt.hidden = uploading;
+			upload.prompt.hidden = uploading || searching;
 		}
 
 		if ( upload.actions ) {
-			upload.actions.hidden = uploading;
+			upload.actions.hidden = uploading || searching;
 		}
 
 		if ( uploading && cropper && upload.canvas ) {
@@ -1251,6 +1256,183 @@
 
 	if ( upload.save ) {
 		upload.save.addEventListener( 'click', sendCrop );
+	}
+
+	/* ------------------------------------------------ step 2: the search */
+
+	var search = {
+		branch: root.querySelector( '[data-role="search-branch"]' ),
+		query: root.querySelector( '[data-role="search-query"]' ),
+		run: root.querySelector( '[data-role="search-run"]' ),
+		hint: root.querySelector( '[data-role="search-hint"]' ),
+		results: root.querySelector( '[data-role="search-results"]' ),
+		error: root.querySelector( '[data-role="search-error"]' )
+	};
+
+	function searchError( message ) {
+		if ( ! search.error ) {
+			return;
+		}
+
+		search.error.textContent = message || '';
+		search.error.hidden = ! message;
+	}
+
+	/**
+	 * Post to a wizard endpoint with the right nonce, and unwrap the answer.
+	 *
+	 * @param {string} route What to call.
+	 * @param {Object} body  The payload.
+	 * @return {Promise<Object>}
+	 */
+	function post( route, body ) {
+		return withNonce().then( function ( nonce ) {
+			var headers = { 'Content-Type': 'application/json' };
+
+			if ( nonce ) {
+				headers['X-WP-Nonce'] = nonce;
+			}
+
+			return window.fetch( config.root + route, {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: headers,
+				body: JSON.stringify( body )
+			} );
+		} ).then( function ( response ) {
+			return response.json().then( function ( parsed ) {
+				if ( ! response.ok ) {
+					throw new Error( parsed && parsed.message ? parsed.message : config.i18n.textFailed );
+				}
+
+				return parsed;
+			} );
+		} );
+	}
+
+	/**
+	 * Draw the results, each one clickable.
+	 *
+	 * The licence is printed under every picture rather than tucked away. It is
+	 * the reason this feature is defensible at all (D-067) — these are works
+	 * whose licence permits commercial use and modification — and a customer
+	 * choosing somebody else's photograph should be able to see whose.
+	 */
+	function renderResults( results ) {
+		if ( ! search.results ) {
+			return;
+		}
+
+		search.results.innerHTML = '';
+
+		if ( ! results.length ) {
+			search.hint.textContent = config.i18n.searchNone;
+
+			return;
+		}
+
+		search.hint.textContent = '';
+
+		results.forEach( function ( found ) {
+			var button = document.createElement( 'button' );
+			button.type = 'button';
+			button.className = 'aicake-search__hit';
+
+			var img = document.createElement( 'img' );
+			img.src = found.thumb;
+			img.alt = found.title || '';
+			img.loading = 'lazy';
+
+			var meta = document.createElement( 'span' );
+			meta.className = 'aicake-search__meta';
+			meta.textContent = [ found.licence, found.creator ]
+				.filter( function ( part ) { return part; } )
+				.join( ' · ' );
+
+			button.appendChild( img );
+			button.appendChild( meta );
+
+			button.addEventListener( 'click', function () {
+				pickResult( found, button );
+			} );
+
+			search.results.appendChild( button );
+		} );
+	}
+
+	function runSearch() {
+		var typed = ( search.query.value || '' ).trim();
+
+		if ( '' === typed ) {
+			return;
+		}
+
+		searchError( '' );
+		search.run.disabled = true;
+		search.hint.textContent = config.i18n.searching;
+
+		post( 'search', { query: typed } ).then( function ( body ) {
+			renderResults( ( body && body.results ) || [] );
+		} ).catch( function ( error ) {
+			searchError( error && error.message ? error.message : config.i18n.textFailed );
+			search.hint.textContent = '';
+		} ).finally( function () {
+			search.run.disabled = false;
+		} );
+	}
+
+	/**
+	 * Turn one result into a design.
+	 *
+	 * Only the id is sent. The address the server actually fetches comes from
+	 * asking the search service about that id — a URL from the browser would
+	 * make the shop's server fetch whatever it was handed (D-067).
+	 */
+	function pickResult( found, button ) {
+		searchError( '' );
+		invalidateDesign();
+
+		button.disabled = true;
+		search.hint.textContent = config.i18n.preparing;
+
+		post( 'search-pick', {
+			id: found.id,
+			query: ( search.query.value || '' ).trim(),
+			format_type: state.type,
+			format_mm: state.mm,
+			product_id: config.productId
+		} ).then( function ( body ) {
+			state.design = body.design;
+			state.designLayout = body.layoutKey || null;
+
+			if ( step2.preview && body.preview ) {
+				step2.preview.src = body.preview;
+			}
+
+			if ( step2.stage ) {
+				step2.stage.hidden = false;
+			}
+
+			update();
+		} ).catch( function ( error ) {
+			searchError( error && error.message ? error.message : config.i18n.textFailed );
+		} ).finally( function () {
+			button.disabled = false;
+			search.hint.textContent = '';
+		} );
+	}
+
+	if ( search.run ) {
+		search.run.addEventListener( 'click', runSearch );
+	}
+
+	if ( search.query ) {
+		search.query.addEventListener( 'keydown', function ( event ) {
+			if ( 'Enter' === event.key ) {
+				event.preventDefault();
+				runSearch();
+			}
+		} );
 	}
 
 	/**

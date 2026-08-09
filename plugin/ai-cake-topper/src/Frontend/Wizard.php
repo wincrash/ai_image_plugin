@@ -615,6 +615,8 @@ class Wizard {
 					'pickSource' => __( 'Pasirinkite, iš kur bus paveikslėlis.', 'ai-cake-topper' ),
 					'preparing'  => __( 'Ruošiame…', 'ai-cake-topper' ),
 					'notAnImage' => __( 'Nepavyko nuskaityti nuotraukos. Pasirinkite kitą failą.', 'ai-cake-topper' ),
+					'searching'  => __( 'Ieškome…', 'ai-cake-topper' ),
+					'searchNone' => __( 'Nieko neradome. Pabandykite kitais žodžiais.', 'ai-cake-topper' ),
 					'pickDesign' => __( 'Sukurkite piešinį, kad galėtumėte tęsti.', 'ai-cake-topper' ),
 					/*
 					 * Said plainly, because it costs the customer a generation.

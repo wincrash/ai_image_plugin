@@ -40,6 +40,8 @@ class RestController {
 
 	private UploadEndpoint $upload;
 
+	private SearchEndpoint $search;
+
 	/**
 	 * @param SessionEndpoint   $session    Session and nonce.
 	 * @param GenerateEndpoint  $generate   Queue a generation.
@@ -49,6 +51,7 @@ class RestController {
 	 * @param LayoutEndpoint    $layout     The D-041 layout suggestion.
 	 * @param DesignEndpoint    $design     A design with no generated picture.
 	 * @param UploadEndpoint    $upload     The customer's own photograph.
+	 * @param SearchEndpoint    $search     Finding a picture (D-067).
 	 */
 	public function __construct(
 		SessionEndpoint $session,
@@ -58,9 +61,11 @@ class RestController {
 		TextLayerEndpoint $text_layer,
 		LayoutEndpoint $layout,
 		DesignEndpoint $design,
-		UploadEndpoint $upload
+		UploadEndpoint $upload,
+		SearchEndpoint $search
 	) {
 		$this->upload     = $upload;
+		$this->search     = $search;
 		$this->session    = $session;
 		$this->generate   = $generate;
 		$this->status     = $status;
@@ -120,6 +125,33 @@ class RestController {
 		 * stranger, so it is the last endpoint that should be callable
 		 * cross-origin.
 		 */
+		/*
+		 * Finding a picture (D-067). Two routes, because they are two risks:
+		 * the query spends a translation call, and the pick downloads bytes
+		 * from a stranger's server onto the shop's disk.
+		 */
+		register_rest_route(
+			self::NAMESPACE,
+			'/search',
+			array(
+				'methods'             => $this->search->methods(),
+				'callback'            => array( $this->search, 'handle_query' ),
+				'permission_callback' => array( $this, 'check_nonce' ),
+				'args'                => $this->search->query_args(),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
+			'/search-pick',
+			array(
+				'methods'             => $this->search->methods(),
+				'callback'            => array( $this->search, 'handle_pick' ),
+				'permission_callback' => array( $this, 'check_nonce' ),
+				'args'                => $this->search->pick_args(),
+			)
+		);
+
 		register_rest_route(
 			self::NAMESPACE,
 			'/upload',

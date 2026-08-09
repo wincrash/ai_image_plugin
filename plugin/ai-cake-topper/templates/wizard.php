@@ -144,6 +144,45 @@ defined( 'ABSPATH' ) || exit;
 			<div class="aicake-error" data-role="upload-error" hidden></div>
 		</div>
 
+		<?php
+		/*
+		 * The search branch (D-067). Same shape as the prompt box, because it
+		 * is the same act — describing what you want — and the customer should
+		 * not have to learn a second interface to do it.
+		 */
+		?>
+		<div class="aicake-search" data-role="search-branch" hidden>
+			<p class="aicake-field">
+				<label for="aicake-search-query">
+					<?php esc_html_e( 'Ko ieškote?', 'ai-cake-topper' ); ?>
+				</label>
+
+				<input type="text" id="aicake-search-query" class="aicake-prompt" maxlength="120"
+					data-role="search-query"
+					placeholder="<?php esc_attr_e( 'pvz. dinozauras', 'ai-cake-topper' ); ?>">
+			</p>
+
+			<p class="aicake-actions">
+				<button type="button" class="button" data-role="search-run">
+					<?php esc_html_e( 'Ieškoti', 'ai-cake-topper' ); ?>
+				</button>
+				<span class="aicake-hint" data-role="search-hint" role="status"></span>
+			</p>
+
+			<div class="aicake-search__results" data-role="search-results"></div>
+
+			<p class="aicake-terms">
+				<?php
+				esc_html_e(
+					'Rodome tik tuos paveikslėlius, kurių licencija leidžia naudoti komerciškai ir keisti.',
+					'ai-cake-topper'
+				);
+				?>
+			</p>
+
+			<div class="aicake-error" data-role="search-error" hidden></div>
+		</div>
+
 		<div class="aicake-field" data-role="prompt-branch">
 			<label for="aicake-wizard-prompt">
 				<?php esc_html_e( 'Aprašykite, ką norite pavaizduoti', 'ai-cake-topper' ); ?>

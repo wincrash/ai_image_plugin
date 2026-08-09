@@ -61,7 +61,21 @@
 > 20000 × 20000 reaches GD. The check's own fixture had to be rewritten first — the original built
 > a real 20000² image and was quietly testing the byte cap instead.
 >
-> **Still to build: step 6 (AI re-verify on the new spine), step 7 (image search).**
+> **✅ Steps 6 and 7 are done (2026-08-09). Wizard v2 is complete — all four sources work.**
+>
+> **Step 6** re-verified the AI path logged out with a real fal generation, and found the bug that
+> was blocking it: `renderFontChoices()` threw at init, which killed `engine.loadSession()`
+> because that was the *last* statement in the block — so an anonymous visitor had no nonce and
+> every generation 403'd as „Sesija pasibaigė." The session call now runs **first** (D-066).
+>
+> **Step 7** is image search, and it is **Openverse** rather than a general web search — filtered
+> to `license_type=commercial,modification`, which is exactly what printing and selling a
+> decoration is (D-067). That answers D-060's licensing objection instead of accepting it.
+> **Falsified: remove that one parameter and the first search returns `BY-NC`, `BY-NC-ND` and
+> `BY-NC-SA`** — licences that forbid commercial use. Off by default.
+>
+> **`tools/search-check.php` (18) and `tools/upload-check.php` (18) are new.** Twelve suites, 706
+> assertions, all green.
 
 > **✅ Step 1 is done (2026-08-07) — `source`, schema 5, and retention without cron.**
 > `aicake_designs` gains **`source`** (`ai` | `upload` | `search` | `none`), D-054's spine.
