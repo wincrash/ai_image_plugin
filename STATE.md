@@ -32,6 +32,26 @@
 > — text only, uploaded photo, AI, and image search — as **one wizard branching at one step**
 > (D-054 → D-062). Everything below describing the wizard as an AI-only flow is v1.
 >
+> **🔴 D-063 — the biggest find so far, and it was live: no anonymous customer
+> could ever save their text.** `editor.js` read `config.nonce`, which is empty
+> for anonymous visitors on purpose, so `/text-layer` and `/layout` were posted with **no nonce
+> at all** and every one of them saw „Sesija pasibaigė." That is the wizard's whole audience.
+> Third and fourth instance of D-025's mechanism. Fixed: the editor is handed the nonce by its
+> host. **`rest-check.sh` now knocks on all three nonced endpoints — it had only ever called
+> `/generate`**, which is exactly why this survived.
+
+> **✅ Steps 2–4 are done (2026-08-07).** **Step 2:** one format question, sixteen drawn cards,
+> the type derived from the diameter (D-055) — `wizard-check` 61. **Step 3:** four sources,
+> each switchable, each refused at the endpoint as well as hidden from the page (D-059) —
+> falsified by watching `/generate` return **202 and queue a paid generation** with AI switched
+> off. **Step 4:** the text-only path end to end, verified in a browser **as an anonymous
+> visitor** — blank sheet with all 24 cut circles, a name typed, saved, proof rendered, cart
+> reached. A text-only design gets **a plain white master**, so preview, proof, cart and print
+> all work unchanged rather than five pipelines learning that a master is optional.
+>
+> **Still to build: step 5 (upload + crop), step 6 (AI re-verify on the new spine), step 7
+> (image search).**
+
 > **✅ Step 1 is done (2026-08-07) — `source`, schema 5, and retention without cron.**
 > `aicake_designs` gains **`source`** (`ai` | `upload` | `search` | `none`), D-054's spine.
 > It defaults to `'ai'` so **the column default *is* the backfill** — every row that existed

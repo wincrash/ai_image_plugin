@@ -104,6 +104,44 @@ page="$(curl -sL "$SITE$WIZARD")"
 printed="$(printf '%s' "$page" | grep -o '"nonce":"[a-zA-Z0-9]*"' | head -1 | cut -d'"' -f4)"
 check 'cacheable markup carries no nonce' 'empty' "${printed:-empty}"
 
+# --------------------------------------------- the other two endpoints (D-025)
+#
+# `/generate` was the only endpoint this script ever authenticated against, and
+# that is precisely how the editor shipped for months reading `config.nonce` —
+# empty for exactly these visitors — and posting no nonce at all to
+# `/text-layer` and `/layout`. Every anonymous customer was told
+# „Sesija pasibaigė." the moment they tried to save their text, and nothing
+# here noticed, because nothing here had ever knocked on those two doors.
+#
+# The assertion is deliberately about the DOOR rather than the payload: a
+# refusal that is 403 means the nonce was rejected, and anything else means it
+# was accepted and the request then failed on its own merits — which is all
+# this needs to prove. A real layer would make this a test of GD.
+#
+# Every required argument is supplied, deliberately. WordPress validates the
+# declared args on this route *before* it runs the permission callback, so a
+# payload missing one returns 400 and never touches the nonce at all — an
+# assertion built on that would pass against an endpoint with no nonce check
+# whatsoever, which is the exact bug being guarded. Measured, not assumed: the
+# first version of this said 400 in both directions.
+knock() {
+	curl -s -o /dev/null -w '%{http_code}' \
+		-X POST -b "$1" \
+		-H 'Content-Type: application/json' \
+		${2:+-H "X-WP-Nonce: $2"} \
+		--data '{"design":"nope","text":"x","layer":"x","colours":["#000000"]}' \
+		"$API/$3"
+}
+
+check 'text-layer with no nonce is refused' '403' "$(knock "$ANON" '' text-layer)"
+check 'layout with no nonce is refused'     '403' "$(knock "$ANON" '' layout)"
+
+# And with the session nonce they get past authentication — 404 for a design
+# that does not exist, which is the ownership rule (never 403, or the endpoint
+# becomes an id oracle). Anything 403 here means the nonce was not accepted.
+check 'text-layer accepts the session nonce' '404' "$(knock "$ANON" "$anon_nonce" text-layer)"
+check 'layout accepts the session nonce'     '404' "$(knock "$ANON" "$anon_nonce" layout)"
+
 # ------------------------------------------------------------- logged in
 
 echo

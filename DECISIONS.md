@@ -2761,4 +2761,55 @@ A byte cap before anything is read.
 A one-line "you have the rights to this image" checkbox was proposed and declined — it is a
 checkbox rather than a workflow, and the offer stands.
 
-<!-- Next: D-063 -->
+---
+
+## D-063 · The nonce has one owner, and every caller asks it
+
+**2026-08-07, found in a browser while building the text-only path — not by a
+test, and not by reasoning.**
+
+`assets/js/editor.js` read `config.nonce` directly when posting to `/text-layer`
+and `/layout`. That value is **deliberately empty for anonymous visitors**: the
+wizard page is cacheable and a baked-in nonce would be stale (§7, D-025). Their
+only nonce is the one `/session` issues, it lives inside the generation engine,
+and nothing ever copied it across.
+
+**So both endpoints went out with no nonce at all.** WordPress authenticated
+nobody, `check_nonce` refused, and the customer was told
+„Sesija pasibaigė. Atnaujinkite puslapį." the instant they tried to save their
+text.
+
+**No anonymous customer has ever been able to save a text layer, or press
+„Pasiūlyk dizainą".** That is the wizard's entire audience — the whole reason
+D-026 exists is that the shop's customers are not logged in.
+
+This is the **third and fourth** instance of the same mechanism. D-025 was the
+generator, D-028 was the admin download link, and these two are the editor.
+Every time it is the same shape: a cookie without a nonce is user 0, silently.
+
+**The rule, from here on: no module works out its own nonce.** The engine owns
+the answer and everything else is handed it. `editor.js` now takes a `nonce`
+hook from its host and awaits it, so a caller that runs before `/session` has
+answered waits rather than posting nothing.
+
+### Why nothing caught it
+
+Worth writing down, because the gap was structural rather than careless.
+
+- **`text-check.php` runs server-side** through `rest_do_request()` with a nonce
+  it mints itself. It can never see a client-side nonce bug.
+- **`rest-check.sh` is the only suite that speaks real HTTP as a logged-out
+  visitor — and it only ever knocked on `/generate`.** Two of the three nonced
+  endpoints had never been called by the audience that uses them.
+
+`rest-check.sh` now knocks on all three, in both directions: refused without a
+nonce, and accepted with the session's.
+
+> **One trap inside the fix.** The first version of those assertions sent a
+> partial payload and got **400, not 403** — WordPress validates a route's
+> declared `args` *before* running the permission callback, so the request never
+> reached the nonce. An assertion in that shape passes against an endpoint with
+> no nonce check at all, which is precisely the bug it exists to catch. Every
+> required argument is supplied now, and the comment says why.
+
+<!-- Next: D-064 -->
