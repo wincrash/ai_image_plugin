@@ -1136,6 +1136,7 @@
 		file: root.querySelector( '[data-role="upload-file"]' ),
 		stage: root.querySelector( '[data-role="upload-stage"]' ),
 		canvas: root.querySelector( '[data-role="crop-canvas"]' ),
+		previewCanvas: root.querySelector( '[data-role="crop-preview"]' ),
 		save: root.querySelector( '[data-role="upload-save"]' ),
 		hint: root.querySelector( '[data-role="upload-hint"]' ),
 		error: root.querySelector( '[data-role="upload-error"]' ),
@@ -1206,7 +1207,7 @@
 		}
 
 		if ( uploading && cropper && upload.canvas ) {
-			cropper.mount( upload.canvas );
+			cropper.mount( upload.canvas, upload.previewCanvas );
 
 			var option = currentOption();
 

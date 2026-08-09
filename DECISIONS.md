@@ -3065,4 +3065,64 @@ run, all the way to a cart line, is a required step before shipping.** Both
 paths were verified that way — text-only at 3,50 € with „AI paveikslėlis: ne",
 AI at 4,50 € with „taip".
 
-<!-- Next: D-069 -->
+---
+
+## D-069 · The photograph stays still and the selection moves
+
+**2026-08-09, Ruslan:** *"issnt it better visually, have full image, and
+move/zoom circle instead moving uploaded image?"*
+
+**Yes, and the reason is what this shop actually sells.**
+
+The first cropper was the profile-picture pattern: a fixed hole with the
+photograph panning underneath. That is the right pattern for *"fit my face in a
+circle"* and the wrong one for *"take one thing out of a bigger photograph"* — a
+child out of a group, a dog out of a garden. For that the question is **where in
+the picture am I**, and a frame showing only the crop cannot answer it. Past
+about two times in, the rest of the photograph is off-canvas and the customer is
+panning blind.
+
+**The export maths did not change at all.** Moving the selection right is moving
+the image left; growing the selection is zooming out. This is a rendering and
+interaction change — nothing on the server, nothing in the print path, and the
+crop still comes out at full print resolution.
+
+**A second gain, which was not obvious until it was built.** The rule *the crop
+may not run past the edge of the photograph* used to surface as the drag
+mysteriously refusing to go further. Now the edge is on screen and the selection
+visibly stops against it. Same constraint, no longer a mystery.
+
+### What it cost, and what was done about it
+
+**Small selections are drawn small.** The old frame always showed the crop at
+full size, so a tight crop was still easy to aim; now a tight crop is a small
+circle. Two things answer that:
+
+- **The slider still sets the size**, so the radius is never something that has
+  to be dragged precisely. The finger positions, the slider sizes.
+- **A live preview of the decoration sits beside the frame**, at a size worth
+  looking at. That hands back exactly what this arrangement gives up, and the
+  pair is better than either alone: context on one side, product on the other.
+
+**No drag handles.** They are fine with a pointer and miserable with a thumb,
+and this shop's traffic is mostly phones. One finger moves the selection, two
+resize it, the wheel resizes it, and the slider does the same job for a mouse.
+
+**The selection jumps to wherever it is grabbed** rather than only moving when
+the drag starts inside it. On a phone, hunting for the inside of a small circle
+with a fingertip that covers the circle is the difference between a tool and a
+puzzle.
+
+> **The frame takes the photograph's own proportions** rather than being a fixed
+> box with the picture letterboxed inside it. So the picture fills it exactly,
+> there is no empty margin to explain, and "the whole photograph is visible" is
+> true by construction rather than by arithmetic.
+
+> **One CSS trap, and it defeated the whole point until it was found.** A canvas
+> carries an intrinsic size from its `width`/`height` attributes, and a flex item
+> defaults to `min-width: auto` — so the frame refused to shrink below 640 px,
+> overflowed its row, and pushed the preview onto its own line on *every*
+> screen. `min-width: 0` is what actually lets it shrink. Side by side is the
+> arrangement; without that one line there was no arrangement.
+
+<!-- Next: D-070 -->

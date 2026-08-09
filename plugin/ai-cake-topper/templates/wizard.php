@@ -127,7 +127,22 @@ defined( 'ABSPATH' ) || exit;
 			</p>
 
 			<div class="aicake-upload__stage" data-role="upload-stage" hidden>
-				<canvas data-role="crop-canvas" class="aicake-upload__canvas"></canvas>
+				<?php
+				/*
+				 * The whole photograph on the left, the decoration itself on
+				 * the right (D-069). The frame shows *where* the selection is;
+				 * the preview shows *what it is*. Neither answers both, which
+				 * is why there are two.
+				 */
+				?>
+				<div class="aicake-upload__panes">
+					<canvas data-role="crop-canvas" class="aicake-upload__canvas"></canvas>
+
+					<figure class="aicake-upload__preview">
+						<canvas data-role="crop-preview"></canvas>
+						<figcaption><?php esc_html_e( 'Taip atrodys', 'ai-cake-topper' ); ?></figcaption>
+					</figure>
+				</div>
 
 				<p class="aicake-field aicake-upload__zoom">
 					<label for="aicake-crop-zoom"><?php esc_html_e( 'Priartinimas', 'ai-cake-topper' ); ?></label>

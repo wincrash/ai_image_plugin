@@ -5,18 +5,33 @@
  * plain WordPress on shared hosting, and a bundler in the loop is one more
  * thing that has to work before anyone can buy a cake topper.
  *
- * The model is the one people already know from setting a profile picture: the
- * photograph moves and scales underneath a fixed hole, and what shows through
- * the hole is what gets printed. There is no crop rectangle to drag, no
- * handles, and nothing to get wrong on a phone — one finger pans, two fingers
- * pinch, and the shape of the hole is the shape of the decoration.
+ * **The photograph stays still and the selection moves over it** (D-069).
+ *
+ * The first version did the opposite — a fixed hole in the middle with the
+ * picture panning underneath, which is the pattern everyone knows from setting
+ * a profile picture. It is the right pattern for "fit my face in a circle" and
+ * the wrong one for what this shop sells, which is *one thing taken out of a
+ * bigger photograph*: a child out of a group, a dog out of a garden. For that
+ * the question is "where in the picture am I", and a frame showing only the
+ * crop cannot answer it — past about two times in, the rest of the photograph
+ * is off-canvas and the customer is panning blind.
+ *
+ * There is a second thing this buys, which was not obvious until it was built.
+ * The rule *the crop may not run past the edge of the photograph* used to show
+ * up as the drag mysteriously refusing to move any further. Now the edge of the
+ * photograph is on screen, so the selection visibly stops against it. Same
+ * constraint, no longer a mystery.
+ *
+ * One finger moves the selection, two fingers resize it, and the slider does
+ * the same job for anyone with a mouse. No drag handles — they are fine with a
+ * pointer and miserable with a thumb, and this shop's traffic is mostly phones.
  */
 ( function () {
 	'use strict';
 
 	/**
 	 * @param {Object} config Localised wizard configuration.
-	 * @param {Object} hooks  Callbacks: onReady, onError.
+	 * @param {Object} hooks  Callbacks: onReady, onZoom.
 	 */
 	window.AiCakeCropper = function ( config, hooks ) {
 		hooks = hooks || {};
@@ -24,6 +39,10 @@
 		var canvas = null;
 		var ctx    = null;
 		var image  = null;
+
+		/** The live preview of the decoration itself, if the host gave us one. */
+		var preview = null;
+		var previewCtx = null;
 
 		/*
 		 * The format being cut for. Held rather than read at export time,
@@ -33,47 +52,206 @@
 		 */
 		var format = null;
 
-		// Pan in canvas pixels, and scale as a multiple of the "just covers"
-		// size. Never below 1, or the photograph stops filling the hole and
-		// the gap prints as bare icing.
-		var view = { x: 0, y: 0, scale: 1 };
-
-		var drag = null;
-		var pinch = null;
+		/**
+		 * The largest the frame may be, in CSS pixels.
+		 *
+		 * The canvas is then sized to the photograph's own proportions inside
+		 * that box, so the picture fills the frame exactly and there is no
+		 * letterboxing to explain. It also means "the whole photograph is
+		 * visible" is true by construction rather than by arithmetic.
+		 */
+		var MAX_W = 640;
+		var MAX_H = 520;
 
 		/**
-		 * How far in the customer may go.
+		 * How far in the customer may go: the selection may shrink to a sixth
+		 * of the largest one that fits.
 		 *
-		 * Six times the "just covers" size. Beyond that the crop is a handful
-		 * of source pixels stretched across a decoration, and the print looks
-		 * like a mistake rather than a choice — `onQuality` warns long before
-		 * this, so the ceiling is only there to stop the slider being absurd.
+		 * The ceiling is only there to stop the slider being absurd. Long
+		 * before it, `report()` warns that the crop no longer has the
+		 * resolution the print needs.
 		 */
 		var MAX_ZOOM = 6;
 
 		/**
-		 * Change the zoom, keeping the middle of the hole where it is.
+		 * The selection, in canvas pixels: its centre, and its width.
 		 *
-		 * Zooming about the centre rather than about the pointer is the less
-		 * clever choice and the right one: the customer is looking at what is
-		 * inside the circle, and that is the thing that should stay still.
-		 *
-		 * @param {number} next Requested scale, as a multiple of cover.
+		 * Height is derived from the format rather than stored, so a selection
+		 * can never drift out of the shape it is going to be printed in.
 		 */
-		function zoomTo( next ) {
+		var sel = { cx: 0, cy: 0, w: 0 };
+
+		var drag = null;
+		var pinch = null;
+
+		/** The selection's aspect: height as a multiple of width. */
+		function ratio() {
+			if ( ! format || ! format.targetW || ! format.targetH ) {
+				return 1;
+			}
+
+			return format.targetH / format.targetW;
+		}
+
+		function selHeight() {
+			return sel.w * ratio();
+		}
+
+		/**
+		 * The largest selection that still fits inside the photograph.
+		 */
+		function maxWidth() {
+			if ( ! canvas ) {
+				return 0;
+			}
+
+			return Math.min( canvas.width, canvas.height / ratio() );
+		}
+
+		/**
+		 * Keep the selection inside the picture.
+		 *
+		 * This is the one rule the whole tool exists to enforce: a selection
+		 * hanging off the edge would export transparent pixels, and a
+		 * transparent patch on a printed decoration is a white bite out of it
+		 * that nobody asked for.
+		 */
+		function clamp() {
+			var max = maxWidth();
+
+			sel.w = Math.min( max, Math.max( max / MAX_ZOOM, sel.w ) );
+
+			var halfW = sel.w / 2;
+			var halfH = selHeight() / 2;
+
+			sel.cx = Math.min( canvas.width - halfW, Math.max( halfW, sel.cx ) );
+			sel.cy = Math.min( canvas.height - halfH, Math.max( halfH, sel.cy ) );
+		}
+
+		/**
+		 * The outline of the selection, in canvas coordinates.
+		 *
+		 * @param {CanvasRenderingContext2D} target Where to trace it.
+		 */
+		function selectionPath( target ) {
+			var halfW = sel.w / 2;
+			var halfH = selHeight() / 2;
+
+			if ( format && 'round' === format.shape ) {
+				target.moveTo( sel.cx + halfW, sel.cy );
+				target.arc( sel.cx, sel.cy, halfW, 0, Math.PI * 2 );
+
+				return;
+			}
+
+			target.rect( sel.cx - halfW, sel.cy - halfH, sel.w, selHeight() );
+		}
+
+		/**
+		 * Draw the photograph, dim everything outside the selection, outline it.
+		 */
+		function render() {
+			if ( ! ctx || ! image ) {
+				return;
+			}
+
+			ctx.clearRect( 0, 0, canvas.width, canvas.height );
+			ctx.drawImage( image, 0, 0, canvas.width, canvas.height );
+
+			/*
+			 * The mask is a filled rectangle with the selection punched out of
+			 * it — `evenodd` — rather than an outline. An outline says "the cut
+			 * is here"; a punched mask says "this is what you are buying", and
+			 * the rest of the photograph stays visible underneath it so the
+			 * customer can still see what they are aiming at.
+			 */
+			ctx.save();
+			ctx.fillStyle = 'rgba(255,255,255,0.62)';
+			ctx.beginPath();
+			ctx.rect( 0, 0, canvas.width, canvas.height );
+			selectionPath( ctx );
+			ctx.fill( 'evenodd' );
+			ctx.restore();
+
+			ctx.save();
+			ctx.strokeStyle = '#000000';
+			ctx.lineWidth = Math.max( 1.5, canvas.width / 260 );
+			ctx.beginPath();
+			selectionPath( ctx );
+			ctx.stroke();
+			ctx.restore();
+
+			renderPreview();
+		}
+
+		/**
+		 * The decoration itself, at a size worth looking at.
+		 *
+		 * This is what the frame used to be, and giving it up is the cost of
+		 * showing the whole photograph. Handing it back as its own panel is
+		 * better than either arrangement alone: context on one side, product on
+		 * the other, both live.
+		 */
+		function renderPreview() {
+			if ( ! previewCtx || ! image ) {
+				return;
+			}
+
+			var box = sourceRect();
+
+			previewCtx.clearRect( 0, 0, preview.width, preview.height );
+			previewCtx.save();
+
+			if ( format && 'round' === format.shape ) {
+				previewCtx.beginPath();
+				previewCtx.arc(
+					preview.width / 2,
+					preview.height / 2,
+					Math.min( preview.width, preview.height ) / 2,
+					0,
+					Math.PI * 2
+				);
+				previewCtx.clip();
+			}
+
+			previewCtx.drawImage(
+				image,
+				box.x, box.y, box.w, box.h,
+				0, 0, preview.width, preview.height
+			);
+
+			previewCtx.restore();
+		}
+
+		/**
+		 * The selection, expressed in the original photograph's own pixels.
+		 *
+		 * The canvas is the photograph scaled down, so one factor converts
+		 * between them. Deriving it in a single place is what keeps what the
+		 * customer saw and what gets printed the same picture.
+		 */
+		function sourceRect() {
+			var k = image.width / canvas.width;
+
+			return {
+				x: ( sel.cx - ( sel.w / 2 ) ) * k,
+				y: ( sel.cy - ( selHeight() / 2 ) ) * k,
+				w: sel.w * k,
+				h: selHeight() * k
+			};
+		}
+
+		/**
+		 * Resize the selection about its own centre.
+		 *
+		 * @param {number} width Requested width in canvas pixels.
+		 */
+		function resize( width ) {
 			if ( ! image || ! canvas ) {
 				return;
 			}
 
-			var before = coverScale() * view.scale;
-
-			view.scale = Math.min( MAX_ZOOM, Math.max( 1, next ) );
-
-			var after = coverScale() * view.scale;
-			var ratio = after / before;
-
-			view.x = ( canvas.width / 2 ) - ( ( canvas.width / 2 ) - view.x ) * ratio;
-			view.y = ( canvas.height / 2 ) - ( ( canvas.height / 2 ) - view.y ) * ratio;
+			sel.w = width;
 
 			clamp();
 			render();
@@ -83,112 +261,28 @@
 		/**
 		 * Tell the host where the zoom is, and whether the crop is still sharp.
 		 *
-		 * The second half matters more than it looks. Zooming in takes a
-		 * smaller part of the photograph, so beyond a point there are fewer
-		 * source pixels than the print needs and the decoration comes out soft
-		 * — and nothing on screen would say so, because the viewport is 640 px
-		 * and everything looks fine at 640 px. The customer finds out when the
-		 * sheet arrives.
+		 * The sharpness half matters more than it looks. A smaller selection
+		 * means fewer source pixels than the print needs, and nothing on screen
+		 * betrays it — the frame is a few hundred pixels wide and everything
+		 * looks fine at a few hundred pixels. The customer would find out when
+		 * the sheet arrived.
 		 */
 		function report() {
-			if ( ! hooks.onZoom || ! image || ! format ) {
+			if ( ! hooks.onZoom || ! image || ! format || ! canvas ) {
 				return;
 			}
 
-			// Source pixels currently inside the hole, along the long edge.
-			var s = coverScale() * view.scale;
-			var sourceW = canvas.width / s;
-			var sourceH = canvas.height / s;
+			var box = sourceRect();
+			var max = maxWidth();
 
 			hooks.onZoom( {
-				scale: view.scale,
+				// 1 is the largest selection that fits; 6 is a sixth of it.
+				scale: max > 0 ? max / sel.w : 1,
 				max: MAX_ZOOM,
-				// True while the crop still has at least the print's own
-				// resolution. A little under is invisible; far under is not.
-				sharp: sourceW >= format.targetW * 0.75 && sourceH >= format.targetH * 0.75
+				// A little under the print's own resolution is invisible. Far
+				// under is not.
+				sharp: box.w >= format.targetW * 0.75 && box.h >= format.targetH * 0.75
 			} );
-		}
-
-		/**
-		 * The smallest scale that still covers the hole completely.
-		 */
-		function coverScale() {
-			if ( ! image || ! canvas ) {
-				return 1;
-			}
-
-			return Math.max( canvas.width / image.width, canvas.height / image.height );
-		}
-
-		/**
-		 * Keep the photograph over the hole.
-		 *
-		 * Clamped rather than merely discouraged: a pan that leaves a corner
-		 * uncovered would export transparent pixels, and a transparent hole in
-		 * a printed decoration is a white bite out of the edge that nobody
-		 * asked for.
-		 */
-		function clamp() {
-			var s = coverScale() * view.scale;
-			var w = image.width * s;
-			var h = image.height * s;
-
-			var minX = canvas.width - w;
-			var minY = canvas.height - h;
-
-			view.x = Math.min( 0, Math.max( minX, view.x ) );
-			view.y = Math.min( 0, Math.max( minY, view.y ) );
-		}
-
-		/**
-		 * Draw the photograph, then dim everything outside the shape.
-		 *
-		 * The mask is drawn as a filled rectangle with the shape punched out of
-		 * it — `evenodd` — rather than as a stroked outline. An outline says
-		 * "the cut is here"; a punched mask says "this is what you are buying",
-		 * and on a round decoration the difference is the whole point.
-		 */
-		function render() {
-			if ( ! ctx || ! image ) {
-				return;
-			}
-
-			var s = coverScale() * view.scale;
-
-			ctx.clearRect( 0, 0, canvas.width, canvas.height );
-			ctx.drawImage( image, view.x, view.y, image.width * s, image.height * s );
-
-			ctx.save();
-			ctx.fillStyle = 'rgba(255,255,255,0.72)';
-			ctx.beginPath();
-			ctx.rect( 0, 0, canvas.width, canvas.height );
-			shapePath();
-			ctx.fill( 'evenodd' );
-			ctx.restore();
-
-			ctx.save();
-			ctx.strokeStyle = '#000000';
-			ctx.lineWidth = Math.max( 1, canvas.width / 300 );
-			ctx.beginPath();
-			shapePath();
-			ctx.stroke();
-			ctx.restore();
-		}
-
-		/**
-		 * The outline of one piece, in canvas coordinates.
-		 */
-		function shapePath() {
-			if ( format && 'round' === format.shape ) {
-				var r = Math.min( canvas.width, canvas.height ) / 2;
-
-				ctx.moveTo( canvas.width / 2 + r, canvas.height / 2 );
-				ctx.arc( canvas.width / 2, canvas.height / 2, r, 0, Math.PI * 2 );
-
-				return;
-			}
-
-			ctx.rect( 0, 0, canvas.width, canvas.height );
 		}
 
 		/* ------------------------------------------------------- gestures */
@@ -211,8 +305,12 @@
 		}
 
 		function onDown( event ) {
+			if ( ! image ) {
+				return;
+			}
+
 			if ( event.touches && event.touches.length === 2 ) {
-				pinch = { at: spread( event ), scale: view.scale };
+				pinch = { at: spread( event ), w: sel.w };
 				drag  = null;
 
 				return;
@@ -220,12 +318,29 @@
 
 			var p = pointFrom( event );
 
-			drag = { x: p.x - view.x, y: p.y - view.y };
+			/*
+			 * The selection jumps to wherever it is grabbed, rather than only
+			 * moving when the customer happens to start inside it. On a phone,
+			 * hunting for the inside of a small circle with a fingertip that
+			 * covers it is the difference between a tool and a puzzle.
+			 */
+			sel.cx = p.x;
+			sel.cy = p.y;
+
+			clamp();
+			render();
+			report();
+
+			drag = { x: p.x - sel.cx, y: p.y - sel.cy };
 		}
 
 		function onMove( event ) {
+			if ( ! image ) {
+				return;
+			}
+
 			if ( pinch && event.touches && event.touches.length === 2 ) {
-				zoomTo( pinch.scale * ( spread( event ) / pinch.at ) );
+				resize( pinch.w * ( spread( event ) / pinch.at ) );
 				event.preventDefault();
 
 				return;
@@ -237,8 +352,8 @@
 
 			var p = pointFrom( event );
 
-			view.x = p.x - drag.x;
-			view.y = p.y - drag.y;
+			sel.cx = p.x - drag.x;
+			sel.cy = p.y - drag.y;
 
 			clamp();
 			render();
@@ -252,13 +367,16 @@
 
 		return {
 			/**
-			 * Attach to a canvas.
+			 * Attach to the working canvas, and optionally a preview canvas.
 			 *
-			 * @param {HTMLCanvasElement} element The viewport.
+			 * @param {HTMLCanvasElement} element   The frame.
+			 * @param {HTMLCanvasElement} [thumb]   Live preview of the piece.
 			 */
-			mount: function ( element ) {
-				canvas = element;
-				ctx    = canvas.getContext( '2d' );
+			mount: function ( element, thumb ) {
+				canvas  = element;
+				ctx     = canvas.getContext( '2d' );
+				preview = thumb || null;
+				previewCtx = preview ? preview.getContext( '2d' ) : null;
 
 				if ( canvas.dataset.aicakeBound ) {
 					return;
@@ -273,17 +391,9 @@
 				window.addEventListener( 'mouseup', onUp );
 				canvas.addEventListener( 'touchend', onUp );
 
-				/*
-				 * The wheel, for anyone with a mouse. The slider is the
-				 * discoverable control and this is the one people reach for
-				 * without thinking — but the slider is what makes the feature
-				 * *exist* on a desktop, because until it did there was pinch
-				 * and nothing else, and the crop was stuck at the whole
-				 * picture. Ruslan, 2026-08-09.
-				 *
-				 * `passive: false`, because it has to stop the page scrolling
-				 * out from under the thing being zoomed.
-				 */
+				// The wheel resizes the selection, which is what a pointer user
+				// reaches for without thinking. `passive: false`, or the page
+				// scrolls out from under the thing being aimed at.
 				canvas.addEventListener(
 					'wheel',
 					function ( event ) {
@@ -292,42 +402,47 @@
 						}
 
 						event.preventDefault();
-						zoomTo( view.scale * ( event.deltaY < 0 ? 1.12 : 1 / 1.12 ) );
+						resize( sel.w * ( event.deltaY < 0 ? 1 / 1.12 : 1.12 ) );
 					},
 					{ passive: false }
 				);
 			},
 
 			/**
-			 * Set the shape being cut, and size the viewport to match it.
-			 *
-			 * The viewport is drawn at a fraction of print resolution — it only
-			 * has to be looked at. The export re-reads the original photograph
-			 * at full size, so nothing here costs the customer any sharpness.
+			 * Set the shape being cut.
 			 *
 			 * @param {Object} chosen One entry of config.formats.
 			 */
 			setFormat: function ( chosen ) {
 				format = chosen;
 
-				if ( ! canvas ) {
+				if ( preview ) {
+					var side = 180;
+
+					preview.width  = side;
+					preview.height = Math.round( side * ratio() );
+				}
+
+				if ( image ) {
+					this.reset();
+				}
+			},
+
+			/**
+			 * Centre the selection and open it as wide as it will go.
+			 */
+			reset: function () {
+				if ( ! canvas || ! image ) {
 					return;
 				}
 
-				var ratio = ( chosen.targetH && chosen.targetW )
-					? chosen.targetH / chosen.targetW
-					: 1;
+				sel.w  = maxWidth();
+				sel.cx = canvas.width / 2;
+				sel.cy = canvas.height / 2;
 
-				canvas.width  = 640;
-				canvas.height = Math.round( 640 * ratio );
-
-				view = { x: 0, y: 0, scale: 1 };
-
-				if ( image ) {
-					clamp();
-					render();
-					report();
-				}
+				clamp();
+				render();
+				report();
 			},
 
 			/**
@@ -343,6 +458,8 @@
 			 * @return {Promise}
 			 */
 			load: function ( file ) {
+				var self = this;
+
 				return new Promise( function ( resolve, reject ) {
 					if ( ! file || ! /^image\//.test( file.type || '' ) ) {
 						reject( new Error( config.i18n.notAnImage ) );
@@ -357,11 +474,19 @@
 						URL.revokeObjectURL( url );
 
 						image = img;
-						view = { x: 0, y: 0, scale: 1 };
 
-						clamp();
-						render();
-						report();
+						/*
+						 * The frame takes the photograph's own proportions,
+						 * inside a sensible box. So the picture fills it
+						 * exactly — no letterboxing to explain, and "the whole
+						 * photograph is visible" is true by construction.
+						 */
+						var k = Math.min( MAX_W / img.width, MAX_H / img.height );
+
+						canvas.width  = Math.max( 1, Math.round( img.width * k ) );
+						canvas.height = Math.max( 1, Math.round( img.height * k ) );
+
+						self.reset();
 
 						if ( hooks.onReady ) {
 							hooks.onReady();
@@ -389,10 +514,13 @@
 			/**
 			 * Set the zoom from outside — the slider.
 			 *
-			 * @param {number} scale Multiple of the "just covers" size.
+			 * 1 is the largest selection that fits inside the photograph, and
+			 * larger numbers take a smaller part of it.
+			 *
+			 * @param {number} scale How far in.
 			 */
 			zoom: function ( scale ) {
-				zoomTo( scale );
+				resize( maxWidth() / Math.min( MAX_ZOOM, Math.max( 1, scale ) ) );
 			},
 
 			/**
@@ -403,19 +531,17 @@
 			},
 
 			/**
-			 * The crop, at print resolution, as a data URL.
+			 * The selection, at print resolution, as a data URL.
 			 *
-			 * Rendered from the original photograph rather than from the
-			 * viewport canvas — the viewport is 640 px because that is all a
-			 * screen needs, and exporting it would print a decoration at a
-			 * fifth of the resolution it was cropped at.
+			 * Read from the original photograph rather than from the frame —
+			 * the frame is at most 640 px because that is all a screen needs,
+			 * and exporting it would print a decoration at a fraction of the
+			 * resolution it was chosen at.
 			 *
 			 * **The canvas is verified before it is trusted** (D-057). Safari
 			 * on iOS does not throw when a canvas exceeds its area budget; it
 			 * hands back one that reads as transparent, and `toDataURL()` then
-			 * produces a valid, blank JPEG. A ⌀20 cm circle is 2434 px square —
-			 * well inside the 8.3 megapixels the text layer already asks for,
-			 * but the same silence applies.
+			 * produces a valid, blank JPEG.
 			 *
 			 * @return {string} Data URL, or '' if this device could not.
 			 */
@@ -435,30 +561,21 @@
 					return '';
 				}
 
-				/*
-				 * The viewport and the export are the same crop at two sizes,
-				 * so every coordinate scales by one factor. Deriving it here,
-				 * once, is what keeps what the customer saw and what gets
-				 * printed the same picture.
-				 */
-				var k = out.width / canvas.width;
-				var s = coverScale() * view.scale * k;
+				var box = sourceRect();
 
 				target.fillStyle = '#ffffff';
 				target.fillRect( 0, 0, out.width, out.height );
 				target.drawImage(
 					image,
-					view.x * k,
-					view.y * k,
-					image.width * s,
-					image.height * s
+					box.x, box.y, box.w, box.h,
+					0, 0, out.width, out.height
 				);
 
 				/*
-				 * JPEG, not PNG. A photograph as PNG is several megabytes of
-				 * base64 over a phone connection for no gain — it is a
-				 * continuous-tone image, which is precisely what JPEG is for.
-				 * The server re-encodes to PNG anyway (D-062).
+				 * JPEG, not PNG. A photograph is a continuous-tone image, which
+				 * is precisely what JPEG is for; PNG would be several megabytes
+				 * of base64 over a phone connection for no gain. The server
+				 * re-encodes to PNG anyway (D-062).
 				 */
 				return out.toDataURL( 'image/jpeg', 0.92 );
 			}
@@ -467,8 +584,8 @@
 		/**
 		 * Did this canvas keep what was written to it? (D-057)
 		 *
-		 * The probe is drawn and read back in two far-apart corners, then
-		 * erased, so it can never reach the exported picture.
+		 * Probed in two far-apart corners and erased afterwards, so it can
+		 * never reach the exported picture.
 		 *
 		 * @param {HTMLCanvasElement}        element The canvas.
 		 * @param {CanvasRenderingContext2D} probe   Its context.

@@ -139,20 +139,65 @@
  * The crop viewport. Functional only — it has to be visible, finger-sized and
  * not scroll the page out from under a drag.
  */
+/*
+ * The photograph and the decoration, side by side (D-069) — and stacked on a
+ * narrow screen, with the preview first, because on a phone the thing worth
+ * seeing without scrolling is what you are buying.
+ */
+.aicake-upload__panes {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-start;
+	gap: 1rem;
+	margin-bottom: 0.75rem;
+}
+
 .aicake-upload__canvas {
 	display: block;
 	max-width: 100%;
 	height: auto;
-	margin: 0 auto 0.75rem;
 	border: 1px solid var(--aicake-line);
 	border-radius: 0.5rem;
-	/* Or a one-finger pan scrolls the page instead of moving the photograph. */
+	/* Or a one-finger drag scrolls the page instead of moving the selection. */
 	touch-action: none;
-	cursor: grab;
+	cursor: crosshair;
+	/*
+	 * `min-width: 0` is what actually lets this shrink. A canvas carries an
+	 * intrinsic size from its width/height attributes, and a flex item defaults
+	 * to `min-width: auto` — so without this the frame refuses to go below 640
+	 * px, overflows the row, and drops the preview onto its own line on every
+	 * screen. Which is the one arrangement the two panes exist to avoid.
+	 */
+	flex: 1 1 0;
+	min-width: 0;
 }
 
-.aicake-upload__canvas:active {
-	cursor: grabbing;
+.aicake-upload__preview {
+	margin: 0;
+	text-align: center;
+	flex: 0 0 auto;
+}
+
+.aicake-upload__preview canvas {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	border: 1px solid var(--aicake-line);
+	border-radius: 0.5rem;
+	background: #fff;
+}
+
+.aicake-upload__preview figcaption {
+	margin-top: 0.3rem;
+	font-size: 0.8rem;
+	color: #6b6b76;
+}
+
+@media (max-width: 34rem) {
+	.aicake-upload__panes {
+		flex-direction: column-reverse;
+		align-items: center;
+	}
 }
 
 .aicake-upload__pick {
