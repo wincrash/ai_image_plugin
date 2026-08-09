@@ -38,6 +38,7 @@ use AiCake\Providers\Upscale\GdUpscaler;
 use AiCake\Queue\Dispatcher;
 use AiCake\Queue\Runner;
 use AiCake\Queue\Scheduler;
+use AiCake\Rest\DesignEndpoint;
 use AiCake\Rest\FileEndpoint;
 use AiCake\Rest\GenerateEndpoint;
 use AiCake\Rest\JobStatusEndpoint;
@@ -230,6 +231,15 @@ class Plugin {
 				$this->moderator,
 				new LayoutSuggester( $this->http, $this->settings, $this->logger ),
 				$this->fonts
+			),
+			new DesignEndpoint(
+				$this->designs,
+				$this->identity,
+				$this->images,
+				$this->storage,
+				$this->previews,
+				$this->settings,
+				$this->logger
 			)
 		);
 	}

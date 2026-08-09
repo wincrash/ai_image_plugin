@@ -282,6 +282,92 @@ aicake_check(
 	$off_response->is_error() ? $off_response->as_error()->get_error_code() : ''
 );
 
+/* ---------------------------------- D-054: a design with no picture at all */
+
+/*
+ * Ruslan's first new case: cupcakes with nothing but the customer's own text.
+ *
+ * The interesting part is that nothing downstream knows about it. The design
+ * gets a plain white master, and the preview, the proof, the cart and the print
+ * file all carry on as though it were a generation — which is the point of
+ * doing it that way rather than teaching five pipelines that a master is
+ * optional.
+ */
+
+$was_throttle = array(
+	'ip_daily_ceiling'     => $settings->get( 'ip_daily_ceiling' ),
+	'min_interval_seconds' => $settings->get( 'min_interval_seconds' ),
+);
+
+$settings->update(
+	array(
+		'ip_daily_ceiling'     => 100000,
+		'min_interval_seconds' => 0,
+	)
+);
+
+$blank = new WP_REST_Request( 'POST', '/aicake/v1/design' );
+$blank->set_header( 'X-WP-Nonce', wp_create_nonce( 'wp_rest' ) );
+$blank->set_body_params(
+	array(
+		'source'      => SourceCatalogue::NONE,
+		'format_type' => FormatCatalogue::TYPE_CUPCAKE,
+		'format_mm'   => 45.0,
+		'product_id'  => $product->get_id(),
+	)
+);
+
+$blank_response = rest_do_request( $blank );
+$blank_body     = (array) $blank_response->get_data();
+
+$settings->update( $was_throttle );
+
+aicake_check( 'a text-only design is created', 201, $blank_response->get_status() );
+aicake_check( 'and is immediately usable, with no job to wait for', 'done', $blank_body['status'] ?? '' );
+aicake_check(
+	'and names the layout the editor must draw',
+	'cupcake|45',
+	$blank_body['layoutKey'] ?? ''
+);
+
+$blank_row = $plugin->designs()->find_by_public_id( (string) ( $blank_body['design'] ?? '' ) );
+
+aicake_check( 'the row records where it came from', SourceCatalogue::NONE, $blank_row['source'] ?? '' );
+aicake_check( 'it has a picture to lay text over', true, is_readable( (string) ( $blank_row['file_master'] ?? '' ) ) );
+aicake_check( 'and a preview, exactly like a generated design', true, is_readable( (string) ( $blank_row['file_preview'] ?? '' ) ) );
+
+/*
+ * No provider and no cost. Both are asserted because they are what the AI
+ * surcharge keys off, and a text-only design that quietly attracted the AI fee
+ * would be a customer charged a euro for a picture nobody drew (D-058).
+ */
+// `?? ` would swallow a genuine NULL here, which is what the column holds.
+aicake_check( 'nobody generated it', true, in_array( $blank_row['provider'], array( null, '' ), true ) );
+aicake_check( 'and it cost nothing', 0.0, (float) ( $blank_row['cost_usd'] ?? -1 ) );
+
+// Anything that is not `none` must not get in through this door.
+$wrong = new WP_REST_Request( 'POST', '/aicake/v1/design' );
+$wrong->set_header( 'X-WP-Nonce', wp_create_nonce( 'wp_rest' ) );
+$wrong->set_body_params(
+	array(
+		'source'      => SourceCatalogue::AI,
+		'format_type' => FormatCatalogue::TYPE_CUPCAKE,
+		'format_mm'   => 45.0,
+	)
+);
+
+aicake_check(
+	'the free door does not open for a source that costs money',
+	400,
+	rest_do_request( $wrong )->get_status()
+);
+
+$GLOBALS['wpdb']->delete(
+	AiCake\Installer::table( 'designs' ),
+	array( 'id' => (int) ( $blank_row['id'] ?? 0 ) ),
+	array( '%d' )
+);
+
 /*
  * D-025: this markup is cacheable, so it must never carry a nonce for an
  * anonymous visitor. A cached nonce 403s every generation, and it took two

@@ -594,6 +594,7 @@ class Wizard {
 					'pickFormat' => __( 'Pasirinkite, ką gaminsime.', 'ai-cake-topper' ),
 					'pickSize'   => __( 'Pasirinkite dydį.', 'ai-cake-topper' ),
 					'pickSource' => __( 'Pasirinkite, iš kur bus paveikslėlis.', 'ai-cake-topper' ),
+					'preparing'  => __( 'Ruošiame…', 'ai-cake-topper' ),
 					'pickDesign' => __( 'Sukurkite piešinį, kad galėtumėte tęsti.', 'ai-cake-topper' ),
 					/*
 					 * Said plainly, because it costs the customer a generation.

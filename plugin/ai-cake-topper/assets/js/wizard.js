@@ -576,6 +576,14 @@
 	};
 
 	var editor = window.AiCakeEditor ? window.AiCakeEditor( config, {
+		/*
+		 * The editor posts to `/text-layer` and `/layout`, so it needs the same
+		 * nonce by the same rules — and for an anonymous visitor that nonce
+		 * only exists after `/session` has answered. Supplied from here rather
+		 * than worked out there, because there is one correct answer and two
+		 * modules deriving it independently is exactly how D-025 happened.
+		 */
+		nonce: withNonce,
 		onChange: function () {
 			syncControls();
 		},
@@ -1065,14 +1073,115 @@
 	 */
 	function reachable( step ) {
 		if ( step >= 3 && ! state.design ) {
-			return 2;
+			/*
+			 * A text-only design has no artwork step to send them back to
+			 * (D-054), so falling back to 2 would land the customer on a
+			 * prompt box for a picture they explicitly said they did not want.
+			 * Step 1 is the only honest destination — and in practice this is
+			 * unreachable, because `blankDesign()` creates the row before the
+			 * step changes and only a failure leaves `state.design` empty.
+			 */
+			return needsArtwork() ? 2 : 1;
 		}
 
-		if ( step >= 2 && ( state.type === '' || state.mm === null ) ) {
+		if ( step >= 2 && ( state.type === '' || state.mm === null || state.source === '' ) ) {
 			return 1;
 		}
 
 		return step;
+	}
+
+	/**
+	 * Does the chosen source have an artwork step at all?
+	 *
+	 * Read from the source's own record rather than compared against 'none'
+	 * here, so adding a fifth source is a change in one place.
+	 */
+	function needsArtwork() {
+		var source = currentSource();
+
+		return null === source ? true : source.needsArtwork;
+	}
+
+	/**
+	 * A nonce, waiting for the session call if one has not arrived yet.
+	 *
+	 * **D-025's family, a fourth time, and it was caught in a browser rather
+	 * than by a test.** An anonymous visitor's page carries no printed nonce on
+	 * purpose — the HTML is cacheable and a baked-in nonce would be stale (§7)
+	 * — so the only nonce they ever have is the one `/session` issues, and that
+	 * call is asynchronous. Posting before it lands sends no nonce at all, WP
+	 * treats the request as user 0, and the customer is told
+	 * „Sesija pasibaigė. Atnaujinkite puslapį." on their very first click.
+	 *
+	 * Every existing caller went through the engine, which already waits. This
+	 * was the first one that did not.
+	 *
+	 * @return {Promise<string>} The nonce, possibly empty for a logged-in
+	 *                           visitor whose printed nonce is authoritative.
+	 */
+	function withNonce() {
+		var have = engine ? engine.nonce() : config.nonce;
+
+		if ( have || ! engine ) {
+			return Promise.resolve( have || '' );
+		}
+
+		return engine.loadSession().then( function () {
+			return engine.nonce();
+		} );
+	}
+
+	/**
+	 * Create the design for a source that generates nothing.
+	 *
+	 * The editor, the proof, the cart and the print file all need a design row
+	 * and something to lay text over, so the server makes one with a plain
+	 * white sheet for a picture (D-054). Nothing here costs money.
+	 *
+	 * @return {Promise} Resolves once `state.design` is set.
+	 */
+	function blankDesign() {
+		if ( state.design ) {
+			return Promise.resolve();
+		}
+
+		return withNonce().then( function ( nonce ) {
+			var headers = { 'Content-Type': 'application/json' };
+
+			if ( nonce ) {
+				headers['X-WP-Nonce'] = nonce;
+			}
+
+			return window.fetch( config.root + 'design', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: headers,
+				body: JSON.stringify( {
+					source: state.source,
+					format_type: state.type,
+					format_mm: state.mm,
+					product_id: config.productId
+				} )
+			} );
+		} ).then( function ( response ) {
+			return response.json().then( function ( body ) {
+				if ( ! response.ok ) {
+					throw new Error( body && body.message ? body.message : config.i18n.textFailed );
+				}
+
+				state.design = body.design;
+
+				/*
+				 * The design is the authority on its own geometry (D-043), so
+				 * the layout key comes back from the server rather than being
+				 * rebuilt here from the step 1 selection.
+				 */
+				state.designLayout = body.layoutKey || null;
+
+				return body;
+			} );
+		} );
 	}
 
 	function show( step ) {
@@ -1121,7 +1230,32 @@
 			return;
 		}
 
-		show( 2 );
+		/*
+		 * A source with artwork goes to step 2 to get it. A text-only design
+		 * has nothing to get, so the server makes the row and the blank sheet
+		 * and the customer lands straight on the editor (D-054).
+		 */
+		if ( needsArtwork() ) {
+			show( 2 );
+
+			return;
+		}
+
+		next.disabled = true;
+		hint.textContent = config.i18n.preparing;
+
+		blankDesign().then( function () {
+			show( 3 );
+			mountEditor();
+		} ).catch( function ( error ) {
+			hint.textContent = error && error.message ? error.message : config.i18n.textFailed;
+		} ).finally( function () {
+			next.disabled = false;
+
+			if ( hint.textContent === config.i18n.preparing ) {
+				hint.textContent = '';
+			}
+		} );
 	} );
 
 	root.querySelectorAll( '[data-role="back"]' ).forEach( function ( button ) {
@@ -1132,7 +1266,9 @@
 
 	root.querySelectorAll( '[data-role="back-3"]' ).forEach( function ( button ) {
 		button.addEventListener( 'click', function () {
-			show( 2 );
+			// Step 2 does not exist for a text-only design — going "back" to a
+			// prompt box for a picture they declined is not back (D-054).
+			show( needsArtwork() ? 2 : 1 );
 		} );
 	} );
 

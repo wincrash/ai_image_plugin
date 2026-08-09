@@ -36,6 +36,8 @@ class RestController {
 
 	private LayoutEndpoint $layout;
 
+	private DesignEndpoint $design;
+
 	/**
 	 * @param SessionEndpoint   $session    Session and nonce.
 	 * @param GenerateEndpoint  $generate   Queue a generation.
@@ -43,6 +45,7 @@ class RestController {
 	 * @param FileEndpoint      $file       Delivery.
 	 * @param TextLayerEndpoint $text_layer The composed text layer.
 	 * @param LayoutEndpoint    $layout     The D-041 layout suggestion.
+	 * @param DesignEndpoint    $design     A design with no generated picture.
 	 */
 	public function __construct(
 		SessionEndpoint $session,
@@ -50,7 +53,8 @@ class RestController {
 		JobStatusEndpoint $status,
 		FileEndpoint $file,
 		TextLayerEndpoint $text_layer,
-		LayoutEndpoint $layout
+		LayoutEndpoint $layout,
+		DesignEndpoint $design
 	) {
 		$this->session    = $session;
 		$this->generate   = $generate;
@@ -58,6 +62,7 @@ class RestController {
 		$this->file       = $file;
 		$this->text_layer = $text_layer;
 		$this->layout     = $layout;
+		$this->design     = $design;
 	}
 
 	/**
@@ -85,6 +90,22 @@ class RestController {
 				 * one (§7).
 				 */
 				'permission_callback' => '__return_true',
+			)
+		);
+
+		/*
+		 * A design with no generated picture (D-054). Same nonce rules as
+		 * `/generate` — it writes a row and two files on the shop's disk, and
+		 * "it is free" is not the same as "it is unauthenticated".
+		 */
+		register_rest_route(
+			self::NAMESPACE,
+			'/design',
+			array(
+				'methods'             => $this->design->methods(),
+				'callback'            => array( $this->design, 'handle' ),
+				'permission_callback' => array( $this, 'check_nonce' ),
+				'args'                => $this->design->args(),
 			)
 		);
 

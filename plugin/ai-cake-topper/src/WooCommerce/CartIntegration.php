@@ -12,6 +12,7 @@ namespace AiCake\WooCommerce;
 use AiCake\Domain\DesignRepository;
 use AiCake\Domain\FormatCatalogue;
 use AiCake\Domain\PrintSpec;
+use AiCake\Domain\SourceCatalogue;
 use AiCake\Frontend\Wizard;
 use AiCake\Throttle\IdentityResolver;
 
@@ -224,6 +225,22 @@ class CartIntegration {
 	 * @param array<string, mixed> $design The design row.
 	 */
 	private function used_ai( array $design ): bool {
+		/*
+		 * The source is now the first word on this, and it can only ever
+		 * subtract (D-058). Everything below still has to hold — a design
+		 * claiming `source = ai` with no provider and no master is a failed
+		 * generation, and nobody pays for one of those.
+		 *
+		 * Written this way round rather than replacing the evidence, because
+		 * `source` is a column and columns can be wrong; the file on disk
+		 * cannot. A text-only design has no provider anyway, so this line
+		 * changes no existing behaviour — it is what stops a *future* source
+		 * from inheriting the surcharge by accident.
+		 */
+		if ( SourceCatalogue::AI !== (string) ( $design['source'] ?? SourceCatalogue::AI ) ) {
+			return false;
+		}
+
 		return '' !== (string) ( $design['provider'] ?? '' )
 			&& '' !== (string) ( $design['file_master'] ?? '' )
 			// And the file is still there. Charging for a generation whose

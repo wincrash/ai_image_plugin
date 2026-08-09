@@ -262,6 +262,13 @@
 		return {
 			loadSession: loadSession,
 			generate: generate,
+			/*
+			 * Exposed so callers that post to other endpoints get the same
+			 * nonce by the same rules. There is one correct answer to "which
+			 * nonce applies" and it is D-025's — a second caller working it out
+			 * for itself is how this project spent two phases serving user 0.
+			 */
+			nonce: nonce,
 			history: function () { return history; },
 			session: function () { return session; },
 			isBusy: function () { return busy; }

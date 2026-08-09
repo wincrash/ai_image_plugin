@@ -498,6 +498,47 @@ aicake_check(
 	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $orphan )
 );
 
+/* -------------------------------- D-058: the source has the first word */
+
+/*
+ * A design that says it came from somewhere other than AI must never attract
+ * the AI fee, **even when the rest of the row looks exactly like a generation**.
+ *
+ * This state cannot occur today — a text-only design has no provider, so the
+ * older evidence already answers no. It is constructed here on purpose, because
+ * an untested guard is a guard nobody knows is broken: the moment `upload` or
+ * `search` starts recording a provider name of its own, this is the line that
+ * decides whether those customers are charged a euro for AI they never used.
+ */
+$mislabelled = aicake_design( true );
+
+AiCake\Plugin::instance()->designs()->update(
+	(int) AiCake\Plugin::instance()->designs()->find_by_public_id( $mislabelled )['id'],
+	array( 'source' => AiCake\Domain\SourceCatalogue::UPLOAD )
+);
+
+aicake_check(
+	'a non-AI source is not charged for AI, whatever else the row says',
+	3.50,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $mislabelled )
+);
+
+/*
+ * And the same row with `source = ai` restored pays the fee — otherwise the
+ * assertion above would also pass against a plugin that had simply stopped
+ * charging for AI altogether.
+ */
+AiCake\Plugin::instance()->designs()->update(
+	(int) AiCake\Plugin::instance()->designs()->find_by_public_id( $mislabelled )['id'],
+	array( 'source' => AiCake\Domain\SourceCatalogue::AI )
+);
+
+aicake_check(
+	'and the identical row does pay it when the source says AI',
+	4.50,
+	aicake_line_price( $product_id, array( $sheet_key => 'Krakmolo lakštas' ), $mislabelled )
+);
+
 echo "\nWhat the AI product refuses\n";
 
 /*

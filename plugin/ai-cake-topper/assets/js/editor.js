@@ -57,6 +57,34 @@
 		 */
 		var exportFailed = false;
 
+		/**
+		 * The nonce to send, waiting for the session call if it has not landed.
+		 *
+		 * **This used to read `config.nonce` directly, and that was a live bug
+		 * for every anonymous visitor — which is the wizard's whole audience.**
+		 * The printed nonce is deliberately empty for them, because the page
+		 * HTML is cacheable and a baked-in nonce would be stale (§7, D-025).
+		 * Their only nonce is the one `/session` issues, it lives inside the
+		 * generation engine, and nothing copied it here. So `/text-layer` and
+		 * `/layout` went out with no nonce at all, WordPress treated them as
+		 * user 0, and the customer was told „Sesija pasibaigė." the moment they
+		 * tried to save their text.
+		 *
+		 * The host supplies it now, because there is exactly one correct answer
+		 * to "which nonce applies" and the engine already knows it. A second
+		 * module working it out independently is how this project served user 0
+		 * twice before (D-025, D-026).
+		 *
+		 * @return {Promise<string>} The nonce, or '' if there is genuinely none.
+		 */
+		function nonce() {
+			if ( 'function' === typeof hooks.nonce ) {
+				return Promise.resolve( hooks.nonce() );
+			}
+
+			return Promise.resolve( config.nonce || '' );
+		}
+
 		var state = {
 			layout: null,
 			font: config.fonts && config.fonts.length ? config.fonts[ 0 ].handle : '',
@@ -991,17 +1019,19 @@
 			 * @param {string} designId The design's public id.
 			 */
 			suggest: function ( designId ) {
-				var headers = { 'Content-Type': 'application/json' };
+				return nonce().then( function ( token ) {
+					var headers = { 'Content-Type': 'application/json' };
 
-				if ( config.nonce ) {
-					headers['X-WP-Nonce'] = config.nonce;
-				}
+					if ( token ) {
+						headers['X-WP-Nonce'] = token;
+					}
 
-				return window.fetch( config.root + 'layout', {
-					method: 'POST',
-					credentials: 'same-origin',
-					headers: headers,
-					body: JSON.stringify( { design: designId, text: plainText() } )
+					return window.fetch( config.root + 'layout', {
+						method: 'POST',
+						credentials: 'same-origin',
+						headers: headers,
+						body: JSON.stringify( { design: designId, text: plainText() } )
+					} );
 				} ).then( function ( response ) {
 					return response.json().then( function ( body ) {
 						if ( ! response.ok ) {
@@ -1026,12 +1056,6 @@
 					hooks.onBusy( true );
 				}
 
-				var headers = { 'Content-Type': 'application/json' };
-
-				if ( config.nonce ) {
-					headers['X-WP-Nonce'] = config.nonce;
-				}
-
 				/*
 				 * Exported before the request is built, because doing so sets
 				 * `exportFailed` and the catch below needs it.
@@ -1045,16 +1069,24 @@
 				 */
 				var layer = exportLayer();
 
-				return window.fetch( config.root + 'text-layer', {
-					method: 'POST',
-					credentials: 'same-origin',
-					headers: headers,
-					body: JSON.stringify( {
-						design: designId,
-						text: plainText(),
-						colours: palette(),
-						layer: layer
-					} )
+				return nonce().then( function ( token ) {
+					var headers = { 'Content-Type': 'application/json' };
+
+					if ( token ) {
+						headers['X-WP-Nonce'] = token;
+					}
+
+					return window.fetch( config.root + 'text-layer', {
+						method: 'POST',
+						credentials: 'same-origin',
+						headers: headers,
+						body: JSON.stringify( {
+							design: designId,
+							text: plainText(),
+							colours: palette(),
+							layer: layer
+						} )
+					} );
 				} ).then( function ( response ) {
 					return response.json().then( function ( body ) {
 						if ( ! response.ok ) {
