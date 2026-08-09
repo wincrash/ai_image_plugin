@@ -107,7 +107,44 @@ defined( 'ABSPATH' ) || exit;
 
 		<p class="aicake-summary" data-role="summary"></p>
 
-		<div class="aicake-field">
+		<?php
+		/*
+		 * The upload branch (D-054, D-062). Step 2 is the only step that
+		 * differs between the four sources, and this is the whole of that
+		 * difference for a photograph: pick a file, move it under the hole.
+		 *
+		 * Hidden by default and revealed by the browser, because which branch
+		 * applies is decided by a choice made on step 1 — putting that in PHP
+		 * would mean rendering the page again to change it.
+		 */
+		?>
+		<div class="aicake-upload" data-role="upload-branch" hidden>
+			<p class="aicake-field">
+				<label class="aicake-upload__pick">
+					<input type="file" accept="image/*" data-role="upload-file">
+					<span><?php esc_html_e( 'Pasirinkite nuotrauką', 'ai-cake-topper' ); ?></span>
+				</label>
+			</p>
+
+			<div class="aicake-upload__stage" data-role="upload-stage" hidden>
+				<canvas data-role="crop-canvas" class="aicake-upload__canvas"></canvas>
+
+				<p class="aicake-field__note">
+					<?php esc_html_e( 'Traukite nuotrauką pirštu arba pele, priartinkite dviem pirštais. Kas matosi lange — tas ir bus atspausdinta.', 'ai-cake-topper' ); ?>
+				</p>
+
+				<p class="aicake-actions">
+					<button type="button" class="button" data-role="upload-save">
+						<?php esc_html_e( 'Naudoti šią nuotrauką', 'ai-cake-topper' ); ?>
+					</button>
+					<span class="aicake-hint" data-role="upload-hint" role="status"></span>
+				</p>
+			</div>
+
+			<div class="aicake-error" data-role="upload-error" hidden></div>
+		</div>
+
+		<div class="aicake-field" data-role="prompt-branch">
 			<label for="aicake-wizard-prompt">
 				<?php esc_html_e( 'Aprašykite, ką norite pavaizduoti', 'ai-cake-topper' ); ?>
 			</label>
@@ -142,7 +179,7 @@ defined( 'ABSPATH' ) || exit;
 			</p>
 		</div>
 
-		<p class="aicake-actions">
+		<p class="aicake-actions" data-role="generate-actions">
 			<button type="button" class="button aicake-generate" data-role="generate">
 				<span><?php esc_html_e( 'Sukurti piešinį', 'ai-cake-topper' ); ?></span>
 				<span class="aicake-remaining" data-role="remaining"></span>

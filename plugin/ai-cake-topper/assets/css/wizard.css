@@ -135,6 +135,30 @@
 	color: #6b6b76;
 }
 
+/*
+ * The crop viewport. Functional only — it has to be visible, finger-sized and
+ * not scroll the page out from under a drag.
+ */
+.aicake-upload__canvas {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin: 0 auto 0.75rem;
+	border: 1px solid var(--aicake-line);
+	border-radius: 0.5rem;
+	/* Or a one-finger pan scrolls the page instead of moving the photograph. */
+	touch-action: none;
+	cursor: grab;
+}
+
+.aicake-upload__canvas:active {
+	cursor: grabbing;
+}
+
+.aicake-upload__pick {
+	display: inline-block;
+}
+
 .aicake-formats {
 	display: grid;
 	grid-template-columns: 1fr;

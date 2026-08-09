@@ -2866,4 +2866,54 @@ detail. It always knew the offending coordinate and colour and never said so
 anywhere a shop could read it, which is why this started as an unexplainable
 customer report. The customer-facing message stays deliberately vague (§10).
 
-<!-- Next: D-065 -->
+---
+
+## D-065 · The browser crops, and it sends the picture rather than the rectangle
+
+**2026-08-09, building the upload path.** This **reverses** a position the
+project had been carrying since the photo-upload idea was parked:
+
+> *"The browser must send the crop rectangle, not the cropped image. Cropping
+> client-side either throws away resolution or ships a multi-megabyte base64
+> blob. The server crops from the original."*
+
+**The numbers do not support it.** A phone photograph is around 4000 px on its
+long edge; the largest thing this shop sells, a ⌀20 cm circle, needs 2434 px.
+A client-side crop therefore has resolution to spare in every case we offer,
+and the "throws away resolution" half is simply not true here.
+
+What the old plan would have cost is real and unchanged: **a 12 megapixel JPEG
+is about 48 MB decoded in GD**, on a host with a 256 MB ceiling, in a request a
+customer is waiting on. That is the wrong side of D-056's line by a wide margin
+— uploads scale with visitors, not with orders.
+
+So the browser decodes, crops and scales, and posts a **JPEG of one finished
+piece** — a few hundred kilobytes. The server never sees the original at all.
+
+Three consequences worth stating:
+
+- **The customer never hears the word "format" (D-062).** The file goes into a
+  canvas, so anything the *browser* can decode is accepted — JPEG, PNG, WebP,
+  GIF, BMP, and **HEIC, which is what an iPhone shoots by default** and which
+  GD has never been able to read.
+- **JPEG on the wire, PNG on disk.** A photograph is continuous tone, which is
+  what JPEG is for; sending PNG would be megabytes of base64 over a phone
+  connection for no gain. The server re-encodes to PNG regardless, because
+  re-encoding *is* the security boundary.
+- **The export target comes from the server.** `PrintSpec::target_px()` is sent
+  with each format, so the browser exports at print resolution instead of at
+  whatever the viewport happened to be. Verified: a ⌀15 cm crop arrives as
+  1843 × 1843, which is exactly what `FulfilPipeline` builds.
+
+The crop canvas is verified before it is trusted, exactly as the text layer is
+(D-057) — same silent-failure risk, same probe.
+
+> **The check had to be rewritten before it proved anything.** The first version
+> of the decompression-bomb fixture built a real 20000 × 20000 image with
+> `imagecreatetruecolor()` — 1.6 GB inside the check itself — and produced a
+> file over a megabyte, which the *byte cap* rejected. It passed, and it was
+> testing the wrong control entirely. A real bomb is a **forged header**: a 4 × 4
+> PNG with its IHDR patched and its CRC recomputed, under 4 kB on the wire,
+> declaring 20000 × 20000. Falsifying the dimension check now turns it red.
+
+<!-- Next: D-066 -->

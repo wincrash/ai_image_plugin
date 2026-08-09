@@ -1103,6 +1103,156 @@
 		return null === source ? true : source.needsArtwork;
 	}
 
+	/* ------------------------------------------------ step 2: the branch */
+
+	var upload = {
+		branch: root.querySelector( '[data-role="upload-branch"]' ),
+		prompt: root.querySelector( '[data-role="prompt-branch"]' ),
+		actions: root.querySelector( '[data-role="generate-actions"]' ),
+		file: root.querySelector( '[data-role="upload-file"]' ),
+		stage: root.querySelector( '[data-role="upload-stage"]' ),
+		canvas: root.querySelector( '[data-role="crop-canvas"]' ),
+		save: root.querySelector( '[data-role="upload-save"]' ),
+		hint: root.querySelector( '[data-role="upload-hint"]' ),
+		error: root.querySelector( '[data-role="upload-error"]' )
+	};
+
+	var cropper = window.AiCakeCropper ? window.AiCakeCropper( config, {} ) : null;
+
+	/**
+	 * Show the half of step 2 that belongs to the chosen source.
+	 *
+	 * Step 2 is the only step that differs between the four ways in (D-054),
+	 * and the difference is entirely which of these two blocks is on screen.
+	 */
+	function showBranch() {
+		var uploading = 'upload' === state.source;
+
+		if ( upload.branch ) {
+			upload.branch.hidden = ! uploading;
+		}
+
+		if ( upload.prompt ) {
+			upload.prompt.hidden = uploading;
+		}
+
+		if ( upload.actions ) {
+			upload.actions.hidden = uploading;
+		}
+
+		if ( uploading && cropper && upload.canvas ) {
+			cropper.mount( upload.canvas );
+
+			var option = currentOption();
+
+			if ( option ) {
+				cropper.setFormat( option );
+			}
+		}
+	}
+
+	function uploadError( message ) {
+		if ( ! upload.error ) {
+			return;
+		}
+
+		upload.error.textContent = message || '';
+		upload.error.hidden = ! message;
+	}
+
+	/**
+	 * Send the crop, and turn it into a design.
+	 */
+	function sendCrop() {
+		if ( ! cropper || ! cropper.hasImage() ) {
+			return;
+		}
+
+		uploadError( '' );
+
+		var data = cropper.exportCrop();
+
+		if ( '' === data ) {
+			// The device could not build the canvas (D-057). Say so, rather
+			// than posting a blank picture and blaming the photograph.
+			uploadError( config.i18n.canvasTooBig );
+
+			return;
+		}
+
+		upload.save.disabled = true;
+		upload.hint.textContent = config.i18n.preparing;
+
+		withNonce().then( function ( nonce ) {
+			var headers = { 'Content-Type': 'application/json' };
+
+			if ( nonce ) {
+				headers['X-WP-Nonce'] = nonce;
+			}
+
+			return window.fetch( config.root + 'upload', {
+				method: 'POST',
+				credentials: 'same-origin',
+				headers: headers,
+				body: JSON.stringify( {
+					image: data,
+					format_type: state.type,
+					format_mm: state.mm,
+					product_id: config.productId
+				} )
+			} );
+		} ).then( function ( response ) {
+			return response.json().then( function ( body ) {
+				if ( ! response.ok ) {
+					throw new Error( body && body.message ? body.message : config.i18n.textFailed );
+				}
+
+				state.design = body.design;
+				state.designLayout = body.layoutKey || null;
+
+				if ( step2.preview && body.preview ) {
+					step2.preview.src = body.preview;
+				}
+
+				if ( step2.stage ) {
+					step2.stage.hidden = false;
+				}
+
+				update();
+			} );
+		} ).catch( function ( error ) {
+			uploadError( error && error.message ? error.message : config.i18n.textFailed );
+		} ).finally( function () {
+			upload.save.disabled = false;
+			upload.hint.textContent = '';
+		} );
+	}
+
+	if ( upload.file ) {
+		upload.file.addEventListener( 'change', function () {
+			var chosen = upload.file.files && upload.file.files[ 0 ];
+
+			if ( ! chosen || ! cropper ) {
+				return;
+			}
+
+			uploadError( '' );
+			invalidateDesign();
+
+			cropper.load( chosen ).then( function () {
+				if ( upload.stage ) {
+					upload.stage.hidden = false;
+				}
+			} ).catch( function ( error ) {
+				uploadError( error && error.message ? error.message : config.i18n.notAnImage );
+			} );
+		} );
+	}
+
+	if ( upload.save ) {
+		upload.save.addEventListener( 'click', sendCrop );
+	}
+
 	/**
 	 * A nonce, waiting for the session call if one has not arrived yet.
 	 *
@@ -1236,6 +1386,7 @@
 		 * and the customer lands straight on the editor (D-054).
 		 */
 		if ( needsArtwork() ) {
+			showBranch();
 			show( 2 );
 
 			return;

@@ -49,8 +49,19 @@
 > reached. A text-only design gets **a plain white master**, so preview, proof, cart and print
 > all work unchanged rather than five pipelines learning that a master is optional.
 >
-> **Still to build: step 5 (upload + crop), step 6 (AI re-verify on the new spine), step 7
-> (image search).**
+> **✅ Step 5 is done (2026-08-09) — the customer's own photograph.** `POST /upload`,
+> `assets/js/cropper.js`, and **`tools/upload-check.php` — 18 assertions, mostly refusals.**
+> The browser crops and scales, then posts a JPEG of one finished piece; the server re-encodes it
+> to PNG and throws the original away, which **is** the security boundary (D-062, D-065).
+> Proven in a browser: a ⌀15 cm crop arrives as **1843 × 1843**, exactly what `FulfilPipeline`
+> builds, with no provider and no cost.
+>
+> **The control that protects the shop rather than the customer is the dimension check**, and it
+> reads the PNG header *before* any decode. Falsified: without it, a forged 4 kB header declaring
+> 20000 × 20000 reaches GD. The check's own fixture had to be rewritten first — the original built
+> a real 20000² image and was quietly testing the byte cap instead.
+>
+> **Still to build: step 6 (AI re-verify on the new spine), step 7 (image search).**
 
 > **✅ Step 1 is done (2026-08-07) — `source`, schema 5, and retention without cron.**
 > `aicake_designs` gains **`source`** (`ai` | `upload` | `search` | `none`), D-054's spine.

@@ -38,6 +38,8 @@ class RestController {
 
 	private DesignEndpoint $design;
 
+	private UploadEndpoint $upload;
+
 	/**
 	 * @param SessionEndpoint   $session    Session and nonce.
 	 * @param GenerateEndpoint  $generate   Queue a generation.
@@ -46,6 +48,7 @@ class RestController {
 	 * @param TextLayerEndpoint $text_layer The composed text layer.
 	 * @param LayoutEndpoint    $layout     The D-041 layout suggestion.
 	 * @param DesignEndpoint    $design     A design with no generated picture.
+	 * @param UploadEndpoint    $upload     The customer's own photograph.
 	 */
 	public function __construct(
 		SessionEndpoint $session,
@@ -54,8 +57,10 @@ class RestController {
 		FileEndpoint $file,
 		TextLayerEndpoint $text_layer,
 		LayoutEndpoint $layout,
-		DesignEndpoint $design
+		DesignEndpoint $design,
+		UploadEndpoint $upload
 	) {
+		$this->upload     = $upload;
 		$this->session    = $session;
 		$this->generate   = $generate;
 		$this->status     = $status;
@@ -106,6 +111,23 @@ class RestController {
 				'callback'            => array( $this->design, 'handle' ),
 				'permission_callback' => array( $this, 'check_nonce' ),
 				'args'                => $this->design->args(),
+			)
+		);
+
+		/*
+		 * The customer's own photograph (D-062). Nonced like everything else
+		 * that writes to the shop's disk — and this one takes bytes from a
+		 * stranger, so it is the last endpoint that should be callable
+		 * cross-origin.
+		 */
+		register_rest_route(
+			self::NAMESPACE,
+			'/upload',
+			array(
+				'methods'             => $this->upload->methods(),
+				'callback'            => array( $this->upload, 'handle' ),
+				'permission_callback' => array( $this, 'check_nonce' ),
+				'args'                => $this->upload->args(),
 			)
 		);
 

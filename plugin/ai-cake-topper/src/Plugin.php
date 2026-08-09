@@ -46,6 +46,7 @@ use AiCake\Rest\LayoutEndpoint;
 use AiCake\Rest\RestController;
 use AiCake\Rest\TextLayerEndpoint;
 use AiCake\Rest\SessionEndpoint;
+use AiCake\Rest\UploadEndpoint;
 use AiCake\Storage\OrderArchive;
 use AiCake\Storage\PrivateStorage;
 use AiCake\Storage\Retention;
@@ -233,6 +234,15 @@ class Plugin {
 				$this->fonts
 			),
 			new DesignEndpoint(
+				$this->designs,
+				$this->identity,
+				$this->images,
+				$this->storage,
+				$this->previews,
+				$this->settings,
+				$this->logger
+			),
+			new UploadEndpoint(
 				$this->designs,
 				$this->identity,
 				$this->images,

@@ -357,11 +357,29 @@ class Wizard {
 		$formats = array();
 
 		foreach ( FormatCatalogue::offerable() as $option ) {
+			$spec = FormatCatalogue::spec(
+				(string) $option['type'],
+				(float) $option['diameter_mm']
+			);
+
+			/*
+			 * The size one piece has to be, in print pixels. The cropper needs
+			 * it to know what to export — a photograph cropped to the viewport
+			 * on screen would arrive at a few hundred pixels and print soft.
+			 *
+			 * Sent rather than derived in the browser for the same reason piece
+			 * positions are (D-033): the server owns geometry, and a client
+			 * that computes its own arrives at a number that only disagrees.
+			 */
+			list( $target_w, $target_h ) = null === $spec ? array( 0, 0 ) : $spec->target_px();
+
 			$formats[] = array(
 				'type'     => (string) $option['type'],
 				'mm'       => (float) $option['diameter_mm'],
 				'label'    => (string) $option['label'],
 				'perSheet' => (int) $option['per_sheet'],
+				'targetW'  => (int) $target_w,
+				'targetH'  => (int) $target_h,
 				'shape'    => (string) $option['shape'],
 				'cols'     => (int) $option['cols'],
 				'rows'     => (int) $option['rows'],
@@ -543,10 +561,11 @@ class Wizard {
 		// the product-page generator.
 		wp_enqueue_script( 'aicake-generation', AICAKE_URL . 'assets/js/generation.js', array(), $this->asset_version( 'assets/js/generation.js' ), true );
 		wp_enqueue_script( 'aicake-editor', AICAKE_URL . 'assets/js/editor.js', array(), $this->asset_version( 'assets/js/editor.js' ), true );
+		wp_enqueue_script( 'aicake-cropper', AICAKE_URL . 'assets/js/cropper.js', array(), $this->asset_version( 'assets/js/cropper.js' ), true );
 		wp_enqueue_script(
 			'aicake-wizard',
 			AICAKE_URL . 'assets/js/wizard.js',
-			array( 'aicake-generation', 'aicake-editor' ),
+			array( 'aicake-generation', 'aicake-editor', 'aicake-cropper' ),
 			$this->asset_version( 'assets/js/wizard.js' ),
 			true
 		);
@@ -595,6 +614,7 @@ class Wizard {
 					'pickSize'   => __( 'Pasirinkite dydį.', 'ai-cake-topper' ),
 					'pickSource' => __( 'Pasirinkite, iš kur bus paveikslėlis.', 'ai-cake-topper' ),
 					'preparing'  => __( 'Ruošiame…', 'ai-cake-topper' ),
+					'notAnImage' => __( 'Nepavyko nuskaityti nuotraukos. Pasirinkite kitą failą.', 'ai-cake-topper' ),
 					'pickDesign' => __( 'Sukurkite piešinį, kad galėtumėte tęsti.', 'ai-cake-topper' ),
 					/*
 					 * Said plainly, because it costs the customer a generation.
