@@ -105,6 +105,13 @@ design field was written only by the AI path). None could have been caught by a 
 green suites said the print geometry was right. It was right about everything except the size of
 the page it was drawn on, which no assertion asked about until a sheet came out of the printer.
 
+**D-073 is the third instance and the cheapest to have caught.** Nothing was wrong with the print
+file on its own terms — it was wrong *against the preview the customer had already approved*, and
+no suite compared those two because none of them had a reason to. Ruslan found it by holding one
+beside the other. **When two things are supposed to show the same picture, assert that they do**;
+the proof had been drawing the correct answer all along while the print file drew another, and
+that pair had never been compared either.
+
 ### What is waiting on Ruslan
 
 1. **The „Paveikslėlio tipas" field, in WC Fields Factory.** D-071 built the machinery; the field
@@ -119,7 +126,13 @@ the page it was drawn on, which no assertion asked about until a sheet came out 
    creator, source and title are stored on every design so whatever he decides can be honoured
    (D-067).
 4. **A look at the format grid** — he asked to review the representation once built (D-055).
-5. **A printed sheet against the proof** — D-070's geometry has not been on paper yet.
+5. **🔴 A printed sheet, and it matters more after D-073/D-074 than it did after D-070.** Three
+   decisions in one day moved what lands on paper: where the picture sits inside the cut circle,
+   whether there is any ink outside that circle, and where the cut line itself is drawn. All of it
+   is asserted, measured and looked at on screen — and D-040's standard is paper. **Print one order
+   file and one proof of the same format and hold them together**, then cut one circle and check
+   the crescent: with no bleed there is nothing outside the line to absorb a wide cut, and that is
+   the one consequence of D-074 no assertion can show him.
 6. **An iPhone.** Still the one unmeasured thing that matters — see the canvas section below.
 
 ### Known open, not blocking
@@ -132,8 +145,9 @@ the page it was drawn on, which no assertion asked about until a sheet came out 
   than a 24-up cupcake sheet — the canvas is what costs memory, not the piece count. The old
   figure came from a check rendering two formats in one pass (D-056). Re-scope M0.3 against the
   real number before doing any work on it.
-- **Ruslan reported (2026-08-09) that he has one more error and one modification to raise.** Not yet
-  described. Ask him.
+- **Ruslan reported (2026-08-09) that he has one more error and one modification to raise.** Still
+  not described — asked again at the end of the D-073/D-074 session and not yet answered. Ask him.
+  The framing bug he *did* raise (D-073) became two decisions, so these two are worth chasing.
 
 ---
 
